@@ -9,8 +9,12 @@ export type Base = (typeof BASES)[number];
 export const DIETS = ["vegan", "vegetarian", "fish", "meat"] as const;
 export type Diet = (typeof DIETS)[number];
 
+/** Identity of a recipe. It is KitchenOwl's recipe id, but the domain does not know that. */
+export type RecipeId = number & { readonly __brand: "RecipeId" };
+export const recipeId = (n: number): RecipeId => n as RecipeId;
+
 export interface Recipe {
-  readonly id: number;
+  readonly id: RecipeId;
   readonly name: string;
   readonly mealType: MealType;
   readonly base: Base;

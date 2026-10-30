@@ -1,5 +1,11 @@
-import type { Config } from "../config.js";
 import { rawRecipeListSchema, type RawRecipe } from "./schemas.js";
+
+/** What the client needs to talk to KitchenOwl. The composition root fills it from the environment. */
+export interface KitchenOwlSettings {
+  readonly kitchenowlUrl: string;
+  readonly kitchenowlToken: string;
+  readonly householdId: number;
+}
 
 export class KitchenOwlError extends Error {
   constructor(
@@ -14,7 +20,7 @@ export class KitchenOwlError extends Error {
 /** Thin client for the KitchenOwl REST API. Only what the planner needs. */
 export class KitchenOwlClient {
   constructor(
-    private readonly config: Pick<Config, "kitchenowlUrl" | "kitchenowlToken" | "householdId">,
+    private readonly config: KitchenOwlSettings,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 

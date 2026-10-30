@@ -1,4 +1,4 @@
-import type { Base, Diet, MealType, Recipe } from "@weekly-planner/domain";
+import { recipeId, type Base, type CatalogEntry, type Diet, type MealType, type Recipe } from "@weekly-planner/domain";
 import type { RawRecipe } from "./schemas.js";
 
 /** Tags are compared without emoji variation selectors, case and surrounding space. */
@@ -35,6 +35,10 @@ const lookup = <T>(table: Record<string, T>): Map<string, T> =>
 const mealByTag = lookup(MEAL_TAGS);
 const baseByTag = lookup(BASE_TAGS);
 
+/**
+ * Anti-corruption layer: KitchenOwl's tags and times are translated into the domain's own vocabulary here and
+ * nowhere else. If the tag vocabulary changes, only this file changes.
+ */
 export interface DerivedRecipe {
   /** Present when meal type and diet could be determined. */
   recipe: Recipe | null;
@@ -75,7 +79,7 @@ export function deriveRecipe(raw: RawRecipe): DerivedRecipe {
   const recipe: Recipe | null =
     mealType && diet
       ? {
-          id: raw.id,
+          id: recipeId(raw.id),
           name: raw.name,
           mealType,
           base,
@@ -87,4 +91,11 @@ export function deriveRecipe(raw: RawRecipe): DerivedRecipe {
         }
       : null;
   return { recipe, problems };
+}
+
+export function toCatalogEntry(raw: RawRecipe): CatalogEntry {
+  const { recipe, problems } = deriveRecipe(raw);
+  return recipe && problems.length === 0
+    ? { kind: "ready", recipe }
+    : { kind: "needs-data", recipeId: recipeId(raw.id), name: raw.name, problems };
 }

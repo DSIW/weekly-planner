@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { KitchenOwlClient, KitchenOwlError } from "../src/kitchenowl/client.js";
+import { KitchenOwlClient, KitchenOwlError } from "../../src/infrastructure/kitchenowl/client.js";
 
 const cfg = { kitchenowlUrl: "https://ko.test", kitchenowlToken: "tok", householdId: 2 };
 const json = (body: unknown, status = 200): typeof fetch =>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isVegetarian, needsTime } from "@weekly-planner/domain";
-import { deriveRecipe } from "../src/kitchenowl/recipeAttributes.js";
-import type { RawRecipe } from "../src/kitchenowl/schemas.js";
+import { deriveRecipe, toCatalogEntry } from "../../src/infrastructure/kitchenowl/recipe-translator.js";
+import type { RawRecipe } from "../../src/infrastructure/kitchenowl/schemas.js";
 
 const raw = (tags: string[], over: Partial<RawRecipe> = {}): RawRecipe => ({
   id: 1,
@@ -63,5 +63,17 @@ describe("deriveRecipe", () => {
   it("flags the want-to-try marker and defaults to two portions", () => {
     const { recipe } = deriveRecipe(raw(["🍽️ Hauptgericht", "🥬 Vegetarisch", "🆕 Neu", "⭐ Ausprobieren"], { yields: null }));
     expect(recipe).toMatchObject({ wantsToTry: true, yields: 2 });
+  });
+});
+
+describe("toCatalogEntry", () => {
+  it("returns ready recipes with a branded id", () => {
+    const e = toCatalogEntry(raw(["🍽️ Hauptgericht", "🥬 Vegetarisch", "✅ Erprobt"], { id: 42 }));
+    expect(e).toMatchObject({ kind: "ready", recipe: { id: 42, name: "Testgericht" } });
+  });
+
+  it("returns needs-data entries with the reasons instead of dropping the recipe", () => {
+    const e = toCatalogEntry(raw([], { id: 7, name: "Ohne Tags" }));
+    expect(e).toEqual({ kind: "needs-data", recipeId: 7, name: "Ohne Tags", problems: ["no meal-type tag", "no diet tag", "neither proven nor new"] });
   });
 });

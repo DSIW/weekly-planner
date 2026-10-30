@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadConfig } from "../src/config.js";
+import { loadConfig } from "../src/main/config.js";
 
 describe("loadConfig", () => {
   it("requires a token and strips a trailing slash", () => {

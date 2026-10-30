@@ -6,9 +6,10 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "recipes:check": "tsx --env-file-if-exists=../../.env src/cli/recipes-check.ts"
+    "recipes:check": "tsx --env-file-if-exists=../../.env src/main/recipes-check.ts"
   },
   "dependencies": {
+    "@weekly-planner/application": "*",
     "@weekly-planner/domain": "*",
     "zod": "^4.6.7"
   },
