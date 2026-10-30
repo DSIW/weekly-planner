@@ -1,0 +1,20 @@
+{
+  "name": "@weekly-planner/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "recipes:check": "tsx --env-file-if-exists=../../.env src/cli/recipes-check.ts"
+  },
+  "dependencies": {
+    "@weekly-planner/domain": "*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "vitest": "^5.0.5"
+  }
+}

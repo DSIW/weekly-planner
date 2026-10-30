@@ -1,0 +1,16 @@
+{
+  "name": "weekly-planner",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "workspaces": ["packages/*", "apps/*"],
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "recipes:check": "npm run recipes:check -w @weekly-planner/server"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.3"
+  }
+}

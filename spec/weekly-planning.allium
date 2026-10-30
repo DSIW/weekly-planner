@@ -1,0 +1,509 @@
+-- allium: 3
+-- weekly-planning.allium
+
+-- Scope: Agreeing, usually on a Sunday, what to cook for the next 2-3 days.
+--   Two household members propose dinners and vote on them. Suggestions
+--   are ranked so that nobody has to be creative on a weekday evening.
+-- Includes: planning sessions, proposals and votes, hard and soft suggestion
+--   rules, leftover days, the reminder to add a missing cooking time.
+--   Finalizing the plan announces which ingredients are needed, per date.
+-- Excludes:
+--   - Recipe storage, the planner view and the shopping list (KitchenOwl owns
+--     them; a planned day is mirrored there as a planner entry for its date)
+--   - Importing recipes (Notion, KptnCook, Chefkoch)
+--   - Pantry and receipts (later steps; stock will become a ranking input)
+--   - Authentication and how the app is delivered (phone, web)
+-- Dependencies: none
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity Member {
+    name: String
+}
+
+-- A recipe as it exists in KitchenOwl. Planning depends on these attributes;
+-- the data foundation has to provide them for every recipe.
+external entity Recipe {
+    name: String
+    total_time: Duration?
+    meal_type: main | side | dessert | baking | breakfast | snack | drink
+    base: Base
+    diet: vegan | vegetarian | fish | meat
+    is_proven: Boolean          -- cooked before
+    wants_to_try: Boolean       -- explicitly flagged as "want to cook"
+
+    -- Derived
+    needs_time: total_time = null
+    is_vegetarian: diet in {vegan, vegetarian}
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum Base { pasta | rice | potatoes | grains | bread | other }
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+config {
+    min_days_per_session: Integer = 2
+    max_days_per_session: Integer = 3
+    weekday_time_limit: Duration = 45.minutes
+    recent_window: Duration = 14.days    -- recipes planned within this window rank lower
+    household_size: Integer = 2        -- always cook for two; recipe amounts are scaled to this
+    variety_window_days: Integer = 2   -- how many previous days count for base variety
+    reminder_offset: Duration = 8.hours   -- after midnight of the first agreed day
+    vegetarian_share: Decimal = 0.66   -- soft target: at least 2 of 3 dinners
+    new_recipes_per_session: Integer = 1   -- soft target
+}
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity PlanningSession {
+    started_by: Member
+    started_at: Timestamp
+    status: open | finalized | closed
+
+    days: PlanDay with session = this
+    proposals: Proposal with session = this
+    passes: PassedSuggestion with session = this
+
+    -- Projections
+    open_days: days where status = open
+    planned_days: days where status = planned
+
+    -- Derived
+    next_open_day: min_by(open_days, d => d.date)
+    first_planned_date: min_by(planned_days, d => d.date).date
+    reminder_due_at: first_planned_date + config.reminder_offset
+    vetoed_recipes: proposals where status = vetoed -> recipe
+    passed_recipes: passes -> recipe
+
+    transitions status {
+        open -> finalized
+        open -> closed
+        finalized -> closed
+        terminal: closed
+    }
+}
+
+entity PlanDay {
+    session: PlanningSession
+    date: Timestamp
+    status: open | planned | leftovers
+    recipe: Recipe when status = planned
+
+    proposals: Proposal with day = this
+
+    -- Projections
+    pending_proposals: proposals where status = pending
+
+    -- Derived
+    is_weekend: is_weekend(date)
+
+    transitions status {
+        open -> planned
+        open -> leftovers
+        planned -> open
+        leftovers -> open
+    }
+}
+
+-- What the household ate on a past day. By default it comes from the plan;
+-- the household can correct it, or add a meal that is not in KitchenOwl by
+-- giving only its base. Base variety looks at these entries.
+entity MealLogEntry {
+    date: Timestamp
+    base: Base
+    recipe: Recipe?
+    source: from_plan | corrected | added
+    confirmed: Boolean   -- a member said this was really cooked
+}
+
+-- A recipe the household has confirmed cooking at least once. A recipe counts
+-- as proven when Recipe.is_proven (from the imports) or a CookedRecipe exists.
+entity CookedRecipe {
+    recipe: Recipe
+    first_cooked: Timestamp
+}
+
+-- Passing on a suggestion hides it for the rest of the session, for both
+-- members. It may be suggested again in a later session.
+entity PassedSuggestion {
+    session: PlanningSession
+    recipe: Recipe
+    passed_by: Member
+}
+
+entity Proposal {
+    session: PlanningSession
+    day: PlanDay
+    recipe: Recipe
+    proposed_by: Member
+    status: pending | accepted | vetoed
+    decided_by: Member when status = accepted | vetoed
+
+    transitions status {
+        pending -> accepted
+        pending -> vetoed
+        terminal: accepted, vetoed
+    }
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- A session covers whichever 2-3 dates the household picks. Sessions happen
+-- every few days (typically Sunday and midweek); the days are not fixed.
+rule StartSession {
+    when: StartSession(member, dates)
+    requires: dates.count >= config.min_days_per_session
+    requires: dates.count <= config.max_days_per_session
+    ensures:
+        let session = PlanningSession.created(started_by: member, started_at: now, status: open)
+        for date in dates:
+            PlanDay.created(session: session, date: date, status: open)
+}
+
+-- Hard rules decide which recipes may be proposed for a day at all:
+--   only main dishes (no desserts, cakes, breakfast, snacks or drinks);
+--   on weekdays only recipes within the time limit. A recipe without a
+--   known time is not excluded; it is flagged so someone adds the time.
+-- Soft preferences only influence the order of suggestions (see surface).
+-- The plan is a shopping aid and a source of ideas. Whether a dish was really
+-- cooked is only recorded when a member says so (ConfirmCooked); a finalized
+-- plan alone proves nothing.
+rule ProposeRecipe {
+    when: ProposeRecipe(member, day, recipe)
+    requires: day.session.status = open
+    requires: day.status = open
+    requires: day = day.session.next_open_day
+    -- One pending proposal per day: if both members propose at the same time,
+    -- the first one wins and the other member votes on it or waits.
+    requires: day.pending_proposals.count = 0
+    requires: recipe.meal_type = main
+    requires: recipe not in day.session.vetoed_recipes
+    requires: recipe not in day.session.passed_recipes
+    requires: not exists PlanDay{session: day.session, recipe: recipe}
+    requires:
+        day.is_weekend
+        or recipe.total_time = null
+        or recipe.total_time <= config.weekday_time_limit
+    ensures: Proposal.created(
+        session: day.session,
+        day: day,
+        recipe: recipe,
+        proposed_by: member,
+        status: pending
+    )
+}
+
+-- The proposer implicitly agrees; the other member decides.
+rule PassSuggestion {
+    when: PassSuggestion(member, session, recipe)
+    requires: session.status = open
+    requires: recipe not in session.passed_recipes
+    ensures: PassedSuggestion.created(session: session, recipe: recipe, passed_by: member)
+}
+
+rule AcceptProposal {
+    when: AcceptProposal(member, proposal)
+    requires: proposal.status = pending
+    requires: proposal.session.status = open
+    requires: proposal.day.status = open
+    requires: member != proposal.proposed_by
+    requires: not exists PlanDay{date: proposal.day.date, status: planned}
+    ensures:
+        proposal.status = accepted
+        proposal.decided_by = member
+        proposal.day.status = planned
+        proposal.day.recipe = proposal.recipe
+}
+
+-- A no only removes the dish from this session. It may be proposed again
+-- in a later session.
+rule VetoProposal {
+    when: VetoProposal(member, proposal)
+    requires: proposal.status = pending
+    requires: member != proposal.proposed_by
+    ensures:
+        proposal.status = vetoed
+        proposal.decided_by = member
+}
+
+-- The day after a finalized plan day, the planned meal becomes the default
+-- log entry.
+rule LogPlannedMeal {
+    when: day: PlanDay.date + 1.day <= now
+    requires: day.status = planned
+    requires: day.session.status in {finalized, closed}
+    ensures: MealLogEntry.created(
+        date: day.date,
+        base: day.recipe.base,
+        recipe: day.recipe,
+        source: from_plan,
+        confirmed: false
+    )
+}
+
+-- One tap on the planned meal: "we cooked it". Nothing is asked or nagged;
+-- an unanswered entry simply stays unconfirmed and the recipe stays new.
+rule ConfirmCooked {
+    when: ConfirmCooked(member, entry)
+    requires: entry.recipe != null
+    requires: not entry.confirmed
+    ensures:
+        entry.confirmed = true
+        if not exists CookedRecipe{recipe: entry.recipe}:
+            CookedRecipe.created(recipe: entry.recipe, first_cooked: entry.date)
+}
+
+-- "We did not cook this": the entry is removed, so it no longer counts for
+-- base variety. A correction or an added meal says what was cooked instead.
+rule MarkNotCooked {
+    when: MarkNotCooked(member, entry)
+    requires: not entry.confirmed
+    ensures: not exists entry
+}
+
+rule CorrectLoggedMeal {
+    when: CorrectLoggedMeal(member, entry, base, recipe?)
+    ensures:
+        entry.base = base
+        entry.recipe = recipe
+        entry.source = corrected
+        entry.confirmed = true
+        if recipe != null and not exists CookedRecipe{recipe: recipe}:
+            CookedRecipe.created(recipe: recipe, first_cooked: entry.date)
+}
+
+rule AddLoggedMeal {
+    when: AddLoggedMeal(member, date, base, recipe?)
+    requires: date <= now
+    ensures:
+        MealLogEntry.created(date: date, base: base, recipe: recipe, source: added, confirmed: true)
+        if recipe != null and not exists CookedRecipe{recipe: recipe}:
+            CookedRecipe.created(recipe: recipe, first_cooked: date)
+}
+
+-- Leftovers are incidental: a leftover day is only a marker. Nothing is
+-- planned or bought for it and it adds nothing to the meal log.
+rule MarkLeftoverDay {
+    when: MarkLeftoverDay(member, day)
+    requires: day.session.status = open
+    requires: day.status = open
+    ensures: day.status = leftovers
+}
+
+-- Agreed dishes can be reordered while the plan is open. The hard time rule
+-- still holds for the date a dish moves to.
+rule SwapPlannedDays {
+    when: SwapPlannedDays(member, a, b)
+    requires: a.session = b.session
+    requires: a.session.status = open
+    requires: a != b
+    requires: a.status = planned
+    requires: b.status = planned
+    requires:
+        b.is_weekend
+        or a.recipe.total_time = null
+        or a.recipe.total_time <= config.weekday_time_limit
+    requires:
+        a.is_weekend
+        or b.recipe.total_time = null
+        or b.recipe.total_time <= config.weekday_time_limit
+    ensures:
+        a.recipe = b.recipe
+        b.recipe = a.recipe
+}
+
+rule MovePlannedDay {
+    when: MovePlannedDay(member, from_day, to_day)
+    requires: from_day.session = to_day.session
+    requires: from_day.session.status = open
+    requires: from_day.status = planned
+    requires: to_day.status = open
+    requires:
+        to_day.is_weekend
+        or from_day.recipe.total_time = null
+        or from_day.recipe.total_time <= config.weekday_time_limit
+    ensures:
+        to_day.status = planned
+        to_day.recipe = from_day.recipe
+        from_day.status = open
+        from_day.recipe = null
+}
+
+rule ReopenPlannedDay {
+    when: ReopenDay(member, day)
+    requires: day.session.status = open
+    requires: day.status = planned
+    ensures:
+        day.status = open
+        day.recipe = null
+}
+
+rule ReopenLeftoverDay {
+    when: ReopenDay(member, day)
+    requires: day.session.status = open
+    requires: day.status = leftovers
+    ensures: day.status = open
+}
+
+-- Nothing reaches the shopping list while the household is still voting.
+-- One explicit action ("finalize / fill shopping list") announces the
+-- ingredients of every agreed day. A finalized plan is locked: if the
+-- household cooks something else later, nothing changes in the system and
+-- ingredients already on the list stay there.
+rule FinalizePlan {
+    when: FinalizePlan(member, session)
+    requires: session.status = open
+    requires: session.planned_days.count > 0
+    ensures:
+        session.status = finalized
+        for day in session.planned_days:
+            IngredientsNeeded(recipe: day.recipe, date: day.date, portions: config.household_size)
+}
+
+-- The shopping list is never filled automatically. If the household agreed
+-- on days but did not finalize, both members get a reminder on the morning
+-- of the first agreed day.
+rule RemindToFinalize {
+    when: session: PlanningSession.reminder_due_at <= now
+    requires: session.status = open
+    ensures:
+        for member in Members:
+            FinalizeReminder(member: member, session: session)
+}
+
+rule AbandonSession {
+    when: CloseSession(member, session)
+    requires: session.status = open
+    ensures: session.status = closed
+}
+
+rule CloseFinalizedSession {
+    when: CloseSession(member, session)
+    requires: session.status = finalized
+    ensures: session.status = closed
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant NoDessertForDinner {
+    for day in PlanDays:
+        day.status = planned implies day.recipe.meal_type = main
+}
+
+-- The household cooks once a day.
+invariant OneDinnerPerDay {
+    for a in PlanDays:
+        for b in PlanDays:
+            a != b and a.date = b.date and a.status = planned
+                implies b.status != planned
+}
+
+invariant WeekdayTimeLimit {
+    for day in PlanDays:
+        day.status = planned and not day.is_weekend
+            implies (day.recipe.total_time = null
+                or day.recipe.total_time <= config.weekday_time_limit)
+}
+
+invariant NoRecipeTwiceInSession {
+    for a in PlanDays:
+        for b in PlanDays:
+            a != b and a.session = b.session and a.status = planned and b.status = planned
+                implies a.recipe != b.recipe
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor HouseholdMember {
+    identified_by: Member where true
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface PlanningBoard {
+    facing viewer: HouseholdMember
+
+    context session: PlanningSession where status in {open, finalized}
+
+    exposes:
+        session.days
+        session.open_days
+        for entry in MealLogEntries where entry.date >= now - config.variety_window_days.days:
+            entry.date
+            entry.base
+            entry.recipe
+            entry.confirmed
+        for day in session.days:
+            day.status
+            day.recipe when day.status = planned
+            day.pending_proposals
+
+    provides:
+        StartSession(viewer, dates)
+        ProposeRecipe(viewer, day, recipe)
+        PassSuggestion(viewer, session, recipe)
+        AcceptProposal(viewer, proposal)
+        VetoProposal(viewer, proposal)
+        MarkLeftoverDay(viewer, day)
+        SwapPlannedDays(viewer, a, b)
+        MovePlannedDay(viewer, from_day, to_day)
+        ConfirmCooked(viewer, entry)
+        MarkNotCooked(viewer, entry)
+        CorrectLoggedMeal(viewer, entry, base, recipe)
+        AddLoggedMeal(viewer, date, base, recipe)
+        ReopenDay(viewer, day)
+        FinalizePlan(viewer, session)
+        CloseSession(viewer, session)
+
+    timeout:
+        RemindToFinalize
+
+    @guidance
+        -- Both members see the same session. There is one deck for the whole
+        -- plan: the board offers the eligible recipes from
+        -- suggested_recipes(next_open_day) one after another in ranked order,
+        -- like swiping through candidates, and an agreed dish fills the next
+        -- open date in date order. The deck is not capped: the viewer keeps
+        -- going until they decide to stop.
+        -- Hard rules filter. Soft preferences rank, in this order when they
+        -- conflict:
+        --   1. base variety: rank lower the base (pasta, rice, potatoes, ...)
+        --      of the meals in the previous config.variety_window_days days
+        --      and of the other days in this session. Bases are only ranked
+        --      lower, never excluded, so the list always has suggestions.
+        --   2. mostly vegetarian: aim for config.vegetarian_share of a
+        --      session's dinners (2 of 3)
+        --   3. new recipes: aim for config.new_recipes_per_session per
+        --      session (one), wants_to_try first. A recipe is new unless
+        --      is_proven or a CookedRecipe exists for it
+        --   4. recipes planned within config.recent_window ranked lower
+        --   5. stock, once the pantry exists
+        -- Recipes that rank equally appear in random order.
+        -- Agreed dishes are reordered by dragging: dropping onto another
+        -- agreed day is SwapPlannedDays, dropping onto an open day is
+        -- MovePlannedDay.
+        -- Recipes with needs_time are shown with a reminder to add the time.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
