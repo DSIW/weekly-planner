@@ -44,7 +44,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.post(`${api}/login`, { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (req, reply) => {
     const body = loginBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_request" });
-    const result = await options.signIn.execute(body.data);
+    let result: Awaited<ReturnType<typeof options.signIn.execute>>;
+    try {
+      result = await options.signIn.execute(body.data);
+    } catch (error) {
+      // A failed KitchenOwl call (down, expired service token) is not the person's fault and must not look like a
+      // wrong password; the status of the failed call would otherwise become ours.
+      console.error(`sign-in failed: ${error instanceof Error ? error.message : String(error)}`);
+      return reply.code(502).send({ error: "unavailable" });
+    }
     if (!result.ok) {
       const r = REJECTIONS[result.reason] ?? { status: 401, error: "invalid_credentials" };
       return reply.code(r.status).send({ error: r.error });

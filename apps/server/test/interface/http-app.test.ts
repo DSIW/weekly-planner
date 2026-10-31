@@ -30,7 +30,7 @@ beforeEach(() => {
   writeFileSync(join(webDist, "sw.js"), "// sw");
 });
 
-const app = (over: { basePath?: string } = {}) =>
+const app = (over: { basePath?: string; signIn?: Pick<SignIn, "execute"> } = {}) =>
   buildApp({
     signIn,
     sessionSecret: "x".repeat(32),
@@ -54,6 +54,19 @@ describe("sign in", () => {
     expect(res.json()).toEqual({ member: max });
     expect(res.cookies[0]).toMatchObject({ name: "session", httpOnly: true, sameSite: "Lax", path: "/plan" });
     expect(res.cookies[0]?.value).toContain("."); // signed
+  });
+
+  it("reports a failing KitchenOwl lookup as unavailable, never as a wrong password", async () => {
+    // KitchenOwlError carries the HTTP status of the failed call; a 401 for the service token must not leak through.
+    const failing: Pick<SignIn, "execute"> = {
+      execute: async () => {
+        throw Object.assign(new Error("KitchenOwl GET /household/2 failed with HTTP 401"), { status: 401 });
+      },
+    };
+    const res = await login(await app({ signIn: failing }));
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toEqual({ error: "unavailable" });
+    expect(sessionCookie(res)).toBeUndefined();
   });
 
   it("marks the cookie secure when configured", async () => {
