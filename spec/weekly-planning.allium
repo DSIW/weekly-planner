@@ -69,6 +69,7 @@ entity PlanningSession {
     started_by: Member
     started_at: Timestamp
     status: open | finalized | closed
+    reminder_sent: Boolean   -- the finalize reminder fires once per session
 
     days: PlanDay with session = this
     proposals: Proposal with session = this
@@ -168,7 +169,7 @@ rule StartSession {
     requires: dates.count >= config.min_days_per_session
     requires: dates.count <= config.max_days_per_session
     ensures:
-        let session = PlanningSession.created(started_by: member, started_at: now, status: open)
+        let session = PlanningSession.created(started_by: member, started_at: now, status: open, reminder_sent: false)
         for date in dates:
             PlanDay.created(session: session, date: date, status: open)
 }
@@ -381,7 +382,9 @@ rule FinalizePlan {
 rule RemindToFinalize {
     when: session: PlanningSession.reminder_due_at <= now
     requires: session.status = open
+    requires: not session.reminder_sent
     ensures:
+        session.reminder_sent = true
         for member in Members:
             FinalizeReminder(member: member, session: session)
 }
@@ -492,11 +495,14 @@ surface PlanningBoard {
         --      of the meals in the previous config.variety_window_days days
         --      and of the other days in this session. Bases are only ranked
         --      lower, never excluded, so the list always has suggestions.
+        --      The base "other" is never ranked lower: it is no real base.
         --   2. mostly vegetarian: aim for config.vegetarian_share of a
         --      session's dinners (2 of 3)
         --   3. new recipes: aim for config.new_recipes_per_session per
         --      session (one), wants_to_try first. A recipe is new unless
-        --      is_proven or a CookedRecipe exists for it
+        --      is_proven or a CookedRecipe exists for it. Once the session
+        --      has its new recipe, proven recipes rank above new ones;
+        --      wants_to_try still orders the new ones among themselves.
         --   4. recipes planned within config.recent_window ranked lower
         --   5. stock, once the pantry exists
         -- Recipes that rank equally appear in random order.
