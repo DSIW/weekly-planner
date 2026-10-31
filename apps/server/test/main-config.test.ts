@@ -28,6 +28,8 @@ describe("loadServerConfig", () => {
       cookieSecure: true,
       trustProxy: true,
       householdId: 2,
+      databasePath: "data/planner.sqlite",
+      timezone: "Europe/Berlin",
     });
   });
 

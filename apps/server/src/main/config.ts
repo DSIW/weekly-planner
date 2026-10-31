@@ -14,6 +14,8 @@ const serverSchema = kitchenowlSchema.extend({
     .regex(/^(\/[a-z0-9-]+)*$/)
     .default("/plan"),
   WEB_DIST: z.string().min(1).default("apps/web/dist"),
+  DATABASE_PATH: z.string().min(1).default("data/planner.sqlite"),
+  HOUSEHOLD_TIMEZONE: z.string().min(1).default("Europe/Berlin"),
   COOKIE_SECURE: z.enum(["true", "false"]).default("true"),
   TRUST_PROXY: z.enum(["true", "false"]).default("true"),
 });
@@ -30,6 +32,10 @@ type ServerConfig = Config & {
   /** URL prefix the app is served under, without a trailing slash; empty for the root. */
   basePath: string;
   webDist: string;
+  /** The SQLite file; relative paths are relative to the working directory. */
+  databasePath: string;
+  /** Time zone of the household, for "today" and the reminder hour. */
+  timezone: string;
   cookieSecure: boolean;
   trustProxy: boolean;
 };
@@ -64,6 +70,8 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     port: d.PORT,
     basePath: d.BASE_PATH,
     webDist: d.WEB_DIST,
+    databasePath: d.DATABASE_PATH,
+    timezone: d.HOUSEHOLD_TIMEZONE,
     cookieSecure: d.COOKIE_SECURE === "true",
     trustProxy: d.TRUST_PROXY === "true",
   };

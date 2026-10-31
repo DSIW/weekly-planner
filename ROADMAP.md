@@ -47,6 +47,9 @@ Status: released as v0.1.2 and running on the real server. Verified: sign-in wit
 - Frontend: date picker, plan board with the days, live update via SSE, reconnect refetch.
 - Verify by hand: start a session on the phone; a laptop browser signed in as the other member shows it within a second or two; reload keeps it; the server restarts without losing it.
 
+Status: built and tested; not released or verified on a phone yet. Decisions made on the way: only **one session is open at a time** (new spec rule on StartSession; a second start is refused, and "Planung verwerfen" abandons the open one so a wrong pick is not stuck), the live stream is household-wide (`GET /api/events`), SQLite is `node:sqlite` (D17, Node 22.22.2).
+
+
 ### S2a: Agree a dinner
 
 *Propose a recipe for the next open day, the other member accepts or vetoes. The list of recipes is plain: eligible dinners only, no ranking yet.*

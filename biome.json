@@ -41,6 +41,7 @@
       "!**/node_modules",
       "!**/dist",
       "!**/coverage",
+      "!.allium-loop",
       "!**/ranking-oracle.json",
       "!package-lock.json",
       "!apps/web/public",

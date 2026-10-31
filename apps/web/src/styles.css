@@ -86,3 +86,71 @@ button:disabled {
   color: var(--error);
   margin: 0;
 }
+.page {
+  min-height: 100dvh;
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: 16px;
+  padding: 16px;
+}
+.bar {
+  width: min(420px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+button.secondary {
+  background: transparent;
+  color: var(--primary);
+  border: 1px solid var(--outline);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--outline);
+  padding: 10px 14px;
+}
+.chip[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+.days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.days li {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+}
+fieldset.chips {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

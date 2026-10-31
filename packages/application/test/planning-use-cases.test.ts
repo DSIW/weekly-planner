@@ -55,6 +55,19 @@ describe("a planning session through the use cases", () => {
     expect(h.events.published).toHaveLength(before);
   });
 
+  it("lets only one session be open: a second starts after the first is finalized or abandoned", async () => {
+    const { h, s } = await started();
+    expect(await h.startSession.execute({ member: ME, dates: [MON, TUE] })).toEqual({
+      ok: false,
+      reason: "session_already_open",
+    });
+    expect(await h.getCurrentSession.execute()).toEqual(s);
+    ok(await h.closeSession.execute({ member: AC, sessionId: s.id }));
+    expect(await h.getCurrentSession.execute()).toBeNull();
+    const next = ok(await h.startSession.execute({ member: ME, dates: [MON, TUE] }));
+    expect((await h.getCurrentSession.execute())?.id).toBe(next.id);
+  });
+
   it("rejects an invalid start without saving a session", async () => {
     const h = household();
     expect(await h.startSession.execute({ member: AC, dates: [MON] })).toEqual({ ok: false, reason: "too_few_days" });
@@ -114,6 +127,8 @@ describe("one dinner per date across sessions (DinnerCalendar)", () => {
   it("rejects accepting a proposal for a date another session already planned", async () => {
     const { h, s: first } = await started(household([r1, r2, r3]), [MON, TUE]);
     await agree(h, first, MON, r1);
+    // Only one session is open at a time, so the clash comes from a finalized session still holding its dinner.
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
     const second = ok(await h.startSession.execute({ member: AC, dates: [MON, WED] }));
     const proposed = ok(
       await h.proposeRecipe.execute({ member: AC, sessionId: second.id, date: MON, recipeId: r2.id }),
@@ -124,17 +139,6 @@ describe("one dinner per date across sessions (DinnerCalendar)", () => {
       proposalId: proposed.proposals[0]!.id,
     });
     expect(r).toEqual({ ok: false, reason: "date_already_taken" });
-  });
-
-  it("rejects moving a dinner onto a date another session planned", async () => {
-    const { h, s: first } = await started(household([r1, r2, r3]), [MON, TUE]);
-    await agree(h, first, MON, r1);
-    const second = ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
-    await agree(h, second, TUE, r2);
-    expect(await h.movePlannedDay.execute({ member: AC, sessionId: first.id, from: MON, to: TUE })).toEqual({
-      ok: false,
-      reason: "date_already_taken",
-    });
   });
 });
 

@@ -18,6 +18,14 @@ const signIn: Pick<SignIn, "execute"> = {
   },
 };
 
+/** The session routes have their own tests; these stand-ins keep the sign-in tests focused. */
+const noSessions = {
+  getCurrentSession: { execute: async () => null },
+  startSession: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  closeSession: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  subscribe: () => () => {},
+};
+
 let webDist: string;
 let clock: number;
 beforeEach(() => {
@@ -32,6 +40,7 @@ beforeEach(() => {
 
 const app = (over: { basePath?: string; signIn?: Pick<SignIn, "execute"> } = {}) =>
   buildApp({
+    ...noSessions,
     signIn,
     sessionSecret: "x".repeat(32),
     basePath: "/plan",
@@ -73,6 +82,7 @@ describe("sign in", () => {
     const res = await login(
       await app().then(() =>
         buildApp({
+          ...noSessions,
           signIn,
           sessionSecret: "x".repeat(32),
           basePath: "/plan",

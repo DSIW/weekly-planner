@@ -168,6 +168,10 @@ rule StartSession {
     requires: dates.unique.count = dates.count   -- one plan day per date
     requires: dates.count >= config.min_days_per_session
     requires: dates.count <= config.max_days_per_session
+    -- The household plans one thing at a time: both phones show the same
+    -- session, so a second one may only start after the first is finalized
+    -- or abandoned.
+    requires: not exists PlanningSession{status: open}
     ensures:
         let session = PlanningSession.created(started_by: member, started_at: now, status: open, reminder_sent: false)
         for date in dates:

@@ -14,6 +14,7 @@ If the package is private, run `docker login ghcr.io` once on the server with a 
 ## First setup on the server
 
 ```bash
+mkdir -p data && chown 1001:1001 data   # the container runs as uid 1001 and keeps its SQLite file here
 cp docker-compose.example.yml docker-compose.yml
 cp .env.example .env.production
 # edit .env.production: KITCHENOWL_URL, KITCHENOWL_TOKEN, SESSION_SECRET (openssl rand -hex 32)
@@ -43,6 +44,8 @@ Use https: the session cookie is `Secure` by default (`COOKIE_SECURE=false` is o
 | `KITCHENOWL_TOKEN` | yes | long-lived KitchenOwl token used by the server (never sent to browsers) |
 | `KITCHENOWL_HOUSEHOLD_ID` | no (2) | household whose members may sign in |
 | `SESSION_SECRET` | yes | at least 32 characters; signs the session cookie. Changing it signs everybody out |
+| `DATABASE_PATH` | no (`data/planner.sqlite`, `/app/data/planner.sqlite` in the image) | the SQLite file; keep it on a mounted volume or sessions are lost with the container |
+| `HOUSEHOLD_TIMEZONE` | no (`Europe/Berlin`) | time zone for "today" and the reminder hour |
 | `PORT` | no (3000) | listening port |
 | `BASE_PATH` | no (`/plan`) | URL prefix; the web app is built for `/plan/`, so change both together |
 | `COOKIE_SECURE` | no (true) | set to `false` only for http on localhost |
@@ -74,3 +77,17 @@ docker run --rm -p 3000:3000 --env-file .env -e COOKIE_SECURE=false weekly-plann
 ## Sign-in
 
 People sign in with their own KitchenOwl account and must be members of the configured household. Each sign-in creates a login session in that person's KitchenOwl account (named `weekly-planner`); they can remove old ones in KitchenOwl.
+
+## Data and backup
+
+Sessions live in one SQLite file (`./data/planner.sqlite`, plus `-wal` and `-shm` files while running). To back it up while the app runs, use SQLite's own copy rather than copying the files:
+
+```bash
+docker compose exec weekly-planner node -e "const {DatabaseSync}=require('node:sqlite');new DatabaseSync('/app/data/planner.sqlite').exec(\"vacuum into '/app/data/backup.sqlite'\")"
+```
+
+Schema changes are applied automatically at start (`pragma user_version` counts the migrations that ran).
+
+## Live updates behind the proxy
+
+The app streams changes to both phones over Server-Sent Events (`/plan/api/events`). The proxy must not buffer or time out that response; Caddy and nginx with `proxy_buffering off` work. The server sends a heartbeat every 25 seconds.

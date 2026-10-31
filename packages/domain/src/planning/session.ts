@@ -90,6 +90,8 @@ export interface StartSessionCommand {
   readonly startedBy: MemberId;
   readonly dates: readonly PlanDate[];
   readonly now: number;
+  /** Another session is still open; the caller asks the repository (the aggregate cannot see other sessions). */
+  readonly openSessionExists?: boolean;
 }
 
 /** rule StartSession */
@@ -97,6 +99,7 @@ export function startSession(
   cmd: StartSessionCommand,
   config: PlanningConfig = defaultPlanningConfig,
 ): Result<Outcome<PlanningSession, PlanningEvent>> {
+  if (cmd.openSessionExists) return reject("session_already_open");
   if (new Set(cmd.dates).size !== cmd.dates.length) return reject("duplicate_dates");
   if (cmd.dates.length < config.minDaysPerSession) return reject("too_few_days");
   if (cmd.dates.length > config.maxDaysPerSession) return reject("too_many_days");

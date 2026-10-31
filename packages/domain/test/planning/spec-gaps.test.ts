@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { acceptProposal, markLeftoverDay, movePlannedDay, reopenDay } from "../../src/index.js";
+import {
+  acceptProposal,
+  markLeftoverDay,
+  movePlannedDay,
+  reopenDay,
+  sessionId,
+  startSession,
+} from "../../src/index.js";
 import { AC, ME, MON, TUE, aRecipe, aSession, config, must, plan, withProposal } from "../support/builders.js";
 
 // Gaps found while implementing M1: the invariants OneDinnerPerDay and NoRecipeTwiceInSession were
@@ -29,5 +36,20 @@ describe("rule AcceptProposal with an older pending proposal", () => {
       ok: false,
       reason: "recipe_already_planned",
     });
+  });
+});
+
+// Added with slice S1b: both phones show one session, so a second may only start after the first ended.
+describe("rule StartSession while another session is open", () => {
+  const cmd = { id: sessionId("s2"), startedBy: ME, dates: [MON, TUE], now: 0 };
+  it("is rejected", () => {
+    expect(startSession({ ...cmd, openSessionExists: true }, config)).toEqual({
+      ok: false,
+      reason: "session_already_open",
+    });
+  });
+  it("is allowed when no session is open", () => {
+    expect(startSession({ ...cmd, openSessionExists: false }, config).ok).toBe(true);
+    expect(startSession(cmd, config).ok).toBe(true);
   });
 });

@@ -13,6 +13,8 @@ export interface SessionRepository {
   get(id: SessionId): Promise<PlanningSession | null>;
   save(session: PlanningSession): Promise<void>;
   listAll(): Promise<readonly PlanningSession[]>;
+  /** The session that is still open, if any. The household has at most one. */
+  findOpen(): Promise<PlanningSession | null>;
 }
 
 /** Port: the meal log. */

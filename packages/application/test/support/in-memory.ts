@@ -38,6 +38,9 @@ export class InMemorySessions implements SessionRepository {
   async listAll() {
     return [...this.byId.values()];
   }
+  async findOpen() {
+    return [...this.byId.values()].find((s) => s.status === "open") ?? null;
+  }
 }
 
 export class InMemoryMealLog implements MealLogRepository {

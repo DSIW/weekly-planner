@@ -13,6 +13,7 @@ import {
   swapPlannedDays,
   vetoProposal,
   type MemberId,
+  type PlanningSession,
   type PlanDate,
   type PlanningConfig,
   type ProposalId,
@@ -20,6 +21,7 @@ import {
   type SessionId,
 } from "@weekly-planner/domain";
 import type { RecipeCatalog } from "../ports/recipe-catalog.js";
+import type { SessionRepository } from "../ports/repositories.js";
 import type { DinnerCalendar, IdGenerator, Clock } from "../ports/services.js";
 import { changeSession, type CommandResult, type SessionDeps } from "./support.js";
 
@@ -36,7 +38,13 @@ export class StartSession {
     const { deps } = this;
     const result = await deps.uow.run(async () => {
       const outcome = startSession(
-        { id: sessionId(deps.ids.next()), startedBy: cmd.member, dates: cmd.dates, now: deps.clock.now() },
+        {
+          id: sessionId(deps.ids.next()),
+          startedBy: cmd.member,
+          dates: cmd.dates,
+          now: deps.clock.now(),
+          openSessionExists: (await deps.sessions.findOpen()) !== null,
+        },
         this.config,
       );
       if (outcome.ok) await deps.sessions.save(outcome.value.state);
@@ -45,6 +53,15 @@ export class StartSession {
     if (!result.ok) return result;
     await deps.events.publish(result.value.events);
     return { ok: true, value: result.value.state };
+  }
+}
+
+/** What both phones show: the session that is still open, or none. */
+export class GetCurrentSession {
+  constructor(private readonly sessions: Pick<SessionRepository, "findOpen">) {}
+
+  execute(): Promise<PlanningSession | null> {
+    return this.sessions.findOpen();
   }
 }
 

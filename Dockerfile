@@ -26,15 +26,19 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/apps/server/dist ./dist
 COPY --from=build /app/apps/web/dist ./web
 
-# Create a non-root user and group
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Create a non-root user and group with fixed ids, so a mounted ./data folder can be owned by them
+# (chown 1001:1001 data), and the folder the SQLite file lives in
+RUN addgroup -S -g 1001 appgroup && adduser -S -u 1001 -G appgroup appuser \
+  && mkdir -p /app/data && chown appuser:appgroup /app/data
 USER appuser
 
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV BASE_PATH=/plan
 ENV WEB_DIST=/app/web
+ENV DATABASE_PATH=/app/data/planner.sqlite
 
+VOLUME /app/data
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
