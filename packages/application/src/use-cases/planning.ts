@@ -5,6 +5,7 @@ import {
   finalizePlan,
   markLeftoverDay,
   movePlannedDay,
+  needsPlanningAhead,
   nextOpenDay,
   passSuggestion,
   proposalId,
@@ -89,7 +90,10 @@ export class ListEligibleRecipes {
     const day = session && session.status === "open" ? nextOpenDay(session) : undefined;
     if (!session || !day) return null;
     const ready = (await this.deps.catalog.listAll()).flatMap((e) => (e.kind === "ready" ? [e.recipe] : []));
-    const recipes = eligibleRecipes(session, ready, this.config).sort((a, b) => a.name.localeCompare(b.name, "de"));
+    const ahead = (r: Recipe) => (needsPlanningAhead(r, this.config) ? 1 : 0);
+    const recipes = eligibleRecipes(session, ready, this.config).sort(
+      (a, b) => ahead(a) - ahead(b) || a.name.localeCompare(b.name, "de"),
+    );
     return { date: day.date, recipes };
   }
 }

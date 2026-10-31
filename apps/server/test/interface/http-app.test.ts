@@ -28,6 +28,7 @@ const noSessions = {
   acceptProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   vetoProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   refreshRecipes: { execute: async () => {} },
+  planAheadMinutes: 360,
   subscribe: () => () => {},
 };
 

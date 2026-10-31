@@ -3,12 +3,15 @@ import {
   acceptProposal,
   closeSession,
   eligibleRecipes,
+  needsPlanningAhead,
+  suggestRecipes,
   vetoProposal,
   markLeftoverDay,
   movePlannedDay,
   reopenDay,
   sessionId,
   startSession,
+  type Recipe,
 } from "../../src/index.js";
 import {
   AC,
@@ -111,5 +114,38 @@ describe("eligibleRecipes (the hard rules of the next open day, without ranking)
   it("offers nothing once every day is planned", () => {
     const s = plan(plan(aSession([MON, TUE]), MON, quick), TUE, unknownTime);
     expect(eligibleRecipes(s, all, config)).toEqual([]);
+  });
+});
+
+// Added after the first real use of S2a: a recipe with a 21-hour total time (dough resting) is eligible on a
+// weekend but must not lead the deck. Recipes above config.plan_ahead_time are flagged and come last.
+describe("recipes that need planning ahead (config.plan_ahead_time)", () => {
+  const atLimit = aRecipe({ totalTimeMinutes: config.planAheadMinutes });
+  const justOver = aRecipe({ totalTimeMinutes: config.planAheadMinutes + 1 });
+  const unknown = aRecipe({ totalTimeMinutes: null });
+
+  it("flags only recipes whose known time exceeds the limit", () => {
+    expect(needsPlanningAhead(atLimit, config)).toBe(false);
+    expect(needsPlanningAhead(justOver, config)).toBe(true);
+    expect(needsPlanningAhead(unknown, config)).toBe(false);
+  });
+
+  it("stay eligible on a weekend", () => {
+    expect(eligibleRecipes(aSession([SAT, SUN]), [justOver], config)).toEqual([justOver]);
+  });
+
+  it("come last in the deck even when every other preference would put them first", () => {
+    const longButNewAndWanted = aRecipe({ name: "Biga", totalTimeMinutes: 1285, isProven: false, wantsToTry: true });
+    const plain = aRecipe({ name: "plain", totalTimeMinutes: 30, diet: "meat" });
+    const input = {
+      session: aSession([SAT, SUN]),
+      candidates: [longButNewAndWanted, plain],
+      history: [],
+      recentlyPlanned: new Set<Recipe["id"]>([plain.id]), // recently planned ranks plain lower, still above Biga
+      experienced: new Set<Recipe["id"]>(),
+      config,
+      random: () => 0.5,
+    };
+    expect(suggestRecipes(input).map((r) => r.name)).toEqual(["plain", "Biga"]);
   });
 });

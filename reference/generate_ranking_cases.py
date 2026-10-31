@@ -32,7 +32,7 @@ def make_case(rng, n):
     n_days = rng.choice([2, 3])
     days = [start + datetime.timedelta(days=i) for i in range(n_days)]
     recs = [dict(id=i + 1, name=f"R{i + 1}", meal=rng.choice(MEALS), base=rng.choice(BASES), diet=rng.choice(DIETS),
-                 time=rng.choice([None, 20, 30, 45, 46, 90, 300]), proven=rng.random() < 0.6, wants=rng.random() < 0.3)
+                 time=rng.choice([None, 20, 30, 45, 46, 90, 300, 361, 1285]), proven=rng.random() < 0.6, wants=rng.random() < 0.3)
             for i in range(14)]
     planned_count = rng.randrange(n_days)
     plan, taken = {}, set()

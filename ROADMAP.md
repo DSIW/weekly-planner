@@ -56,7 +56,7 @@ Status: released (v0.1.4) and verified by hand on the real server: both members 
 
 - Backend: KitchenOwl-backed `RecipeCatalog` with a cache and manual refresh, `DinnerCalendar` on SQLite with the partial unique index, `ProposeRecipe`, `AcceptProposal`, `VetoProposal` over HTTP, SSE events for proposals and decisions. Hard rules only (dinner candidate, weekday limit, not vetoed, not planned).
 - Frontend: searchable list of eligible recipes, pending proposal card on the other phone with accept and veto, the next open day fills in date order.
-Status: released as v0.1.5, `weed` clean and `witness` PASS; not verified on a phone yet. Decided on the way: a proposal can only be decided while its session is open (closes the "stale proposals" question for what S2a can reach; days marked as leftovers stay a question for S3), the recipe list is remembered for ten minutes and "Rezepte neu laden" skips the wait, and the database refuses a second planned dinner on one date, as a backstop to the DinnerCalendar check.
+Status: released as v0.1.5, `weed` clean and `witness` PASS. First real use found the 21-hour pizza showing up as an ordinary weekend dinner; fixed with a "plan ahead" flag (D19), not yet released. The rest looked fine on the phone. Decided on the way: a proposal can only be decided while its session is open (closes the "stale proposals" question for what S2a can reach; days marked as leftovers stay a question for S3), the recipe list is remembered for ten minutes and "Rezepte neu laden" skips the wait, and the database refuses a second planned dinner on one date, as a backstop to the DinnerCalendar check.
 - Verify by hand: with the real recipe database, agree three days with the phone and a laptop browser as the two members; desserts and long weekday recipes are not offered; a vetoed dish stays out of this session only; two simultaneous proposals leave exactly one pending.
 
 ### S2b: The ranked deck
@@ -65,6 +65,7 @@ Status: released as v0.1.5, `weed` clean and `witness` PASS; not verified on a p
 
 - Backend: `SuggestRecipes` and `PassSuggestion` over HTTP, recent-plan window from earlier sessions, "needs time" flag.
 - Frontend: swipe deck (right proposes, left passes) with photo, time, base, diet, new badge and the missing-time hint; replaces the plain list as the default view, the list stays as search.
+- Already in place from S2a: recipes over 6 h (`plan_ahead_time`) rank last and carry the "Vorlauf nötig" badge (found on the first real use, D19); the deck only has to keep them at the bottom.
 - Verify by hand: base variety, vegetarian share and one new recipe per session visibly shape the order across a few real sessions; a passed dish disappears for the other member's client too until the next session; a recipe without a cooking time shows the "add time" hint.
 
 ### S3: Shape the plan

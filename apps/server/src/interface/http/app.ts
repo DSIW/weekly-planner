@@ -14,6 +14,7 @@ import type {
 } from "@weekly-planner/application";
 import {
   memberId,
+  needsPlanningAhead,
   needsTime,
   planDate,
   proposalId,
@@ -37,6 +38,8 @@ interface AppOptions {
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
   readonly vetoProposal: Pick<VetoProposal, "execute">;
   readonly refreshRecipes: Pick<RefreshRecipes, "execute">;
+  /** Recipes longer than this need a day's lead time; the phones flag them. */
+  readonly planAheadMinutes: number;
   /** Told about every committed change; returns the way to stop listening. */
   readonly subscribe: (listener: (event: DomainEvent) => void) => () => void;
   readonly sessionSecret: string;
@@ -54,25 +57,30 @@ const loginBody = z.object({ username: z.string().max(200), password: z.string()
 const startBody = z.object({ dates: z.array(z.string()).max(10) });
 
 /** What the phones see of a recipe: enough to choose by. */
-const recipeView = (r: Recipe) => ({
+const recipeView = (r: Recipe, planAheadMinutes: number) => ({
   id: r.id,
   name: r.name,
   minutes: r.totalTimeMinutes,
   base: r.base,
   diet: r.diet,
   needsTime: needsTime(r),
+  planAhead: needsPlanningAhead(r, { planAheadMinutes }),
 });
 
 /** What the phones see of a session; passes and the rest join in the slices that show them. */
-const sessionView = (s: PlanningSession) => ({
+const sessionView = (s: PlanningSession, ahead: number) => ({
   id: s.id,
   status: s.status,
   startedBy: s.startedBy,
-  days: s.days.map((d) => ({ date: d.date, status: d.status, ...(d.recipe ? { recipe: recipeView(d.recipe) } : {}) })),
+  days: s.days.map((d) => ({
+    date: d.date,
+    status: d.status,
+    ...(d.recipe ? { recipe: recipeView(d.recipe, ahead) } : {}),
+  })),
   proposals: s.proposals.map((p) => ({
     id: p.id,
     date: p.date,
-    recipe: recipeView(p.recipe),
+    recipe: recipeView(p.recipe, ahead),
     proposedBy: p.proposedBy,
     status: p.status,
     ...(p.decidedBy ? { decidedBy: p.decidedBy } : {}),
@@ -194,7 +202,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.get(`${api}/sessions/current`, async (req, reply) => {
     if (!requireMember(req, reply)) return reply;
     const session = await options.getCurrentSession.execute();
-    return { session: session ? sessionView(session) : null };
+    return { session: session ? sessionView(session, options.planAheadMinutes) : null };
   });
 
   app.post(`${api}/sessions`, async (req, reply) => {
@@ -210,7 +218,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (!body.success) return reply.code(400).send({ error: "invalid_request" });
     const result = await options.startSession.execute({ member: memberId(member.id), dates });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
-    return reply.code(201).send({ session: sessionView(result.value) });
+    return reply.code(201).send({ session: sessionView(result.value, options.planAheadMinutes) });
   });
 
   app.post<{ Params: { id: string } }>(`${api}/sessions/:id/close`, async (req, reply) => {
@@ -221,14 +229,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       sessionId: sessionId(req.params.id),
     });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
-    return { session: sessionView(result.value) };
+    return { session: sessionView(result.value, options.planAheadMinutes) };
   });
 
   app.get<{ Params: { id: string } }>(`${api}/sessions/:id/recipes`, async (req, reply) => {
     if (!requireMember(req, reply)) return reply;
     const list = await options.listEligibleRecipes.execute({ sessionId: sessionId(req.params.id) });
     if (!list) return reply.code(404).send({ error: "not_found" });
-    return { date: list.date, recipes: list.recipes.map(recipeView) };
+    return { date: list.date, recipes: list.recipes.map((r) => recipeView(r, options.planAheadMinutes)) };
   });
 
   app.post<{ Params: { id: string } }>(`${api}/sessions/:id/proposals`, async (req, reply) => {
@@ -249,7 +257,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       recipeId: recipeId(body.data.recipeId),
     });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
-    return reply.code(201).send({ session: sessionView(result.value) });
+    return reply.code(201).send({ session: sessionView(result.value, options.planAheadMinutes) });
   });
 
   for (const [verb, useCase] of [
@@ -267,7 +275,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
           proposalId: proposalId(req.params.proposalId),
         });
         if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
-        return { session: sessionView(result.value) };
+        return { session: sessionView(result.value, options.planAheadMinutes) };
       },
     );
   }

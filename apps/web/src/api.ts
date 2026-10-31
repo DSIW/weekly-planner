@@ -54,6 +54,8 @@ export interface RecipeView {
   base: string;
   diet: string;
   needsTime: boolean;
+  /** Longer than the household's lead-time limit: needs preparing the day before. */
+  planAhead: boolean;
 }
 
 interface PlanDay {

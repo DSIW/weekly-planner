@@ -151,6 +151,17 @@ describe("the list of recipes for the next open day", () => {
     });
   });
 
+  it("puts recipes that need planning ahead last, whatever their name", async () => {
+    const biga = aRecipe(20, { name: "Biga", totalTimeMinutes: 1285 });
+    const zander = aRecipe(21, { name: "Zander", totalTimeMinutes: 90 });
+    const { h, s } = await started(household([biga, zander, apple]), [planDate("2026-11-07"), planDate("2026-11-08")]);
+    expect((await h.listEligibleRecipes.execute({ sessionId: s.id }))?.recipes.map((r) => r.name)).toEqual([
+      "Apfelpfannkuchen",
+      "Zander",
+      "Biga",
+    ]);
+  });
+
   it("leaves out what was vetoed and moves on to the next day once one is agreed", async () => {
     const { h, s } = await started(household(all), [MON, TUE]);
     const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: apple.id }));

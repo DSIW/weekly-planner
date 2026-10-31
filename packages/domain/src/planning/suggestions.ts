@@ -2,7 +2,7 @@ import type { Base, Recipe, RecipeId } from "../catalog/recipe.js";
 import { isVegetarian } from "../catalog/recipe.js";
 import type { PlanningConfig } from "./config.js";
 import { addDays, isWeekend, type PlanDate } from "./dates.js";
-import { fitsWeekdayLimit, isDinnerCandidate } from "./eligibility.js";
+import { fitsWeekdayLimit, isDinnerCandidate, needsPlanningAhead } from "./eligibility.js";
 import { nextOpenDay, passedRecipeIds, plannedDays, vetoedRecipeIds, type PlanningSession } from "./session.js";
 
 /** What the household ate on a past day, as far as base variety is concerned. */
@@ -69,6 +69,7 @@ export function suggestRecipes(input: SuggestionInput): Recipe[] {
   const ranked = eligible.map((recipe) => ({
     recipe,
     key: [
+      needsPlanningAhead(recipe, config) ? 1 : 0,
       usedBases.has(recipe.base) ? 1 : 0,
       vegetarianAtRisk && !isVegetarian(recipe) ? 1 : 0,
       newWanted ? (isNew(recipe) ? 0 : 1) : isNew(recipe) ? 1 : 0,

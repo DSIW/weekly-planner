@@ -53,6 +53,7 @@ config {
     min_days_per_session: Integer = 2
     max_days_per_session: Integer = 3
     weekday_time_limit: Duration = 45.minutes
+    plan_ahead_time: Duration = 6.hours   -- longer recipes (dough resting, marinating) need a day's lead time
     recent_window: Duration = 14.days    -- recipes planned within this window rank lower
     household_size: Integer = 2        -- always cook for two; recipe amounts are scaled to this
     variety_window_days: Integer = 2   -- how many previous days count for base variety
@@ -511,6 +512,10 @@ surface PlanningBoard {
         --      wants_to_try still orders the new ones among themselves.
         --   4. recipes planned within config.recent_window ranked lower
         --   5. stock, once the pantry exists
+        -- Before all of these, recipes whose total_time exceeds
+        -- config.plan_ahead_time come last: they stay eligible on a weekend
+        -- but need preparing the day before, so they are flagged "plan
+        -- ahead" and never lead the deck.
         -- Recipes that rank equally appear in random order.
         -- Agreed dishes are reordered by dragging: dropping onto another
         -- agreed day is SwapPlannedDays, dropping onto an open day is

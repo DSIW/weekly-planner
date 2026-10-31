@@ -1,5 +1,6 @@
 import type { Proposal } from "./api";
 import { dayLabel } from "./dates";
+import { timeLabel } from "./recipe-time";
 
 interface Props {
   proposal: Proposal;
@@ -16,7 +17,7 @@ export function ProposalCard({ proposal, mine, onAccept, onVeto, pending, error 
     <section className="card">
       <h2>Vorschlag für {dayLabel(proposal.date)}</h2>
       <p className="proposal">{recipe.name}</p>
-      <p className="muted">{recipe.needsTime ? "Zeit fehlt" : `${recipe.minutes} min`}</p>
+      <p className="muted">{timeLabel(recipe)}</p>
       {error && (
         <p role="alert" className="error">
           {error}

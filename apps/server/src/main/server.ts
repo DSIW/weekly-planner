@@ -49,6 +49,7 @@ async function main(): Promise<void> {
     acceptProposal: new AcceptProposal({ ...deps, calendar }, planning),
     vetoProposal: new VetoProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
+    planAheadMinutes: planning.planAheadMinutes,
     subscribe: (listener) => hub.subscribe(listener),
     sessionSecret: config.sessionSecret,
     basePath: config.basePath,

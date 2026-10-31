@@ -46,7 +46,8 @@ const risotto = aRecipe(2, "Risotto");
 const curry = aRecipe(3, "Curry");
 const tiramisu = aRecipe(4, "Tiramisu", { mealType: "dessert" });
 const braten = aRecipe(5, "Schmorbraten", { totalTimeMinutes: 120, diet: "meat" });
-const recipes = [pasta, risotto, curry, tiramisu, braten];
+const biga = aRecipe(6, "Pizza Biga", { totalTimeMinutes: 1285 });
+const recipes = [pasta, risotto, curry, tiramisu, braten, biga];
 
 let refreshes: number;
 let catalogDown: boolean;
@@ -101,6 +102,7 @@ beforeEach(async () => {
     acceptProposal: new AcceptProposal({ ...deps, calendar }, defaultPlanningConfig),
     vetoProposal: new VetoProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
+    planAheadMinutes: defaultPlanningConfig.planAheadMinutes,
     log: (line) => logged.push(line),
     subscribe: (l) => hub.subscribe(l),
     sessionSecret: SECRET,
@@ -276,9 +278,9 @@ describe("agreeing a dinner over HTTP", () => {
     expect(await eligible(ac, session.id)).toEqual({
       date: MON,
       recipes: [
-        { id: 3, name: "Curry", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false },
-        { id: 1, name: "Pasta", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false },
-        { id: 2, name: "Risotto", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false },
+        { id: 3, name: "Curry", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
+        { id: 1, name: "Pasta", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
+        { id: 2, name: "Risotto", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
       ],
     });
   });
@@ -286,6 +288,14 @@ describe("agreeing a dinner over HTTP", () => {
   it("offers long recipes on a weekend", async () => {
     const { session } = (await start(max, [SAT, SUN])).json();
     expect((await eligible(ac, session.id)).recipes.map((r: { name: string }) => r.name)).toContain("Schmorbraten");
+  });
+
+  it("flags recipes that need planning ahead and lists them last", async () => {
+    const { session } = (await start(max, [SAT, SUN])).json();
+    const list = (await eligible(ac, session.id)).recipes as { name: string; planAhead: boolean }[];
+    expect(list.at(-1)).toMatchObject({ name: "Pizza Biga", minutes: 1285, planAhead: true });
+    expect(list.filter((r) => r.planAhead)).toHaveLength(1);
+    expect(list.map((r) => r.name)).toContain("Schmorbraten"); // long, but not "plan ahead"
   });
 
   it("answers 404 for the list of an unknown session", async () => {

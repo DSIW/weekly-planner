@@ -17,6 +17,7 @@ import sys
 import requests
 
 WEEKDAY_LIMIT = 45
+PLAN_AHEAD = 360          # minutes; longer recipes need a day's lead time and rank after everything else
 VARIETY_WINDOW = 2
 VEG_SHARE = 0.66
 NEW_PER_SESSION = 1
@@ -60,6 +61,7 @@ def ranked(pool, day, plan, history, rng, recent=(), n_days=3):
     need_veg = veg_now < veg_target - (n_days - len(chosen) - 1) * 0 and (n_days - len(chosen)) <= (veg_target - veg_now)
 
     def key(r):
+        ahead_pen = 1 if (r["time"] is not None and r["time"] > PLAN_AHEAD) else 0
         base_pen = 1 if (r["base"] != "other" and r["base"] in near) else 0
         veg = r["diet"] in ("vegan", "vegetarian")
         # prefer vegetarian only while the share is at risk; otherwise meat/fish is as good as vegetarian
@@ -67,7 +69,7 @@ def ranked(pool, day, plan, history, rng, recent=(), n_days=3):
         new_pen = (0 if not r["proven"] else 1) if new_now < NEW_PER_SESSION else (1 if not r["proven"] else 0)
         want_pen = 0 if (r["wants"] and not r["proven"]) else 1   # the boost is for new recipes only
         recent_pen = 1 if r["id"] in recent else 0
-        return (base_pen, veg_pen, new_pen, want_pen, recent_pen, rng.random())
+        return (ahead_pen, base_pen, veg_pen, new_pen, want_pen, recent_pen, rng.random())
     return sorted(pool, key=key)
 
 

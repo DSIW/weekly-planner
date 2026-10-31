@@ -1,6 +1,8 @@
 /** The tunable numbers of the planning rules (spec: config block). */
 export interface PlanningConfig {
   readonly weekdayTimeLimitMinutes: number;
+  /** Recipes longer than this need a day's lead time (dough resting, marinating): flagged, and ranked last. */
+  readonly planAheadMinutes: number;
   readonly householdSize: number;
   readonly varietyWindowDays: number;
   readonly recentWindowDays: number;
@@ -14,6 +16,7 @@ export interface PlanningConfig {
 
 export const defaultPlanningConfig: PlanningConfig = {
   weekdayTimeLimitMinutes: 45,
+  planAheadMinutes: 360,
   householdSize: 2,
   varietyWindowDays: 2,
   recentWindowDays: 14,

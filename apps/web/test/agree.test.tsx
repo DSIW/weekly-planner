@@ -21,6 +21,7 @@ const recipe = (id: number, name: string, over: Record<string, unknown> = {}) =>
   base: "pasta",
   diet: "vegetarian",
   needsTime: false,
+  planAhead: false,
   ...over,
 });
 const pasta = recipe(1, "Pasta");
@@ -82,6 +83,23 @@ describe("choosing a dinner for the next open day", () => {
     await userEvent.clear(screen.getByLabelText("Rezept suchen"));
     await userEvent.type(screen.getByLabelText("Rezept suchen"), "xyz");
     expect(screen.getByText("Kein Rezept gefunden.")).toBeInTheDocument();
+  });
+
+  it("shows long recipes in hours with a 'plan ahead' badge, in the order the server gives", async () => {
+    const biga = recipe(3, "Pizza Biga", { minutes: 1285, planAhead: true });
+    server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session({ days: [day("2026-11-07"), day("2026-11-08")] }) } },
+      [RECIPES]: { status: 200, body: { date: "2026-11-07", recipes: [pasta, biga] } },
+    });
+    renderApp();
+    const bigaButton = await screen.findByRole("button", { name: /Pizza Biga/ });
+    expect(bigaButton).toHaveTextContent("21,4 h");
+    expect(bigaButton).toHaveTextContent("Vorlauf nötig");
+    expect(screen.getByRole("button", { name: /Pasta/ })).not.toHaveTextContent("Vorlauf");
+    const order = screen.getAllByRole("button", { name: /Pasta|Pizza Biga/ }).map((b) => b.textContent);
+    expect(order[0]).toContain("Pasta");
+    expect(order[1]).toContain("Pizza Biga");
   });
 
   it("proposes the picked recipe for that day and then waits for the other member", async () => {
@@ -163,6 +181,20 @@ describe("deciding on the other member's proposal", () => {
     const days = screen.getAllByRole("listitem");
     expect(days[0]).toHaveTextContent(/2\.11\..*Pasta/);
     expect(calls.some((c) => c.key === ACCEPT)).toBe(true);
+  });
+
+  it("shows the plan-ahead hint on a proposal too, so the member who decides knows", async () => {
+    const biga = recipe(3, "Pizza Biga", { minutes: 1285, planAhead: true });
+    server({
+      ...as(max),
+      [CURRENT]: {
+        status: 200,
+        body: { session: session({ proposals: [{ ...proposal("pending", "3"), recipe: biga }] }) },
+      },
+    });
+    renderApp();
+    expect(await screen.findByText(/21,4 h/)).toBeInTheDocument();
+    expect(screen.getByText(/Vorlauf nötig/)).toBeInTheDocument();
   });
 
   it("vetoing sends the veto and offers the day again", async () => {

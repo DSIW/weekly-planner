@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { RecipeView } from "./api";
 import { dayLabel } from "./dates";
+import { timeLabel } from "./recipe-time";
 
 interface Props {
   date: string;
@@ -31,7 +32,7 @@ export function RecipePicker({ date, recipes, onPick, onRefresh, pending, refres
         {shown.map((r) => (
           <button key={r.id} type="button" className="recipe" disabled={pending} onClick={() => onPick(r)}>
             <span>{r.name}</span>
-            <span className="muted">{r.needsTime ? "Zeit fehlt" : `${r.minutes} min`}</span>
+            <span className="muted">{timeLabel(r)}</span>
           </button>
         ))}
         {shown.length === 0 && <p className="muted">Kein Rezept gefunden.</p>}
