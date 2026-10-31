@@ -221,6 +221,7 @@ rule AcceptProposal {
     requires: proposal.day.status = open
     requires: member != proposal.proposed_by
     requires: not exists PlanDay{date: proposal.day.date, status: planned}
+    requires: not exists PlanDay{session: proposal.session, recipe: proposal.recipe}
     ensures:
         proposal.status = accepted
         proposal.decided_by = member
@@ -331,6 +332,7 @@ rule MovePlannedDay {
     requires: from_day.session.status = open
     requires: from_day.status = planned
     requires: to_day.status = open
+    requires: not exists PlanDay{date: to_day.date, status: planned}
     requires:
         to_day.is_weekend
         or from_day.recipe.total_time = null

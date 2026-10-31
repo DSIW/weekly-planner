@@ -8,6 +8,8 @@ export interface PlanningConfig {
   readonly newRecipesPerSession: number;
   readonly minDaysPerSession: number;
   readonly maxDaysPerSession: number;
+  /** Hour of day on the first agreed day at which the finalize reminder is due. */
+  readonly reminderHour: number;
 }
 
 export const defaultPlanningConfig: PlanningConfig = {
@@ -19,4 +21,5 @@ export const defaultPlanningConfig: PlanningConfig = {
   newRecipesPerSession: 1,
   minDaysPerSession: 2,
   maxDaysPerSession: 3,
+  reminderHour: 8,
 };
