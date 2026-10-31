@@ -79,8 +79,8 @@ async function sessionCommand(path: string, body?: unknown): Promise<PlanSession
     res = await fetch(`${base}${path}`, {
       method: "POST",
       credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      // A JSON content type without a body is rejected by the server, so it goes with the body only.
+      ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     });
   } catch {
     throw new SessionFailed("unavailable");

@@ -126,6 +126,35 @@ describe("the shared board", () => {
     expect(calls.some((c) => c.key === CLOSE)).toBe(true);
   });
 
+  it("sends the close request without a JSON content type, because it has no body (the server rejects that combination)", async () => {
+    let session: unknown = open(["2026-11-02", "2026-11-03"]);
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: () => ({ status: 200, body: { session } }),
+      [CLOSE]: () => {
+        session = null;
+        return { status: 200, body: { session: open([]) } };
+      },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Planung verwerfen" }));
+    await screen.findByRole("button", { name: "Planung starten" });
+    const headers = new Headers(calls.find((c) => c.key === CLOSE)?.headers);
+    expect(headers.has("content-type")).toBe(false);
+  });
+
+  it("says so when discarding fails, instead of doing nothing", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: open(["2026-11-02", "2026-11-03"]) } },
+      [CLOSE]: { status: 500, body: {} },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Planung verwerfen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
+    expect(screen.getByRole("heading", { name: "Planung" })).toBeInTheDocument();
+  });
+
   it("follows the other member live: a started session appears without a reload", async () => {
     let session: unknown = null;
     server({ ...signedIn, [CURRENT]: () => ({ status: 200, body: { session } }) });

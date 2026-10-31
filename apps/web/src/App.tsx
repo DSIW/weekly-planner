@@ -34,7 +34,14 @@ function Planning() {
   if (current.isError) return <p className="error">Die Planung konnte nicht geladen werden.</p>;
   const session = current.data;
   if (session) {
-    return <PlanBoard session={session} onClose={() => close.mutate(session.id)} pending={close.isPending} />;
+    return (
+      <PlanBoard
+        session={session}
+        onClose={() => close.mutate(session.id)}
+        pending={close.isPending}
+        error={close.isError ? SESSION_MESSAGES.unavailable : null}
+      />
+    );
   }
   const error = start.error instanceof SessionFailed ? SESSION_MESSAGES[start.error.reason] : null;
   return <StartSessionForm onStart={(dates) => start.mutate(dates)} pending={start.isPending} error={error} />;

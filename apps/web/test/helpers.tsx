@@ -7,12 +7,12 @@ type Reply = { status: number; body?: unknown };
 
 /** A fake server: replies per "METHOD path", and records what the app sent. */
 export function server(routes: Record<string, Reply | (() => Reply)>) {
-  const calls: { key: string; body?: unknown }[] = [];
+  const calls: { key: string; body?: unknown; headers?: HeadersInit | undefined }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       const key = `${init?.method ?? "GET"} ${url}`;
-      calls.push({ key, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+      calls.push({ key, body: init?.body ? JSON.parse(String(init.body)) : undefined, headers: init?.headers });
       const r = routes[key];
       if (!r) return new Response("{}", { status: 404 });
       const reply = typeof r === "function" ? r() : r;

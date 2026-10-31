@@ -7,9 +7,10 @@ interface Props {
   session: PlanSession;
   onClose: () => void;
   pending: boolean;
+  error: string | null;
 }
 
-export function PlanBoard({ session, onClose, pending }: Props) {
+export function PlanBoard({ session, onClose, pending, error }: Props) {
   return (
     <section className="card">
       <h2>Planung</h2>
@@ -21,6 +22,11 @@ export function PlanBoard({ session, onClose, pending }: Props) {
           </li>
         ))}
       </ul>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
       <button type="button" className="secondary" onClick={onClose} disabled={pending}>
         Planung verwerfen
       </button>
