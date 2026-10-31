@@ -66,6 +66,7 @@ Status: released as v0.1.5, `weed` clean and `witness` PASS. First real use foun
 - Backend: `SuggestRecipes` and `PassSuggestion` over HTTP, recent-plan window from earlier sessions, "needs time" flag.
 - Frontend: swipe deck (right proposes, left passes) with photo, time, base, diet, new badge and the missing-time hint; replaces the plain list as the default view, the list stays as search.
 - Already in place from S2a: recipes over 6 h (`plan_ahead_time`) rank last and carry the "Vorlauf nötig" badge (found on the first real use, D19); the deck only has to keep them at the bottom.
+Status: built and tested (`npm run smoke` covers deck, pass and photos); not released or verified on a phone yet. Decided on the way: "add what we ate" waits for S5 (you chose that); base variety counts dinners planned in other sessions (resolves that open question); the deck order is stable per session (D20); `NoMealsRecordedYet` stands in for the meal log until S5.
 - Verify by hand: base variety, vegetarian share and one new recipe per session visibly shape the order across a few real sessions; a passed dish disappears for the other member's client too until the next session; a recipe without a cooking time shows the "add time" hint.
 
 ### S3: Shape the plan
@@ -118,7 +119,7 @@ S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 -> S7 (S2b does not blo
 
 - GitHub setup to do once: the repository setting that lets Actions create pull requests (Settings, Actions, General), and the GHCR package visibility after the first image push. No extra secret is needed (the workflow uses `GITHUB_TOKEN`, as in `nodos`). The `gh` token used in this environment may lack the `workflow` permission needed to push files under `.github/workflows/`; if the push is refused, that permission has to be added.
 
-- Spec: the `LogPlannedMeal` re-fire guard (parked question) is decided in S5 at the latest. Three more questions from the weed report (abandoned sessions, variety across sessions, stale pending proposals) are decided in the slice that touches them: stale proposals were narrowed in S2a (a proposal can only be decided in an open session) and the rest is decided in S3, S2b for variety across sessions, S5 for abandoned sessions.
+- Spec: the `LogPlannedMeal` re-fire guard (parked question) is decided in S5 at the latest. Three more questions from the weed report (abandoned sessions, variety across sessions, stale pending proposals) are decided in the slice that touches them: stale proposals were narrowed in S2a and the rest is decided in S3, variety across sessions was resolved in S2b (dinners planned in other sessions count), S5 for abandoned sessions.
 - Base variety only sees the meal log once S5 exists, so the first real weeks may suggest the same base twice. Decide per slice whether a minimal "add what we ate" arrives earlier (S2b is the natural place); not decided yet.
 - The stack is already decided (`ARCHITECTURE.md` sections 8, 9 and 11: Fastify, React + Vite, TanStack Query, `@dnd-kit`, Docker image under `/plan`). S1a only has to prove it end to end.
 - The three questions above are now in the spec's open questions section, as `witness` required. Re-run `witness` on M1 to close the groundwork.

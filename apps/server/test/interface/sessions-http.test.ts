@@ -5,6 +5,10 @@ import {
   AcceptProposal,
   CloseSession,
   GetCurrentSession,
+  GetDeck,
+  GetRecipePhoto,
+  PassSuggestion,
+  SuggestRecipes,
   ListEligibleRecipes,
   ProposeRecipe,
   RefreshRecipes,
@@ -16,10 +20,11 @@ import { defaultPlanningConfig, memberId, recipeId, type CatalogEntry, type Reci
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { InProcessEventHub } from "../../src/infrastructure/events/in-process-event-hub.js";
 import { openDatabase, type Database } from "../../src/infrastructure/sqlite/database.js";
+import { NoMealsRecordedYet } from "../../src/infrastructure/meal-log/not-recorded-yet.js";
+import { SystemRandomness, UuidGenerator } from "../../src/infrastructure/system/system-services.js";
 import { SqliteDinnerCalendar } from "../../src/infrastructure/sqlite/sqlite-dinner-calendar.js";
 import { SqliteSessionRepository } from "../../src/infrastructure/sqlite/sqlite-session-repository.js";
 import { SqliteUnitOfWork } from "../../src/infrastructure/sqlite/sqlite-unit-of-work.js";
-import { UuidGenerator } from "../../src/infrastructure/system/system-services.js";
 import { buildApp } from "../../src/interface/http/app.js";
 
 // The whole server stack with real SQLite and the real use cases, two members signed in with their own cookies.
@@ -64,6 +69,9 @@ const catalog: RecipeCatalog = {
     if (catalogDown) throw new Error("KitchenOwl is down");
     refreshes++;
   },
+  async photo(id) {
+    return id === recipeId(1) ? { contentType: "image/jpeg", data: new Uint8Array([255, 216, 1]) } : null;
+  },
 };
 let logged: string[];
 
@@ -78,11 +86,23 @@ beforeEach(async () => {
   const deps = { sessions: new SqliteSessionRepository(db), events: hub, uow: new SqliteUnitOfWork(db) };
   const calendar = new SqliteDinnerCalendar(db);
   const ids = new UuidGenerator();
+  const noMeals = new NoMealsRecordedYet();
   const clock = {
     now: () => NOW,
     today: () => "2026-11-01" as never,
     localNow: () => ({ date: "2026-11-01" as never, hour: 12 }),
   };
+  const suggest = new SuggestRecipes(
+    {
+      sessions: deps.sessions,
+      catalog,
+      mealLog: noMeals,
+      experience: noMeals,
+      clock,
+      randomness: new SystemRandomness(),
+    },
+    defaultPlanningConfig,
+  );
   const webDist = mkdtempSync(join(tmpdir(), "web-"));
   writeFileSync(join(webDist, "index.html"), "<html></html>");
   app = await buildApp({
@@ -102,6 +122,9 @@ beforeEach(async () => {
     acceptProposal: new AcceptProposal({ ...deps, calendar }, defaultPlanningConfig),
     vetoProposal: new VetoProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
+    getDeck: new GetDeck({ sessions: deps.sessions, experience: noMeals, suggest }),
+    passSuggestion: new PassSuggestion({ ...deps, catalog }),
+    getRecipePhoto: new GetRecipePhoto(catalog),
     planAheadMinutes: defaultPlanningConfig.planAheadMinutes,
     log: (line) => logged.push(line),
     subscribe: (l) => hub.subscribe(l),
@@ -386,5 +409,79 @@ describe("agreeing a dinner over HTTP", () => {
     expect(res.statusCode).toBe(502);
     expect(res.json()).toEqual({ error: "unavailable" });
     expect(logged.join("\n")).toContain("-> 502 unavailable");
+  });
+});
+
+// Slice S2b: the ranked deck, passing, photos.
+const deck = async (as: typeof max, id: string) => (await call("GET", `/sessions/${id}/deck`, as)).json();
+const pass = (as: typeof max, id: string, recipe: Recipe) =>
+  call("POST", `/sessions/${id}/passes`, as, { recipeId: recipe.id });
+const cardNames = (d: { cards: { name: string }[] }) => d.cards.map((c) => c.name);
+
+describe("the ranked deck over HTTP", () => {
+  it("needs a signed-in member for every route", async () => {
+    for (const [method, url] of [
+      ["GET", "/sessions/x/deck"],
+      ["POST", "/sessions/x/passes"],
+      ["GET", "/recipes/1/photo"],
+    ] as const) {
+      expect((await call(method, url)).statusCode, `${method} ${url}`).toBe(401);
+    }
+  });
+
+  it("offers the next open day's eligible dinners as cards, with what the card shows", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    const d = await deck(ac, session.id);
+    expect(d.date).toBe(MON);
+    expect(cardNames(d).sort()).toEqual(["Curry", "Pasta", "Risotto"]); // no dessert, no long recipe on a weekday
+    expect(d.cards[0]).toEqual({
+      id: expect.any(Number),
+      name: expect.any(String),
+      minutes: 30,
+      base: "pasta",
+      diet: "vegetarian",
+      needsTime: false,
+      planAhead: false,
+      isNew: false,
+    });
+  });
+
+  it("keeps its order between requests and for both members, and puts plan-ahead recipes last", async () => {
+    const { session } = (await start(max, [SAT, SUN])).json();
+    const first = cardNames(await deck(max, session.id));
+    for (let i = 0; i < 5; i++) expect(cardNames(await deck(i % 2 ? max : ac, session.id))).toEqual(first);
+    expect(first.at(-1)).toBe("Pizza Biga");
+  });
+
+  it("drops a passed dish from the deck of both members, for this session only", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    const passed = await pass(max, session.id, pasta);
+    expect(passed.statusCode).toBe(200);
+    expect(cardNames(await deck(ac, session.id))).not.toContain("Pasta");
+    expect((await pass(ac, session.id, pasta)).statusCode).toBe(409);
+    expect((await propose(ac, session.id, MON, pasta)).statusCode).toBe(409); // passed dishes are not proposed either
+
+    await call("POST", `/sessions/${session.id}/close`, max);
+    const { session: later } = (await start(max, [MON, TUE])).json();
+    expect(cardNames(await deck(max, later.id))).toContain("Pasta");
+  });
+
+  it("answers 404 for the deck of an unknown or ended session, and for passing an unknown recipe", async () => {
+    expect((await call("GET", "/sessions/unknown/deck", max)).statusCode).toBe(404);
+    const { session } = (await start(max, [MON, TUE])).json();
+    expect((await call("POST", `/sessions/${session.id}/passes`, max, { recipeId: 99 })).statusCode).toBe(404);
+    expect((await call("POST", `/sessions/${session.id}/passes`, max, { recipeId: "x" })).statusCode).toBe(400);
+    await call("POST", `/sessions/${session.id}/close`, max);
+    expect((await call("GET", `/sessions/${session.id}/deck`, max)).statusCode).toBe(404);
+  });
+
+  it("serves a recipe's photo with its type, cacheable by the browser, and 404 without one", async () => {
+    const res = await call("GET", "/recipes/1/photo", max);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("image/jpeg");
+    expect(res.headers["cache-control"]).toContain("max-age");
+    expect([...res.rawPayload]).toEqual([255, 216, 1]);
+    expect((await call("GET", "/recipes/2/photo", max)).statusCode).toBe(404);
+    expect((await call("GET", "/recipes/abc/photo", max)).statusCode).toBe(400);
   });
 });

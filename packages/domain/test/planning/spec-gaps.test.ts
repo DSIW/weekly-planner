@@ -3,6 +3,7 @@ import {
   acceptProposal,
   closeSession,
   eligibleRecipes,
+  isNewRecipe,
   needsPlanningAhead,
   suggestRecipes,
   vetoProposal,
@@ -147,5 +148,38 @@ describe("recipes that need planning ahead (config.plan_ahead_time)", () => {
       random: () => 0.5,
     };
     expect(suggestRecipes(input).map((r) => r.name)).toEqual(["plain", "Biga"]);
+  });
+});
+
+// Added with slice S2b: the tie-break is asked per recipe, so an application can keep the deck stable.
+describe("suggestRecipes tie-break", () => {
+  it("asks for one value per recipe, and equal rank follows those values", () => {
+    const a = aRecipe({ name: "a" });
+    const b = aRecipe({ name: "b" });
+    const asked: string[] = [];
+    const input = (values: Record<string, number>) => ({
+      session: aSession([MON, TUE]),
+      candidates: [a, b],
+      history: [],
+      recentlyPlanned: new Set<Recipe["id"]>(),
+      experienced: new Set<Recipe["id"]>(),
+      config,
+      random: (r: Recipe) => {
+        asked.push(r.name);
+        return values[r.name] ?? 0;
+      },
+    });
+    expect(suggestRecipes(input({ a: 0.9, b: 0.1 })).map((r) => r.name)).toEqual(["b", "a"]);
+    expect(suggestRecipes(input({ a: 0.1, b: 0.9 })).map((r) => r.name)).toEqual(["a", "b"]);
+    expect([...new Set(asked)].sort()).toEqual(["a", "b"]);
+  });
+});
+
+describe("isNewRecipe", () => {
+  it("is a recipe that is not tagged proven and has no confirmed cooking", () => {
+    const fresh = aRecipe({ isProven: false });
+    expect(isNewRecipe(fresh, new Set())).toBe(true);
+    expect(isNewRecipe(fresh, new Set([fresh.id]))).toBe(false);
+    expect(isNewRecipe(aRecipe({ isProven: true }), new Set())).toBe(false);
   });
 });

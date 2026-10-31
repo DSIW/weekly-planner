@@ -36,9 +36,12 @@ export interface IdGenerator {
   next(): string;
 }
 
-/** Uniform in [0, 1); breaks ties between equally ranked suggestions. */
+/**
+ * Uniform in [0, 1); breaks ties between equally ranked suggestions. The same `key` always gives the same value,
+ * so a deck keeps its order while members swipe through it; without a key the value is fresh each time.
+ */
 export interface Randomness {
-  random(): number;
+  random(key?: string): number;
 }
 
 /** Port: the changes of one use case commit together or not at all. */

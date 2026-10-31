@@ -12,10 +12,10 @@ import type { MealLogRepository, RecipeExperienceRepository, SessionRepository }
 import type { Clock, Randomness } from "../ports/services.js";
 
 export interface SuggestRecipesDeps {
-  readonly sessions: SessionRepository;
-  readonly catalog: RecipeCatalog;
-  readonly mealLog: MealLogRepository;
-  readonly experience: RecipeExperienceRepository;
+  readonly sessions: Pick<SessionRepository, "get" | "listAll">;
+  readonly catalog: Pick<RecipeCatalog, "listAll">;
+  readonly mealLog: Pick<MealLogRepository, "listSince">;
+  readonly experience: Pick<RecipeExperienceRepository, "allRecipeIds">;
   readonly clock: Clock;
   readonly randomness: Randomness;
 }
@@ -36,22 +36,28 @@ export class SuggestRecipes {
     const entries = await deps.catalog.listAll();
     const candidates = entries.flatMap((e) => (e.kind === "ready" ? [e.recipe] : []));
     const log = await deps.mealLog.listSince(addDays(day.date, -config.varietyWindowDays));
+    const others = (await deps.sessions.listAll()).filter((s) => s.id !== session.id);
+    // What was cooked, and what another session planned: both count towards base variety, planned or not yet logged.
+    const history = [
+      ...log.map((e) => ({ date: e.date, base: e.base })),
+      ...others.flatMap((s) =>
+        s.days.flatMap((d) => (d.status === "planned" && d.recipe ? [{ date: d.date, base: d.recipe.base }] : [])),
+      ),
+    ];
     const recentSince = addDays(deps.clock.today(), -config.recentWindowDays);
     const recentlyPlanned = new Set<RecipeId>(
-      (await deps.sessions.listAll()).flatMap((s) =>
-        s.id === session.id
-          ? []
-          : s.days.flatMap((d) => (d.status === "planned" && d.recipe && d.date >= recentSince ? [d.recipe.id] : [])),
+      others.flatMap((s) =>
+        s.days.flatMap((d) => (d.status === "planned" && d.recipe && d.date >= recentSince ? [d.recipe.id] : [])),
       ),
     );
     return suggestRecipes({
       session,
       candidates,
-      history: log.map((e) => ({ date: e.date, base: e.base })),
+      history,
       recentlyPlanned,
       experienced: await deps.experience.allRecipeIds(),
       config,
-      random: () => deps.randomness.random(),
+      random: (recipe) => deps.randomness.random(`${session.id}:${recipe.id}`),
     });
   }
 }

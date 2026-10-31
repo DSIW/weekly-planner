@@ -1,4 +1,4 @@
-import type { RecipeCatalog } from "@weekly-planner/application";
+import type { RecipeCatalog, RecipePhoto } from "@weekly-planner/application";
 import type { CatalogEntry, Recipe, RecipeId } from "@weekly-planner/domain";
 
 /**
@@ -12,7 +12,7 @@ export class CachedRecipeCatalog implements RecipeCatalog {
   private loading: Promise<readonly CatalogEntry[]> | null = null;
 
   constructor(
-    private readonly source: Pick<RecipeCatalog, "listAll">,
+    private readonly source: Pick<RecipeCatalog, "listAll" | "photo">,
     private readonly lifetimeMs: number,
     private readonly now: () => number = Date.now,
   ) {}
@@ -39,6 +39,11 @@ export class CachedRecipeCatalog implements RecipeCatalog {
 
   async refresh(): Promise<void> {
     await this.load();
+  }
+
+  /** Pictures are not kept here: the browser caches them, and the source remembers where each one lives. */
+  photo(id: RecipeId): Promise<RecipePhoto | null> {
+    return this.source.photo(id);
   }
 
   private load(): Promise<readonly CatalogEntry[]> {

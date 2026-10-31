@@ -34,4 +34,22 @@ describe("KitchenOwlClient", () => {
       /unexpected recipe list/,
     );
   });
+
+  describe("fetchPhoto", () => {
+    it("asks the upload endpoint with the service token and returns type and bytes", async () => {
+      let seen: { url: string; auth: string | null } | undefined;
+      const f = (async (url: string | URL | Request, init?: RequestInit) => {
+        seen = { url: String(url), auth: new Headers(init?.headers).get("Authorization") };
+        return new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "image/jpeg" } });
+      }) as typeof fetch;
+      const photo = await new KitchenOwlClient(cfg, f).fetchPhoto("a b.jpg");
+      expect(seen).toEqual({ url: "https://ko.test/api/upload/a%20b.jpg", auth: "Bearer tok" });
+      expect(photo).toEqual({ contentType: "image/jpeg", data: new Uint8Array([1, 2, 3]) });
+    });
+
+    it("is null when KitchenOwl does not have the file, and fails on other errors", async () => {
+      expect(await new KitchenOwlClient(cfg, json({}, 404)).fetchPhoto("x.jpg")).toBeNull();
+      await expect(new KitchenOwlClient(cfg, json({}, 500)).fetchPhoto("x.jpg")).rejects.toMatchObject({ status: 500 });
+    });
+  });
 });

@@ -30,6 +30,9 @@ function source(entries: CatalogEntry[]) {
       return e?.kind === "ready" ? e.recipe : null;
     },
     async refresh() {},
+    async photo(id) {
+      return id === recipeId(1) ? { contentType: "image/png", data: new Uint8Array([7]) } : null;
+    },
   };
   return { state, catalog };
 }
@@ -95,5 +98,11 @@ describe("CachedRecipeCatalog", () => {
     state.failing = true;
     await expect(cached.refresh()).rejects.toThrow("KitchenOwl is down");
     expect(await cached.listAll()).toHaveLength(1);
+  });
+
+  it("hands photo requests to the source, which has its own memory", async () => {
+    const { cached } = make([ready(recipe(1, "Pasta"))]);
+    expect((await cached.photo(recipeId(1)))?.contentType).toBe("image/png");
+    expect(await cached.photo(recipeId(2))).toBeNull();
   });
 });

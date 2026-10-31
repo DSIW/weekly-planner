@@ -21,8 +21,13 @@ export interface SuggestionInput {
   readonly experienced: ReadonlySet<RecipeId>;
   readonly config: PlanningConfig;
   /** Uniform in [0, 1). Breaks ties between equally ranked recipes. */
-  readonly random: () => number;
+  /** Breaks ties between equally ranked recipes; asked once per recipe so a caller can keep the order stable. */
+  readonly random: (recipe: Recipe) => number;
 }
+
+/** New unless tagged proven or a confirmed cooking exists (spec: surface PlanningBoard, rank 3). */
+export const isNewRecipe = (r: Pick<Recipe, "id" | "isProven">, experienced: ReadonlySet<RecipeId>): boolean =>
+  !r.isProven && !experienced.has(r.id);
 
 /**
  * The hard rules for the next open day, without any ranking: main dishes only, on a weekday within the time limit,
@@ -63,7 +68,7 @@ export function suggestRecipes(input: SuggestionInput): Recipe[] {
 
   const usedBases = recentBases(input, day.date, planned);
   const vegetarianAtRisk = isVegetarianShareAtRisk(session, planned, config);
-  const isNew = (r: Recipe) => !r.isProven && !input.experienced.has(r.id);
+  const isNew = (r: Recipe) => isNewRecipe(r, input.experienced);
   const newWanted = planned.filter(isNew).length < config.newRecipesPerSession;
 
   const ranked = eligible.map((recipe) => ({
@@ -75,7 +80,7 @@ export function suggestRecipes(input: SuggestionInput): Recipe[] {
       newWanted ? (isNew(recipe) ? 0 : 1) : isNew(recipe) ? 1 : 0,
       isNew(recipe) && recipe.wantsToTry ? 0 : 1,
       input.recentlyPlanned.has(recipe.id) ? 1 : 0,
-      input.random(),
+      input.random(recipe),
     ],
   }));
   ranked.sort((a, b) => compareKeys(a.key, b.key));

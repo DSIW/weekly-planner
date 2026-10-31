@@ -7,6 +7,8 @@ import {
   CorrectLoggedMeal,
   FinalizePlan,
   GetCurrentSession,
+  GetDeck,
+  GetRecipePhoto,
   ListEligibleRecipes,
   LogPlannedMeals,
   MarkLeftoverDay,
@@ -47,8 +49,15 @@ export function household(recipes: Recipe[] = []) {
   const clock = new FakeClock();
   const ids = new SequenceIds();
   const calendar = new SessionsDinnerCalendar(sessions);
-  const randomness = { random: () => 0.5 };
+  const randomKeys: string[] = [];
+  const randomness = {
+    random: (key?: string) => {
+      if (key !== undefined) randomKeys.push(key);
+      return 0.5;
+    },
+  };
   const uow = immediateUow;
+  const suggestRecipes = new SuggestRecipes({ sessions, catalog, mealLog, experience, clock, randomness }, config);
   const session = { sessions, events, uow };
   const logDeps = { mealLog, experience, events, uow };
   return {
@@ -59,7 +68,9 @@ export function household(recipes: Recipe[] = []) {
     events,
     notifier,
     clock,
+    randomKeys,
     getCurrentSession: new GetCurrentSession(sessions),
+    getRecipePhoto: new GetRecipePhoto(catalog),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, config),
     refreshRecipes: new RefreshRecipes(catalog),
     startSession: new StartSession({ ...session, ids, clock }, config),
@@ -73,7 +84,8 @@ export function household(recipes: Recipe[] = []) {
     movePlannedDay: new MovePlannedDay({ ...session, calendar }, config),
     finalizePlan: new FinalizePlan(session, config),
     closeSession: new CloseSession(session),
-    suggestRecipes: new SuggestRecipes({ sessions, catalog, mealLog, experience, clock, randomness }, config),
+    suggestRecipes,
+    getDeck: new GetDeck({ sessions, experience, suggest: suggestRecipes }),
     logPlannedMeals: new LogPlannedMeals({ sessions, mealLog, events, uow, clock, ids }),
     remindToFinalize: new RemindToFinalize({ sessions, notifier, events, uow, clock }, config),
     confirmCooked: new ConfirmCooked(logDeps),

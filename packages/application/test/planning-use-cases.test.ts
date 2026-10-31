@@ -136,6 +136,55 @@ describe("a planning session through the use cases", () => {
   });
 });
 
+describe("the ranked deck", () => {
+  const pasta = aRecipe(30, { name: "Pasta", base: "pasta" });
+  const rice = aRecipe(31, { name: "Reis", base: "rice" });
+  const potatoes = aRecipe(32, { name: "Kartoffeln", base: "potatoes", isProven: false });
+  const all = [pasta, rice, potatoes];
+
+  it("counts a dinner planned in an earlier session towards base variety, before it is logged", async () => {
+    const { h, s: first } = await started(household(all), [MON, TUE]);
+    await agree(h, first, MON, pasta);
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
+    const second = ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
+    const ranked = (await h.suggestRecipes.execute({ sessionId: second.id })).map((r) => r.name);
+    expect(ranked.at(-1)).toBe("Pasta"); // Monday's pasta is within the variety window of Tuesday
+  });
+
+  it("asks for its tie-break once per recipe and session, so the order cannot change between requests", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    await h.suggestRecipes.execute({ sessionId: s.id });
+    expect([...new Set(h.randomKeys)].sort()).toEqual(all.map((r) => `${s.id}:${r.id}`).sort());
+  });
+
+  it("is the ranked list with the day it is for and which recipes are new", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    const deck = await h.getDeck.execute({ sessionId: s.id });
+    expect(deck?.date).toBe(MON);
+    expect(deck?.cards.map((c) => [c.recipe.name, c.isNew])).toEqual([
+      ["Kartoffeln", true],
+      ["Pasta", false],
+      ["Reis", false],
+    ]);
+  });
+
+  it("drops a passed dish for everyone and is null when no day is open", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    ok(await h.passSuggestion.execute({ member: ME, sessionId: s.id, recipeId: pasta.id }));
+    expect((await h.getDeck.execute({ sessionId: s.id }))?.cards.map((c) => c.recipe.name)).not.toContain("Pasta");
+    ok(await h.closeSession.execute({ member: AC, sessionId: s.id }));
+    expect(await h.getDeck.execute({ sessionId: s.id })).toBeNull();
+    expect(await h.getDeck.execute({ sessionId: sessionId("nope") })).toBeNull();
+  });
+
+  it("hands out a recipe's photo when KitchenOwl has one", async () => {
+    const h = household(all);
+    h.catalog.photos.set(pasta.id, { contentType: "image/jpeg", data: new Uint8Array([1, 2, 3]) });
+    expect((await h.getRecipePhoto.execute({ recipeId: pasta.id }))?.contentType).toBe("image/jpeg");
+    expect(await h.getRecipePhoto.execute({ recipeId: rice.id })).toBeNull();
+  });
+});
+
 describe("the list of recipes for the next open day", () => {
   const dessert = aRecipe(10, { mealType: "dessert", name: "Tiramisu" });
   const slow = aRecipe(11, { totalTimeMinutes: 90, name: "Schmorbraten" });

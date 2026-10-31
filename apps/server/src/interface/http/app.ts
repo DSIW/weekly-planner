@@ -5,6 +5,9 @@ import type {
   CloseSession,
   DomainEvent,
   GetCurrentSession,
+  GetDeck,
+  GetRecipePhoto,
+  PassSuggestion,
   ListEligibleRecipes,
   ProposeRecipe,
   RefreshRecipes,
@@ -38,6 +41,9 @@ interface AppOptions {
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
   readonly vetoProposal: Pick<VetoProposal, "execute">;
   readonly refreshRecipes: Pick<RefreshRecipes, "execute">;
+  readonly getDeck: Pick<GetDeck, "execute">;
+  readonly passSuggestion: Pick<PassSuggestion, "execute">;
+  readonly getRecipePhoto: Pick<GetRecipePhoto, "execute">;
   /** Recipes longer than this need a day's lead time; the phones flag them. */
   readonly planAheadMinutes: number;
   /** Told about every committed change; returns the way to stop listening. */
@@ -87,6 +93,9 @@ const sessionView = (s: PlanningSession, ahead: number) => ({
   })),
 });
 
+const passBody = z.object({ recipeId: z.number().int() });
+const recipeParam = z.object({ id: z.coerce.number().int() });
+
 const proposalBody = z.object({ date: z.string(), recipeId: z.number().int() });
 
 const COMMAND_REJECTIONS: Record<string, number> = {
@@ -105,6 +114,7 @@ const COMMAND_REJECTIONS: Record<string, number> = {
   date_already_taken: 409,
   recipe_vetoed: 409,
   recipe_passed: 409,
+  already_passed: 409,
   recipe_already_planned: 409,
   not_a_dinner: 422,
   too_long_for_weekday: 422,
@@ -279,6 +289,43 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       },
     );
   }
+
+  app.get<{ Params: { id: string } }>(`${api}/sessions/:id/deck`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const deck = await options.getDeck.execute({ sessionId: sessionId(req.params.id) });
+    if (!deck) return reply.code(404).send({ error: "not_found" });
+    return {
+      date: deck.date,
+      cards: deck.cards.map((c) => ({ ...recipeView(c.recipe, options.planAheadMinutes), isNew: c.isNew })),
+    };
+  });
+
+  app.post<{ Params: { id: string } }>(`${api}/sessions/:id/passes`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = passBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.passSuggestion.execute({
+      member: memberId(member.id),
+      sessionId: sessionId(req.params.id),
+      recipeId: recipeId(body.data.recipeId),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { session: sessionView(result.value, options.planAheadMinutes) };
+  });
+
+  app.get<{ Params: { id: string } }>(`${api}/recipes/:id/photo`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const params = recipeParam.safeParse(req.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid_request" });
+    const photo = await options.getRecipePhoto.execute({ recipeId: recipeId(params.data.id) });
+    if (!photo) return reply.code(404).send({ error: "not_found" });
+    // File names in KitchenOwl are content hashes, so a picture never changes under its recipe.
+    return reply
+      .header("Cache-Control", "private, max-age=86400")
+      .type(photo.contentType)
+      .send(Buffer.from(photo.data));
+  });
 
   app.post(`${api}/recipes/refresh`, async (req, reply) => {
     if (!requireMember(req, reply)) return reply;

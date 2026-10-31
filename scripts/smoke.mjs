@@ -24,11 +24,12 @@ const listen = (server) =>
 // Every recipe carries the "proven" tag, as the real ones carry either that or "new".
 const tags = (...names) => [...names, "✅ Erprobt"].map((name) => ({ name }));
 const recipes = [
-  { id: 1, name: "Pasta", time: 30, tags: tags("🍽️ Hauptgericht", "🥬 Vegetarisch", "🍝 Pasta") },
+  { id: 1, name: "Pasta", time: 30, photo: "pasta.jpg", tags: tags("🍽️ Hauptgericht", "🥬 Vegetarisch", "🍝 Pasta") },
   { id: 2, name: "Curry", time: 25, tags: tags("🍽️ Hauptgericht", "🌱 Vegan", "🍚 Reis") },
   { id: 3, name: "Risotto", time: 40, tags: tags("🍽️ Hauptgericht", "🥬 Vegetarisch", "🍚 Reis") },
   { id: 4, name: "Schmorbraten", time: 120, tags: tags("🍽️ Hauptgericht", "🥩 Fleisch") },
   { id: 5, name: "Tiramisu", time: 30, tags: tags("🍦 Dessert", "🥬 Vegetarisch") },
+  { id: 6, name: "Linsensuppe", time: 35, tags: tags("🍽️ Hauptgericht", "🌱 Vegan") },
 ];
 
 /** Just enough of KitchenOwl: sign-in with the password "pw", who is who, the household and its recipes. */
@@ -53,6 +54,12 @@ const kitchenowl = http.createServer((req, res) => {
     }
     if (req.url === "/api/household/2") return send(200, { member: [{ id: 2 }, { id: 3 }] });
     if (req.url === "/api/household/2/recipe") return send(200, recipes);
+    if (req.url === "/api/upload/pasta.jpg") {
+      if (req.headers.authorization !== "Bearer service-token") return send(401, {});
+      res.setHeader("content-type", "image/jpeg");
+      res.statusCode = 200;
+      return res.end(Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+    }
     return send(404, {});
   });
 });
@@ -228,7 +235,36 @@ try {
   await step("the list offers dinners for the next open day: no dessert, no long recipe on a weekday", async () => {
     const list = await as("ac", () => web.fetchEligibleRecipes(sessionId));
     assert.equal(list.date, D1);
-    assert.deepEqual(names(list), ["Curry", "Pasta", "Risotto"]);
+    assert.deepEqual(names(list), ["Curry", "Linsensuppe", "Pasta", "Risotto"]);
+  });
+
+  await step("the deck is ranked, and the same for both members on every request", async () => {
+    const first = await as("dsiw", () => web.fetchDeck(sessionId));
+    assert.equal(first.date, D1);
+    assert.deepEqual([...names({ recipes: first.cards })].sort(), ["Curry", "Linsensuppe", "Pasta", "Risotto"]);
+    for (const who of ["ac", "dsiw", "ac"]) {
+      const again = await as(who, () => web.fetchDeck(sessionId));
+      assert.deepEqual(again, first, "the order does not change between requests");
+    }
+    assert.ok(first.cards.every((c) => c.isNew === false && c.planAhead === false));
+  });
+
+  await step("a pass hides the dish for the other member too, and only for this session", async () => {
+    await as("dsiw", () => web.passRecipe(sessionId, 6));
+    const deck = await as("ac", () => web.fetchDeck(sessionId));
+    assert.ok(!names({ recipes: deck.cards }).includes("Linsensuppe"));
+    const again = await as("ac", () => web.passRecipe(sessionId, 6).catch((e) => e));
+    assert.ok(again instanceof web.SessionFailed, "passing the same dish twice is refused");
+  });
+
+  await step("recipe photos are served from KitchenOwl, only to signed-in members", async () => {
+    const cookie = [...jars.get("ac")].map(([k, v]) => `${k}=${v}`).join("; ");
+    const photo = await realFetch(`${origin()}/plan/api/recipes/1/photo`, { headers: { cookie } });
+    assert.equal(photo.status, 200);
+    assert.equal(photo.headers.get("content-type"), "image/jpeg");
+    assert.deepEqual([...new Uint8Array(await photo.arrayBuffer())], [0xff, 0xd8, 0xff, 0xe0]);
+    assert.equal((await realFetch(`${origin()}/plan/api/recipes/2/photo`, { headers: { cookie } })).status, 404);
+    assert.equal((await realFetch(`${origin()}/plan/api/recipes/1/photo`)).status, 401);
   });
 
   await step("one member proposes, the other sees it, and the proposer cannot accept their own", async () => {
@@ -310,6 +346,7 @@ try {
     assert.match(serverLog, /POST \/plan\/api\/login -> 403 not_in_household/);
     assert.match(serverLog, /POST \/plan\/api\/sessions -> 409 session_already_open/);
     assert.match(serverLog, /-> 403 own_proposal/);
+    assert.match(serverLog, /POST \/plan\/api\/sessions\/[^ ]+\/passes -> 409 already_passed/);
     assert.match(serverLog, /-> 409 proposal_already_pending/);
     assert.doesNotMatch(serverLog, /nope|"pw"|service-token/);
   });

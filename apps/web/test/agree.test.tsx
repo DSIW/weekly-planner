@@ -10,6 +10,7 @@ const PROPOSE = `POST ${api}/sessions/s1/proposals`;
 const ACCEPT = `POST ${api}/sessions/s1/proposals/p1/accept`;
 const VETO = `POST ${api}/sessions/s1/proposals/p1/veto`;
 const REFRESH = `POST ${api}/recipes/refresh`;
+const DECK = `GET ${api}/sessions/s1/deck`;
 const max = { id: "2", name: "Max" };
 const ac = { id: "3", name: "AC" };
 const as = (member: typeof max) => ({ [ME]: { status: 200, body: { member } } });
@@ -48,6 +49,9 @@ const proposal = (status = "pending", proposedBy = "2") => ({
   status,
 });
 const list = { status: 200, body: { date: "2026-11-02", recipes: [pasta, curry] } };
+const card = (r: ReturnType<typeof recipe>, isNew = false) => ({ ...r, isNew });
+const deckOf = (date: string, ...cards: ReturnType<typeof card>[]) => ({ status: 200, body: { date, cards } });
+const showList = async () => userEvent.click(await screen.findByRole("button", { name: "Liste" }));
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -74,6 +78,7 @@ describe("choosing a dinner for the next open day", () => {
   it("lists the eligible recipes for that day, flags a missing time, and filters by the search", async () => {
     server({ ...as(max), [CURRENT]: { status: 200, body: { session: session() } }, [RECIPES]: list });
     renderApp();
+    await showList();
     expect(await screen.findByRole("heading", { name: /Abendessen am .*2\.11\./ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Pasta.*30 min/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Curry.*Zeit fehlt/ })).toBeInTheDocument();
@@ -93,6 +98,7 @@ describe("choosing a dinner for the next open day", () => {
       [RECIPES]: { status: 200, body: { date: "2026-11-07", recipes: [pasta, biga] } },
     });
     renderApp();
+    await showList();
     const bigaButton = await screen.findByRole("button", { name: /Pizza Biga/ });
     expect(bigaButton).toHaveTextContent("21,4 h");
     expect(bigaButton).toHaveTextContent("Vorlauf nötig");
@@ -114,6 +120,7 @@ describe("choosing a dinner for the next open day", () => {
       },
     });
     renderApp();
+    await showList();
     await userEvent.click(await screen.findByRole("button", { name: /Pasta/ }));
     expect(await screen.findByText(/Warte auf die Antwort/)).toBeInTheDocument();
     expect(calls.find((c) => c.key === PROPOSE)?.body).toEqual({ date: "2026-11-02", recipeId: 1 });
@@ -132,6 +139,7 @@ describe("choosing a dinner for the next open day", () => {
       },
     });
     renderApp();
+    await showList();
     await userEvent.click(await screen.findByRole("button", { name: /Curry/ }));
     expect(await screen.findByRole("button", { name: "Passt" })).toBeInTheDocument();
     expect(screen.getByText("Pasta")).toBeInTheDocument();
@@ -149,6 +157,7 @@ describe("choosing a dinner for the next open day", () => {
       },
     });
     renderApp();
+    await showList();
     await screen.findByRole("button", { name: /Pasta/ });
     expect(screen.queryByRole("button", { name: /Curry/ })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Rezepte neu laden" }));
@@ -172,7 +181,7 @@ describe("deciding on the other member's proposal", () => {
         });
         return { status: 200, body: { session: current } };
       },
-      [`GET ${api}/sessions/s1/recipes`]: { status: 200, body: { date: "2026-11-03", recipes: [curry] } },
+      [DECK]: deckOf("2026-11-03", card(curry)),
     });
     renderApp();
     expect(await screen.findByRole("heading", { name: /Vorschlag für .*2\.11\./ })).toBeInTheDocument();
@@ -206,12 +215,12 @@ describe("deciding on the other member's proposal", () => {
         current = session({ proposals: [proposal("vetoed", "3")] });
         return { status: 200, body: { session: current } };
       },
-      [RECIPES]: { status: 200, body: { date: "2026-11-02", recipes: [curry] } },
+      [DECK]: deckOf("2026-11-02", card(curry)),
     });
     renderApp();
     await userEvent.click(await screen.findByRole("button", { name: "Nein" }));
     expect(await screen.findByRole("heading", { name: /Abendessen am .*2\.11\./ })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Pasta/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Pasta" })).not.toBeInTheDocument();
     expect(calls.some((c) => c.key === VETO)).toBe(true);
   });
 
@@ -220,7 +229,7 @@ describe("deciding on the other member's proposal", () => {
     server({
       ...as(ac),
       [CURRENT]: () => ({ status: 200, body: { session: current } }),
-      [RECIPES]: list,
+      [DECK]: deckOf("2026-11-02", card(pasta)),
     });
     renderApp();
     await screen.findByRole("heading", { name: /Abendessen am/ });
@@ -271,6 +280,7 @@ describe("failed actions in the agreeing flow are visible", () => {
       [PROPOSE]: { status: 500, body: {} },
     });
     renderApp();
+    await showList();
     await userEvent.click(await screen.findByRole("button", { name: /Pasta/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
   });
@@ -305,6 +315,7 @@ describe("failed actions in the agreeing flow are visible", () => {
       [REFRESH]: { status: 502, body: {} },
     });
     renderApp();
+    await showList();
     await userEvent.click(await screen.findByRole("button", { name: "Rezepte neu laden" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
   });
@@ -316,6 +327,7 @@ describe("failed actions in the agreeing flow are visible", () => {
       [RECIPES]: { status: 500, body: {} },
     });
     renderApp();
+    await showList();
     expect(await screen.findByText(/Rezepte konnten nicht geladen werden/)).toBeInTheDocument();
   });
 });

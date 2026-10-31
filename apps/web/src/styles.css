@@ -181,3 +181,70 @@ fieldset.chips {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
+.deck-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--outline);
+  border-radius: 18px;
+  background: var(--surface);
+  touch-action: pan-y;
+  user-select: none;
+  cursor: grab;
+}
+.deck-card h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+.deck-card p {
+  margin: 0;
+}
+.deck-photo {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 12px;
+  pointer-events: none;
+}
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--outline);
+  font-size: 0.85rem;
+}
+.badge.new {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+.hint {
+  color: var(--error);
+  font-size: 0.9rem;
+}
+.switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  width: min(420px, 100%);
+}
+.switch button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--outline);
+}
+.switch button[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--on-primary);
+  border-color: var(--primary);
+}
+fieldset.switch {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

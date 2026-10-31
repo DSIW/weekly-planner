@@ -83,6 +83,10 @@ export class InMemoryCatalog implements RecipeCatalog {
   async refresh() {
     this.refreshes++;
   }
+  photos = new Map<RecipeId, { contentType: string; data: Uint8Array }>();
+  async photo(id: RecipeId) {
+    return this.photos.get(id) ?? null;
+  }
   async listAll() {
     return this.entries;
   }

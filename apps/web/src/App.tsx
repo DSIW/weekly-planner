@@ -1,15 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   acceptProposal,
   closeSession,
   fetchCurrentSession,
+  fetchDeck,
   fetchEligibleRecipes,
   fetchMe,
   listenForChanges,
   login,
   LoginFailed,
   logout,
+  passRecipe,
   proposeRecipe,
   refreshRecipes,
   SessionFailed,
@@ -24,6 +26,7 @@ import { PlanBoard } from "./PlanBoard";
 import { ProposalCard } from "./ProposalCard";
 import { RecipePicker } from "./RecipePicker";
 import { StartSessionForm } from "./StartSessionForm";
+import { SwipeDeck } from "./SwipeDeck";
 
 const SESSION_MESSAGES: Record<SessionError, string> = {
   session_already_open: "Es läuft schon eine Planung. Sie ist jetzt zu sehen.",
@@ -39,19 +42,27 @@ const SESSION_MESSAGES: Record<SessionError, string> = {
 const messageFor = (error: unknown): string | null =>
   error === null ? null : SESSION_MESSAGES[error instanceof SessionFailed ? error.reason : "unavailable"];
 
-/** The next open day: choose a dinner, or decide on what the other member proposed. */
+/** The next open day: swipe through the ranked cards or search the list, or decide on the other member's proposal. */
 function Proposing({ session, meId, refetch }: { session: PlanSession; meId: string; refetch: () => void }) {
+  const [view, setView] = useState<"deck" | "list">("deck");
   const next = session.days.find((d) => d.status === "open");
   const proposal = session.proposals.find((p) => p.status === "pending");
+  const open = next !== undefined && proposal === undefined;
+  const deck = useQuery({
+    queryKey: ["session", "deck", session.id],
+    queryFn: () => fetchDeck(session.id),
+    enabled: open && view === "deck",
+  });
   const eligible = useQuery({
     queryKey: ["session", "eligible", session.id],
     queryFn: () => fetchEligibleRecipes(session.id),
-    enabled: next !== undefined && proposal === undefined,
+    enabled: open && view === "list",
   });
   const propose = useMutation({
     mutationFn: (v: { date: string; recipeId: number }) => proposeRecipe(session.id, v.date, v.recipeId),
     onSettled: refetch,
   });
+  const pass = useMutation({ mutationFn: (recipeId: number) => passRecipe(session.id, recipeId), onSettled: refetch });
   const accept = useMutation({ mutationFn: (id: string) => acceptProposal(session.id, id), onSettled: refetch });
   const veto = useMutation({ mutationFn: (id: string) => vetoProposal(session.id, id), onSettled: refetch });
   const refresh = useMutation({ mutationFn: refreshRecipes, onSettled: refetch });
@@ -69,18 +80,55 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
       />
     );
   }
-  if (eligible.isPending) return <p className="muted">Lädt …</p>;
-  if (eligible.isError) return <p className="error">Die Rezepte konnten nicht geladen werden.</p>;
+
+  const switcher = (
+    <fieldset className="switch">
+      <legend className="sr-only">Ansicht</legend>
+      <button type="button" aria-pressed={view === "deck"} onClick={() => setView("deck")}>
+        Karten
+      </button>
+      <button type="button" aria-pressed={view === "list"} onClick={() => setView("list")}>
+        Liste
+      </button>
+    </fieldset>
+  );
+
+  if (view === "deck") {
+    return (
+      <>
+        {switcher}
+        {deck.isPending && <p className="muted">Lädt …</p>}
+        {deck.isError && <p className="error">Die Karten konnten nicht geladen werden.</p>}
+        {deck.data && (
+          <SwipeDeck
+            date={deck.data.date}
+            cards={deck.data.cards}
+            onPropose={(c) => propose.mutate({ date: deck.data.date, recipeId: c.id })}
+            onPass={(c) => pass.mutate(c.id)}
+            pending={propose.isPending || pass.isPending}
+            error={messageFor(propose.error ?? pass.error)}
+          />
+        )}
+      </>
+    );
+  }
   return (
-    <RecipePicker
-      date={eligible.data.date}
-      recipes={eligible.data.recipes}
-      onPick={(r) => propose.mutate({ date: eligible.data.date, recipeId: r.id })}
-      onRefresh={() => refresh.mutate()}
-      pending={propose.isPending}
-      refreshing={refresh.isPending}
-      error={messageFor(propose.error ?? refresh.error)}
-    />
+    <>
+      {switcher}
+      {eligible.isPending && <p className="muted">Lädt …</p>}
+      {eligible.isError && <p className="error">Die Rezepte konnten nicht geladen werden.</p>}
+      {eligible.data && (
+        <RecipePicker
+          date={eligible.data.date}
+          recipes={eligible.data.recipes}
+          onPick={(r) => propose.mutate({ date: eligible.data.date, recipeId: r.id })}
+          onRefresh={() => refresh.mutate()}
+          pending={propose.isPending}
+          refreshing={refresh.isPending}
+          error={messageFor(propose.error ?? refresh.error)}
+        />
+      )}
+    </>
   );
 }
 

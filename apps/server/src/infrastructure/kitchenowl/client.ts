@@ -54,6 +54,17 @@ export class KitchenOwlClient {
     return parsed.data;
   }
 
+  /** A file KitchenOwl stores (a recipe photo), read with the service token; null when it is gone. */
+  async fetchPhoto(file: string): Promise<{ contentType: string; data: Uint8Array } | null> {
+    const res = await this.request(`/upload/${encodeURIComponent(file)}`, { token: this.config.kitchenowlToken });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new KitchenOwlError(`KitchenOwl GET /upload failed with HTTP ${res.status}`, res.status);
+    return {
+      contentType: res.headers.get("content-type") ?? "application/octet-stream",
+      data: new Uint8Array(await res.arrayBuffer()),
+    };
+  }
+
   /** Signs a person in with their own KitchenOwl account. Returns their access token, or null for wrong credentials. */
   async authenticate(username: string, password: string): Promise<string | null> {
     const res = await this.request("/auth", {

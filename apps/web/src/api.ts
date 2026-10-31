@@ -130,6 +130,25 @@ export const acceptProposal = (sessionId: string, proposalId: string) =>
 export const vetoProposal = (sessionId: string, proposalId: string) =>
   sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/veto`);
 
+export interface DeckCard extends RecipeView {
+  /** Not tagged proven and never cooked: shown with a "new" badge. */
+  isNew: boolean;
+}
+
+/** The ranked cards for the next open day, best first; the same order for both members. */
+export async function fetchDeck(sessionId: string): Promise<{ date: string; cards: DeckCard[] }> {
+  const res = await fetch(`${base}/sessions/${sessionId}/deck`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as { date: string; cards: DeckCard[] };
+}
+
+/** Hides a dish for the rest of this session, for both members. */
+export const passRecipe = (sessionId: string, recipeId: number) =>
+  sessionCommand(`/sessions/${sessionId}/passes`, { recipeId });
+
+/** Where a recipe's picture is served; recipes without one answer 404. */
+export const photoUrl = (recipeId: number) => `${base}/recipes/${recipeId}/photo`;
+
 /** The recipes that may be proposed for the next open day, by name. */
 export async function fetchEligibleRecipes(sessionId: string): Promise<{ date: string; recipes: RecipeView[] }> {
   const res = await fetch(`${base}/sessions/${sessionId}/recipes`, { credentials: "same-origin" });
