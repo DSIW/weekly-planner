@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.6...weekly-planner-v0.1.7) (2026-10-31)
+
+
+### Features
+
+* ranked swipe deck with pass and recipe photos (S2b) ([27ce25c](https://github.com/DSIW/weekly-planner/commit/27ce25cc7d2036ea59064c8fd88fbfebd787696a))
+
 ## [0.1.6](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.5...weekly-planner-v0.1.6) (2026-10-31)
 
 
