@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.3](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.2...weekly-planner-v0.1.3) (2026-10-31)
+
+
+### Features
+
+* shared planning session on two phones, live over SSE, persisted in SQLite (S1b) ([ea9c9bf](https://github.com/DSIW/weekly-planner/commit/ea9c9bf87d3e0b003e718660b1acfc9585cc6e19))
+
+
+### Bug Fixes
+
+* a concurrent second start answers session_already_open instead of failing with 500 ([44b332b](https://github.com/DSIW/weekly-planner/commit/44b332b87d0959c85fe7e0aef4dab2283ff83d20))
+
 ## [0.1.2](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.1...weekly-planner-v0.1.2) (2026-10-31)
 
 
