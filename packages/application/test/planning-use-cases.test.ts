@@ -143,12 +143,18 @@ describe("the ranked deck", () => {
   const all = [pasta, rice, potatoes];
 
   it("counts a dinner planned in an earlier session towards base variety, before it is logged", async () => {
-    const { h, s: first } = await started(household(all), [MON, TUE]);
+    // The earlier session plans one pasta dish; a DIFFERENT pasta dish must rank below rice and potatoes the next day.
+    // (The same dish would also rank lower as "recently planned", which would hide whether variety works.)
+    const otherPasta = aRecipe(33, { name: "Nudeln", base: "pasta" });
+    // Nudeln comes first in the catalog: without the variety rule it would lead the deck.
+    const { h, s: first } = await started(household([otherPasta, ...all]), [MON, TUE]);
     await agree(h, first, MON, pasta);
     ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
     const second = ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
     const ranked = (await h.suggestRecipes.execute({ sessionId: second.id })).map((r) => r.name);
-    expect(ranked.at(-1)).toBe("Pasta"); // Monday's pasta is within the variety window of Tuesday
+    const at = (name: string) => ranked.indexOf(name);
+    expect(at("Nudeln")).toBeGreaterThan(at("Reis"));
+    expect(at("Nudeln")).toBeGreaterThan(at("Kartoffeln"));
   });
 
   it("asks for its tie-break once per recipe and session, so the order cannot change between requests", async () => {
