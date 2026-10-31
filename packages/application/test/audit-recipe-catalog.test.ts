@@ -16,7 +16,8 @@ const recipe = (id: number, over: Partial<Recipe> = {}): Recipe => ({
 });
 const ready = (r: Recipe): CatalogEntry => ({ kind: "ready", recipe: r });
 const catalogOf = (entries: CatalogEntry[]): Pick<RecipeCatalog, "listAll"> => ({ listAll: async () => entries });
-const audit = (entries: CatalogEntry[]) => new AuditRecipeCatalog(catalogOf(entries), { weekdayTimeLimitMinutes: 45 }).execute();
+const audit = (entries: CatalogEntry[]) =>
+  new AuditRecipeCatalog(catalogOf(entries), { weekdayTimeLimitMinutes: 45 }).execute();
 
 describe("AuditRecipeCatalog", () => {
   it("counts weekday-usable and vegetarian main dishes and ignores other meal types", async () => {

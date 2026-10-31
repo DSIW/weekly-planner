@@ -1,5 +1,11 @@
 import type {
-  MealLogEntry, MealLogEntryId, PlanDate, PlanningSession, RecipeExperience, RecipeId, SessionId,
+  MealLogEntry,
+  MealLogEntryId,
+  PlanDate,
+  PlanningSession,
+  RecipeExperience,
+  RecipeId,
+  SessionId,
 } from "@weekly-planner/domain";
 
 /** Port: planning sessions are loaded and saved whole. */

@@ -37,7 +37,13 @@ describe("a planning session through the use cases", () => {
     expect(finalized.status).toBe("finalized");
     ok(await h.closeSession.execute({ member: AC, sessionId: s.id }));
     expect((await h.sessions.get(s.id))?.status).toBe("closed");
-    expect(h.events.types).toEqual(["SessionStarted", "RecipeProposed", "ProposalAccepted", "PlanFinalized", "SessionClosed"]);
+    expect(h.events.types).toEqual([
+      "SessionStarted",
+      "RecipeProposed",
+      "ProposalAccepted",
+      "PlanFinalized",
+      "SessionClosed",
+    ]);
   });
 
   it("returns the rule's reason and saves and publishes nothing when a rule rejects", async () => {
@@ -57,9 +63,18 @@ describe("a planning session through the use cases", () => {
 
   it("reports an unknown session or recipe", async () => {
     const { h, s } = await started();
-    expect(await h.finalizePlan.execute({ member: AC, sessionId: sessionId("nope") })).toEqual({ ok: false, reason: "unknown_session" });
-    expect(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: recipeId(99) })).toEqual({ ok: false, reason: "unknown_recipe" });
-    expect(await h.passSuggestion.execute({ member: AC, sessionId: s.id, recipeId: recipeId(99) })).toEqual({ ok: false, reason: "unknown_recipe" });
+    expect(await h.finalizePlan.execute({ member: AC, sessionId: sessionId("nope") })).toEqual({
+      ok: false,
+      reason: "unknown_session",
+    });
+    expect(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: recipeId(99) })).toEqual({
+      ok: false,
+      reason: "unknown_recipe",
+    });
+    expect(await h.passSuggestion.execute({ member: AC, sessionId: s.id, recipeId: recipeId(99) })).toEqual({
+      ok: false,
+      reason: "unknown_recipe",
+    });
   });
 
   it("lets the other member veto, and the recipe stays out of the session's deck", async () => {
@@ -67,7 +82,10 @@ describe("a planning session through the use cases", () => {
     const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: r1.id }));
     ok(await h.vetoProposal.execute({ member: ME, sessionId: s.id, proposalId: proposed.proposals[0]!.id }));
     expect((await h.suggestRecipes.execute({ sessionId: s.id })).map((r) => r.id)).toEqual([r2.id, r3.id]);
-    expect(await h.vetoProposal.execute({ member: ME, sessionId: s.id, proposalId: proposalId("nope") })).toEqual({ ok: false, reason: "unknown_proposal" });
+    expect(await h.vetoProposal.execute({ member: ME, sessionId: s.id, proposalId: proposalId("nope") })).toEqual({
+      ok: false,
+      reason: "unknown_proposal",
+    });
   });
 
   it("passes on a suggestion for both members", async () => {
@@ -86,7 +104,9 @@ describe("a planning session through the use cases", () => {
     expect(swapped.days.map((d) => d.recipe?.id)).toEqual([r2.id, r1.id, undefined]);
     const moved = ok(await h.movePlannedDay.execute({ member: AC, sessionId: s.id, from: MON, to: WED }));
     expect(moved.days.map((d) => d.status)).toEqual(["open", "planned", "planned"]);
-    expect(h.events.types).toEqual(expect.arrayContaining(["DayMarkedLeftovers", "DayReopened", "DaysSwapped", "DayMoved"]));
+    expect(h.events.types).toEqual(
+      expect.arrayContaining(["DayMarkedLeftovers", "DayReopened", "DaysSwapped", "DayMoved"]),
+    );
   });
 });
 
@@ -95,8 +115,14 @@ describe("one dinner per date across sessions (DinnerCalendar)", () => {
     const { h, s: first } = await started(household([r1, r2, r3]), [MON, TUE]);
     await agree(h, first, MON, r1);
     const second = ok(await h.startSession.execute({ member: AC, dates: [MON, WED] }));
-    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: second.id, date: MON, recipeId: r2.id }));
-    const r = await h.acceptProposal.execute({ member: ME, sessionId: second.id, proposalId: proposed.proposals[0]!.id });
+    const proposed = ok(
+      await h.proposeRecipe.execute({ member: AC, sessionId: second.id, date: MON, recipeId: r2.id }),
+    );
+    const r = await h.acceptProposal.execute({
+      member: ME,
+      sessionId: second.id,
+      proposalId: proposed.proposals[0]!.id,
+    });
     expect(r).toEqual({ ok: false, reason: "date_already_taken" });
   });
 
@@ -105,7 +131,10 @@ describe("one dinner per date across sessions (DinnerCalendar)", () => {
     await agree(h, first, MON, r1);
     const second = ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
     await agree(h, second, TUE, r2);
-    expect(await h.movePlannedDay.execute({ member: AC, sessionId: first.id, from: MON, to: TUE })).toEqual({ ok: false, reason: "date_already_taken" });
+    expect(await h.movePlannedDay.execute({ member: AC, sessionId: first.id, from: MON, to: TUE })).toEqual({
+      ok: false,
+      reason: "date_already_taken",
+    });
   });
 });
 
@@ -113,7 +142,8 @@ describe("RemindToFinalize", () => {
   it("notifies once, at 08:00 on the first agreed day, and only while the plan is open", async () => {
     const { h, s } = await started();
     await agree(h, s, MON);
-    h.clock.date = MON; h.clock.hour = 7;
+    h.clock.date = MON;
+    h.clock.hour = 7;
     expect(await h.remindToFinalize.execute()).toBe(0);
     h.clock.hour = 8;
     expect(await h.remindToFinalize.execute()).toBe(1);
@@ -126,7 +156,8 @@ describe("RemindToFinalize", () => {
     const { h, s } = await started();
     await agree(h, s, MON);
     ok(await h.finalizePlan.execute({ member: AC, sessionId: s.id }));
-    h.clock.date = MON; h.clock.hour = 9;
+    h.clock.date = MON;
+    h.clock.hour = 9;
     expect(await h.remindToFinalize.execute()).toBe(0);
   });
 });

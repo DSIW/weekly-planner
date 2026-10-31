@@ -26,29 +26,38 @@ const layerOf = (file: string): Layer | undefined => {
   return undefined;
 };
 
-export function importsOf(source: string): string[] {
+function importsOf(source: string): string[] {
   const specs: string[] = [];
-  for (const m of source.matchAll(/(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)|import\s+["']([^"']+)["']/g)) {
+  for (const m of source.matchAll(
+    /(?:import|export)\s[^"';]*?from\s*["']([^"']+)["']|import\s*\(\s*["']([^"']+)["']\s*\)|import\s+["']([^"']+)["']/g,
+  )) {
     specs.push((m[1] ?? m[2] ?? m[3])!);
   }
   return specs;
 }
 
 /** Returns a description of each rule the file's imports break. */
-export function violations(file: string, source: string): string[] {
+function violations(file: string, source: string): string[] {
   const layer = layerOf(file);
   if (!layer) return [];
   const out: string[] = [];
   for (const spec of importsOf(source)) {
     if (spec.startsWith(".")) {
-      const target = layerOf(resolve(dirname(file), spec) + ".ts") ?? layerOf(join(resolve(dirname(file), spec), "index.ts"));
+      const target =
+        layerOf(`${resolve(dirname(file), spec)}.ts`) ?? layerOf(join(resolve(dirname(file), spec), "index.ts"));
       // Only the composition root (main) may reach into other layers of the server.
-      if (target && target !== layer && layer !== "main") out.push(`${layer} imports the ${target} layer through "${spec}"`);
+      if (target && target !== layer && layer !== "main")
+        out.push(`${layer} imports the ${target} layer through "${spec}"`);
       continue;
     }
     if (layer === "domain") out.push(`domain must import nothing but itself, found "${spec}"`);
     if (layer === "application" && spec !== DOMAIN) out.push(`application may import only the domain, found "${spec}"`);
-    if ((layer === "infrastructure" || layer === "interface") && spec.startsWith("@weekly-planner/") && spec !== DOMAIN && spec !== APPLICATION) {
+    if (
+      (layer === "infrastructure" || layer === "interface") &&
+      spec.startsWith("@weekly-planner/") &&
+      spec !== DOMAIN &&
+      spec !== APPLICATION
+    ) {
       out.push(`${layer} imports unknown workspace package "${spec}"`);
     }
   }
@@ -63,7 +72,9 @@ const walk = (dir: string): string[] =>
   });
 
 describe("dependency rule", () => {
-  const files = ["packages/domain/src", "packages/application/src", "apps/server/src"].flatMap((d) => walk(join(root, d)));
+  const files = ["packages/domain/src", "packages/application/src", "apps/server/src"].flatMap((d) =>
+    walk(join(root, d)),
+  );
 
   it("covers every layer", () => {
     const seen = new Set(files.map(layerOf));
@@ -76,7 +87,8 @@ describe("dependency rule", () => {
   });
 
   it("keeps the domain package free of dependencies and the application package on the domain only", () => {
-    const deps = (p: string): string[] => Object.keys(JSON.parse(readFileSync(join(root, p, "package.json"), "utf8")).dependencies ?? {});
+    const deps = (p: string): string[] =>
+      Object.keys(JSON.parse(readFileSync(join(root, p, "package.json"), "utf8")).dependencies ?? {});
     expect(deps("packages/domain")).toEqual([]);
     expect(deps("packages/application")).toEqual([DOMAIN]);
   });
@@ -87,18 +99,34 @@ describe("dependency rule", () => {
       expect(violations(f("packages/domain/src/x.ts"), `import { z } from "zod";`)).not.toEqual([]);
     });
     it("flags an application file that imports infrastructure code", () => {
-      expect(violations(f("packages/application/src/x.ts"), `import { c } from "../../../apps/server/src/infrastructure/kitchenowl/client.js";`)).not.toEqual([]);
+      expect(
+        violations(
+          f("packages/application/src/x.ts"),
+          `import { c } from "../../../apps/server/src/infrastructure/kitchenowl/client.js";`,
+        ),
+      ).not.toEqual([]);
       expect(violations(f("packages/application/src/x.ts"), `import fs from "node:fs";`)).not.toEqual([]);
     });
     it("flags an interface file that reaches into infrastructure", () => {
-      expect(violations(f("apps/server/src/interface/x.ts"), `import { c } from "../infrastructure/kitchenowl/client.js";`)).not.toEqual([]);
+      expect(
+        violations(f("apps/server/src/interface/x.ts"), `import { c } from "../infrastructure/kitchenowl/client.js";`),
+      ).not.toEqual([]);
     });
     it("allows the composition root to wire all layers", () => {
-      expect(violations(f("apps/server/src/main/x.ts"), `import { c } from "../infrastructure/kitchenowl/client.js";`)).toEqual([]);
+      expect(
+        violations(f("apps/server/src/main/x.ts"), `import { c } from "../infrastructure/kitchenowl/client.js";`),
+      ).toEqual([]);
     });
     it("allows inward imports", () => {
-      expect(violations(f("apps/server/src/infrastructure/x.ts"), `import type { RecipeCatalog } from "@weekly-planner/application";`)).toEqual([]);
-      expect(violations(f("packages/application/src/x.ts"), `import type { Recipe } from "@weekly-planner/domain";`)).toEqual([]);
+      expect(
+        violations(
+          f("apps/server/src/infrastructure/x.ts"),
+          `import type { RecipeCatalog } from "@weekly-planner/application";`,
+        ),
+      ).toEqual([]);
+      expect(
+        violations(f("packages/application/src/x.ts"), `import type { Recipe } from "@weekly-planner/domain";`),
+      ).toEqual([]);
       expect(violations(f("packages/domain/src/x.ts"), `import type { A } from "./catalog/recipe.js";`)).toEqual([]);
     });
   });

@@ -25,3 +25,9 @@ export const rawRecipeSchema = z.object({
 
 export type RawRecipe = z.infer<typeof rawRecipeSchema>;
 export const rawRecipeListSchema = z.array(rawRecipeSchema);
+
+export const authResponseSchema = z.object({ access_token: z.string().min(1) });
+
+export const userSchema = z.object({ id: z.number().int(), name: z.string(), username: z.string() });
+
+export const householdSchema = z.object({ member: z.array(z.object({ id: z.number().int() })).default([]) });

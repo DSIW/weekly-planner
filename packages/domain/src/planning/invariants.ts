@@ -21,13 +21,13 @@ export function invariantViolations(
       out.push(`WeekdayTimeLimit: ${d.date} plans a ${d.recipe.totalTimeMinutes} minute recipe`);
     }
   }
-  planned.forEach((a, i) =>
-    planned.slice(i + 1).forEach((b) => {
+  for (const [i, a] of planned.entries()) {
+    for (const b of planned.slice(i + 1)) {
       if (a.date === b.date) out.push(`OneDinnerPerDay: ${a.date} is planned twice`);
       if (a.session.id === b.session.id && a.recipe.id === b.recipe.id) {
         out.push(`NoRecipeTwiceInSession: recipe ${a.recipe.id} is planned twice in session ${a.session.id}`);
       }
-    }),
-  );
+    }
+  }
   return out;
 }

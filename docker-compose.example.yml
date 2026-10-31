@@ -1,0 +1,15 @@
+services:
+  weekly-planner:
+    image: ghcr.io/dsiw/weekly-planner:latest
+    container_name: weekly-planner
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    # Reached through the reverse proxy that also serves KitchenOwl, under /plan.
+    expose:
+      - "3000"
+    # Uncomment to try it without the proxy: http://localhost:3000/plan/
+    # ports:
+    #   - "3000:3000"
+    volumes:
+      - ./data:/app/data

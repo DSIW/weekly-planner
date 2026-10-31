@@ -1,11 +1,24 @@
-import { dinnersDueForLogging, logPlannedMeal, mealLogEntryId, remindToFinalize, type MealLogEvent, type PlanningConfig } from "@weekly-planner/domain";
+import {
+  dinnersDueForLogging,
+  logPlannedMeal,
+  mealLogEntryId,
+  remindToFinalize,
+  type MealLogEvent,
+  type PlanningConfig,
+} from "@weekly-planner/domain";
 import type { MealLogRepository, SessionRepository } from "../ports/repositories.js";
 import type { Clock, EventPublisher, IdGenerator, Notifier, UnitOfWork } from "../ports/services.js";
 
 /** rule RemindToFinalize (temporal, run by the scheduler): tells both members once that a plan is still waiting. */
 export class RemindToFinalize {
   constructor(
-    private readonly deps: { sessions: SessionRepository; notifier: Notifier; events: EventPublisher; uow: UnitOfWork; clock: Clock },
+    private readonly deps: {
+      sessions: SessionRepository;
+      notifier: Notifier;
+      events: EventPublisher;
+      uow: UnitOfWork;
+      clock: Clock;
+    },
     private readonly config: PlanningConfig,
   ) {}
 
@@ -28,7 +41,14 @@ export class RemindToFinalize {
 /** rule LogPlannedMeal (temporal, run daily): each planned dinner of a finalized plan becomes an unconfirmed log entry. */
 export class LogPlannedMeals {
   constructor(
-    private readonly deps: { sessions: SessionRepository; mealLog: MealLogRepository; events: EventPublisher; uow: UnitOfWork; clock: Clock; ids: IdGenerator },
+    private readonly deps: {
+      sessions: SessionRepository;
+      mealLog: MealLogRepository;
+      events: EventPublisher;
+      uow: UnitOfWork;
+      clock: Clock;
+      ids: IdGenerator;
+    },
   ) {}
 
   /** Returns the number of entries created. */

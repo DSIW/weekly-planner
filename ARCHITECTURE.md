@@ -74,7 +74,7 @@ ARCHITECTURE.md  ROADMAP.md  README.md  .env.example
 
 The one-off data tools live **outside** this repository, in the parent folder `cooking-mgmt/`: `import/` (Notion and KptnCook importers and their exports) and `foundation/` (the data-foundation scripts and backups of the full recipe database). They contain personal data and are finished jobs, so this repository stays safe to publish; the tag vocabulary they established is encoded in one place, the KitchenOwl translator in the infrastructure layer.
 
-Tooling: npm workspaces on Node 22, strict TypeScript, Vitest, fast-check (property tests), tsx for running TypeScript, zod for validating KitchenOwl responses. Commits use the conventional format that release-please reads. ESLint, Prettier and the CI and release workflows (section 11) are planned for slice S1a.
+Tooling: npm workspaces on Node 22 (pinned in `.node-version`, exact dependency versions in `.npmrc`), strict TypeScript, Vitest, fast-check (property tests), tsx for running TypeScript, zod for validating KitchenOwl responses. Biome for linting and formatting, knip for unused code, husky runs `npm run test:ci` before every commit. Commits use the conventional format that release-please reads. CI and release workflows are described in section 11.
 
 ## 4. Domain model (DDD)
 
@@ -209,9 +209,9 @@ How it is tested: the domain by pure unit and property tests, most of them gener
 
 Commands return the new session state; stale writes are rejected through `version` and the client simply refetches.
 
-## 9. Frontend (PWA, planned)
+## 9. Frontend (PWA, started in S1a)
 
-React + Vite + TypeScript, TanStack Query for server state, `@dnd-kit` for drag and drop (works with touch), Framer Motion for swiping, `vite-plugin-pwa` for the manifest and service worker. Styling uses CSS custom properties that follow KitchenOwl's Material look (colours, rounded cards, same icon style); the design is recreated, not copied from its code (AGPL).
+React + Vite + TypeScript, TanStack Query for server state, `@dnd-kit` for drag and drop (works with touch), Framer Motion for swiping, The manifest and a small hand-written service worker (`apps/web/public/`) replace `vite-plugin-pwa` (see D15). Styling uses CSS custom properties that follow KitchenOwl's Material look (colours, rounded cards, same icon style); the design is recreated, not copied from its code (AGPL).
 
 Screens (German UI):
 
@@ -222,15 +222,15 @@ Screens (German UI):
 
 Offline: the shell and last-seen state are cached so the app opens instantly; actions need the network because the session is shared. The reminder uses Web Push (iOS supports it for installed PWAs); an in-app banner is the fallback.
 
-## 10. Authentication (planned, slice S1a)
+## 10. Authentication (built in S1a)
 
-The login form posts the member's KitchenOwl username and password to our server, which checks them against KitchenOwl and then issues its own httpOnly session cookie. Server-to-KitchenOwl calls use the service token. If you later switch KitchenOwl to OIDC, the login step changes and nothing else does. Only the household's KitchenOwl users can sign in.
+The login form posts the member's KitchenOwl username and password to our server, which checks them against KitchenOwl and then issues its own httpOnly session cookie. Server-to-KitchenOwl calls use the service token. A person must also be a member of the configured KitchenOwl household. The cookie holds only the member's id and name, signed with `SESSION_SECRET`, for 30 days; there are no server-side sessions yet. Each sign-in creates a login session in the person's KitchenOwl account, and login attempts are rate limited per client. If you later switch KitchenOwl to OIDC, the login step changes and nothing else does. Only the household's KitchenOwl users can sign in.
 
-## 11. Deployment (planned, slice S1a)
+## 11. Deployment (built in S1a, not yet run on the real server)
 
 One Docker image (multi-stage: build the web app, serve it from Fastify) as an extra service next to KitchenOwl, behind the same reverse proxy and served under `/plan` (configurable base path `BASE_PATH=/plan`). State lives in one SQLite file on a volume, copied nightly. Environment: `KITCHENOWL_URL`, `KITCHENOWL_TOKEN`, `SESSION_SECRET`, `VAPID_*`, `TZ`. No secrets in the repository.
 
-Delivery follows the pipeline of the household's `overtimer` repository, with a container registry in place of Vercel:
+Delivery follows the pipelines of the household's `overtimer` and `nodos` repositories (`nodos` publishes a Docker image to GHCR the same way); see `DOCKER_DEPLOYMENT.md` for the runbook:
 
 - CI (GitHub Actions) runs install, typecheck, tests and build on every push and pull request.
 - release-please turns conventional commits into a release pull request, a changelog and a version tag. Publishing the release builds the image and pushes it to GHCR as `ghcr.io/dsiw/weekly-planner:<version>` and `latest`.
@@ -291,3 +291,4 @@ The plan lives in [`ROADMAP.md`](ROADMAP.md). Work is cut into **vertical slices
 | D12 | Aggregates are immutable data with pure rule functions returning `Result<{ state, events }>`, not classes with methods | the spec's rules map one to one onto functions; rejected commands cannot leave half-changed state; property tests can run thousands of random command sequences cheaply | classes with mutable state and exceptions (first sketch of section 7): hidden state, harder to test exhaustively |
 | D13 | Work is cut into vertical slices through the whole stack, not by layer | the first plan built every rule before anything could be used on a phone; slices give real feedback early and keep each Allium loop small | milestones by layer (M0 to M6 as first written) |
 | D14 | Delivery copies the `overtimer` pipeline (CI, release-please, Dependabot with auto-merge, Allium spec check) and publishes a Docker image to GHCR on release; the server pulls it | one release process for all the household's projects; the app is a long-running service with SQLite, which Vercel cannot host | Vercel (used by `overtimer`, static only); building on the server; deploying over SSH from the workflow (needs server credentials in GitHub) |
+| D15 | Hand-written manifest and service worker instead of `vite-plugin-pwa`; Biome instead of ESLint and Prettier; the server is bundled with esbuild into one file | the plugin's current versions pull in Workbox packages with open advisories and do not support Vite 8 in older versions; the shell is tiny; Biome is what `nodos` uses; plain Node cannot run the TypeScript workspace packages | `vite-plugin-pwa` (advisories), ESLint + Prettier (two tools, more config), running with `tsx` in production (slower start, dev dependency in the image) |

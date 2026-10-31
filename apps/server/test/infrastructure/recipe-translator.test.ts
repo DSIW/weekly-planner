@@ -18,7 +18,13 @@ describe("deriveRecipe", () => {
   it("maps a complete recipe", () => {
     const { recipe, problems } = deriveRecipe(raw(["🍽️ Hauptgericht", "🍝 Pasta", "🥬 Vegetarisch", "✅ Erprobt"]));
     expect(problems).toEqual([]);
-    expect(recipe).toMatchObject({ mealType: "main", base: "pasta", diet: "vegetarian", isProven: true, totalTimeMinutes: 30 });
+    expect(recipe).toMatchObject({
+      mealType: "main",
+      base: "pasta",
+      diet: "vegetarian",
+      isProven: true,
+      totalTimeMinutes: 30,
+    });
   });
 
   it("ignores emoji variation selectors", () => {
@@ -45,7 +51,9 @@ describe("deriveRecipe", () => {
 
   it("allows cakes to carry baking and dessert together, but not a main dish with another type", () => {
     expect(deriveRecipe(raw(["🍰 Backen", "🍦 Dessert", "🥬 Vegetarisch", "✅ Erprobt"])).problems).toEqual([]);
-    expect(deriveRecipe(raw(["🍽️ Hauptgericht", "🍰 Backen", "🥬 Vegetarisch", "✅ Erprobt"])).problems[0]).toMatch(/main dish also tagged/);
+    expect(deriveRecipe(raw(["🍽️ Hauptgericht", "🍰 Backen", "🥬 Vegetarisch", "✅ Erprobt"])).problems[0]).toMatch(
+      /main dish also tagged/,
+    );
   });
 
   it("reports missing meal type, diet and experience", () => {
@@ -61,7 +69,9 @@ describe("deriveRecipe", () => {
   });
 
   it("flags the want-to-try marker and defaults to two portions", () => {
-    const { recipe } = deriveRecipe(raw(["🍽️ Hauptgericht", "🥬 Vegetarisch", "🆕 Neu", "⭐ Ausprobieren"], { yields: null }));
+    const { recipe } = deriveRecipe(
+      raw(["🍽️ Hauptgericht", "🥬 Vegetarisch", "🆕 Neu", "⭐ Ausprobieren"], { yields: null }),
+    );
     expect(recipe).toMatchObject({ wantsToTry: true, yields: 2 });
   });
 });
@@ -74,6 +84,11 @@ describe("toCatalogEntry", () => {
 
   it("returns needs-data entries with the reasons instead of dropping the recipe", () => {
     const e = toCatalogEntry(raw([], { id: 7, name: "Ohne Tags" }));
-    expect(e).toEqual({ kind: "needs-data", recipeId: 7, name: "Ohne Tags", problems: ["no meal-type tag", "no diet tag", "neither proven nor new"] });
+    expect(e).toEqual({
+      kind: "needs-data",
+      recipeId: 7,
+      name: "Ohne Tags",
+      problems: ["no meal-type tag", "no diet tag", "neither proven nor new"],
+    });
   });
 });

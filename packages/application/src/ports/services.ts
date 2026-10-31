@@ -1,4 +1,11 @@
-import type { LocalDateTime, MealLogEvent, PlanDate, PlanningEvent, PlanningSession, SessionId } from "@weekly-planner/domain";
+import type {
+  LocalDateTime,
+  MealLogEvent,
+  PlanDate,
+  PlanningEvent,
+  PlanningSession,
+  SessionId,
+} from "@weekly-planner/domain";
 
 export type DomainEvent = PlanningEvent | MealLogEvent;
 

@@ -13,10 +13,36 @@ export interface FinalizedDinner {
 
 export type PlanningEvent =
   | { readonly type: "SessionStarted"; readonly sessionId: SessionId; readonly dates: readonly PlanDate[] }
-  | { readonly type: "RecipeProposed"; readonly sessionId: SessionId; readonly proposalId: ProposalId; readonly date: PlanDate; readonly recipeId: RecipeId; readonly proposedBy: MemberId }
-  | { readonly type: "SuggestionPassed"; readonly sessionId: SessionId; readonly recipeId: RecipeId; readonly passedBy: MemberId }
-  | { readonly type: "ProposalAccepted"; readonly sessionId: SessionId; readonly proposalId: ProposalId; readonly date: PlanDate; readonly recipeId: RecipeId; readonly decidedBy: MemberId }
-  | { readonly type: "ProposalVetoed"; readonly sessionId: SessionId; readonly proposalId: ProposalId; readonly date: PlanDate; readonly recipeId: RecipeId; readonly decidedBy: MemberId }
+  | {
+      readonly type: "RecipeProposed";
+      readonly sessionId: SessionId;
+      readonly proposalId: ProposalId;
+      readonly date: PlanDate;
+      readonly recipeId: RecipeId;
+      readonly proposedBy: MemberId;
+    }
+  | {
+      readonly type: "SuggestionPassed";
+      readonly sessionId: SessionId;
+      readonly recipeId: RecipeId;
+      readonly passedBy: MemberId;
+    }
+  | {
+      readonly type: "ProposalAccepted";
+      readonly sessionId: SessionId;
+      readonly proposalId: ProposalId;
+      readonly date: PlanDate;
+      readonly recipeId: RecipeId;
+      readonly decidedBy: MemberId;
+    }
+  | {
+      readonly type: "ProposalVetoed";
+      readonly sessionId: SessionId;
+      readonly proposalId: ProposalId;
+      readonly date: PlanDate;
+      readonly recipeId: RecipeId;
+      readonly decidedBy: MemberId;
+    }
   | { readonly type: "DayMarkedLeftovers"; readonly sessionId: SessionId; readonly date: PlanDate }
   | { readonly type: "DayReopened"; readonly sessionId: SessionId; readonly date: PlanDate }
   | { readonly type: "DaysSwapped"; readonly sessionId: SessionId; readonly dates: readonly [PlanDate, PlanDate] }

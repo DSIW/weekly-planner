@@ -6,4 +6,9 @@ import type { Recipe, RecipeId } from "./recipe.js";
  */
 export type CatalogEntry =
   | { readonly kind: "ready"; readonly recipe: Recipe }
-  | { readonly kind: "needs-data"; readonly recipeId: RecipeId; readonly name: string; readonly problems: readonly string[] };
+  | {
+      readonly kind: "needs-data";
+      readonly recipeId: RecipeId;
+      readonly name: string;
+      readonly problems: readonly string[];
+    };

@@ -1,6 +1,18 @@
 import {
-  addLoggedMeal, confirmCooked, correctLoggedMeal, markNotCooked, mealLogEntryId, registerCooking,
-  type Base, type MealLogEntry, type MealLogEntryId, type MealLogEvent, type MemberId, type PlanDate, type RecipeId, type Result,
+  addLoggedMeal,
+  confirmCooked,
+  correctLoggedMeal,
+  markNotCooked,
+  mealLogEntryId,
+  registerCooking,
+  type Base,
+  type MealLogEntry,
+  type MealLogEntryId,
+  type MealLogEvent,
+  type MemberId,
+  type PlanDate,
+  type RecipeId,
+  type Result,
 } from "@weekly-planner/domain";
 import type { RecipeCatalog } from "../ports/recipe-catalog.js";
 import type { MealLogRepository, RecipeExperienceRepository } from "../ports/repositories.js";
@@ -16,7 +28,10 @@ export interface MealLogDeps {
 export type EntryResult = Result<MealLogEntry>;
 
 /** MealConfirmedAsCooked makes the recipe proven. Handled in the same unit of work as the entry (ARCHITECTURE §5). */
-export async function registerCookings(deps: Pick<MealLogDeps, "experience">, events: readonly MealLogEvent[]): Promise<void> {
+export async function registerCookings(
+  deps: Pick<MealLogDeps, "experience">,
+  events: readonly MealLogEvent[],
+): Promise<void> {
   for (const e of events) {
     if (e.type !== "MealConfirmedAsCooked") continue;
     await deps.experience.save(registerCooking(await deps.experience.get(e.recipeId), e.recipeId, e.date));
@@ -47,7 +62,12 @@ async function changeEntry(
 export class ConfirmCooked {
   constructor(private readonly deps: MealLogDeps) {}
   execute(cmd: { member: MemberId; entryId: MealLogEntryId }): Promise<EntryResult> {
-    return changeEntry(this.deps, cmd.entryId, async (e) => confirmCooked(e, cmd), (e) => this.deps.mealLog.save(e));
+    return changeEntry(
+      this.deps,
+      cmd.entryId,
+      async (e) => confirmCooked(e, cmd),
+      (e) => this.deps.mealLog.save(e),
+    );
   }
 }
 
@@ -55,14 +75,24 @@ export class ConfirmCooked {
 export class MarkNotCooked {
   constructor(private readonly deps: MealLogDeps) {}
   execute(cmd: { member: MemberId; entryId: MealLogEntryId }): Promise<EntryResult> {
-    return changeEntry(this.deps, cmd.entryId, async (e) => markNotCooked(e, cmd), (e) => this.deps.mealLog.remove(e.id));
+    return changeEntry(
+      this.deps,
+      cmd.entryId,
+      async (e) => markNotCooked(e, cmd),
+      (e) => this.deps.mealLog.remove(e.id),
+    );
   }
 }
 
 /** rule CorrectLoggedMeal */
 export class CorrectLoggedMeal {
   constructor(private readonly deps: MealLogDeps & { catalog: RecipeCatalog }) {}
-  async execute(cmd: { member: MemberId; entryId: MealLogEntryId; base: Base; recipeId: RecipeId | null }): Promise<EntryResult> {
+  async execute(cmd: {
+    member: MemberId;
+    entryId: MealLogEntryId;
+    base: Base;
+    recipeId: RecipeId | null;
+  }): Promise<EntryResult> {
     const recipe = cmd.recipeId === null ? null : await this.deps.catalog.find(cmd.recipeId);
     if (cmd.recipeId !== null && !recipe) return { ok: false, reason: "unknown_recipe" };
     return changeEntry(
@@ -77,7 +107,12 @@ export class CorrectLoggedMeal {
 /** rule AddLoggedMeal */
 export class AddLoggedMeal {
   constructor(private readonly deps: MealLogDeps & { catalog: RecipeCatalog; ids: IdGenerator; clock: Clock }) {}
-  async execute(cmd: { member: MemberId; date: PlanDate; base: Base; recipeId: RecipeId | null }): Promise<EntryResult> {
+  async execute(cmd: {
+    member: MemberId;
+    date: PlanDate;
+    base: Base;
+    recipeId: RecipeId | null;
+  }): Promise<EntryResult> {
     const { deps } = this;
     const recipe = cmd.recipeId === null ? null : await deps.catalog.find(cmd.recipeId);
     if (cmd.recipeId !== null && !recipe) return { ok: false, reason: "unknown_recipe" };

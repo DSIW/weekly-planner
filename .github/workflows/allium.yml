@@ -1,0 +1,39 @@
+name: Allium spec check
+
+on:
+  push:
+    branches: [main]
+    paths: ["spec/**", ".github/workflows/allium.yml"]
+  pull_request:
+    branches: [main]
+    paths: ["spec/**", ".github/workflows/allium.yml"]
+
+env:
+  ALLIUM_CLI_VERSION: 3.6.1
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache allium CLI
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/allium
+          key: allium-cli-${{ env.ALLIUM_CLI_VERSION }}
+      - name: Install allium CLI
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo install allium-cli --version "$ALLIUM_CLI_VERSION" --locked
+      - name: Check specs
+        # `allium check` exits 1 on warnings too; only errors should fail the build.
+        run: |
+          set -euo pipefail
+          allium check spec | tee allium-check.json || true
+          errors=$(jq '[.diagnostics[] | select(.severity == "error")] | length' allium-check.json)
+          test "$errors" -eq 0
+      - name: Analyse specs
+        run: allium analyse spec

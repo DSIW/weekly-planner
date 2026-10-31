@@ -8,5 +8,8 @@ export interface RecipeExperience {
 }
 
 /** Records the first confirmed cooking; later ones change nothing. */
-export const registerCooking = (existing: RecipeExperience | null, recipeId: RecipeId, date: PlanDate): RecipeExperience =>
-  existing ?? { recipeId, firstCooked: date };
+export const registerCooking = (
+  existing: RecipeExperience | null,
+  recipeId: RecipeId,
+  date: PlanDate,
+): RecipeExperience => existing ?? { recipeId, firstCooked: date };

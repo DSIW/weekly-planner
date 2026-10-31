@@ -20,7 +20,12 @@ export interface MealLogEntry {
 
 export type MealLogEvent =
   | { readonly type: "MealLogged"; readonly entryId: MealLogEntryId; readonly date: PlanDate }
-  | { readonly type: "MealConfirmedAsCooked"; readonly entryId: MealLogEntryId; readonly recipeId: RecipeId; readonly date: PlanDate }
+  | {
+      readonly type: "MealConfirmedAsCooked";
+      readonly entryId: MealLogEntryId;
+      readonly recipeId: RecipeId;
+      readonly date: PlanDate;
+    }
   | { readonly type: "MealMarkedNotCooked"; readonly entryId: MealLogEntryId; readonly date: PlanDate };
 
 const cooked = (e: MealLogEntry): MealLogEvent[] =>
@@ -49,7 +54,14 @@ export function dinnersDueForLogging(
 /** rule LogPlannedMeal: the entry created from a planned dinner, not yet confirmed. */
 export function logPlannedMeal(cmd: { id: MealLogEntryId; dinner: DueDinner }): Outcome<MealLogEntry, MealLogEvent> {
   const { id, dinner } = cmd;
-  const state: MealLogEntry = { id, date: dinner.date, base: dinner.recipe.base, recipe: dinner.recipe, source: "from_plan", confirmed: false };
+  const state: MealLogEntry = {
+    id,
+    date: dinner.date,
+    base: dinner.recipe.base,
+    recipe: dinner.recipe,
+    source: "from_plan",
+    confirmed: false,
+  };
   return { state, events: [{ type: "MealLogged", entryId: id, date: dinner.date }] };
 }
 
@@ -84,6 +96,13 @@ export function addLoggedMeal(
   today: PlanDate,
 ): Done {
   if (cmd.date > today) return reject("date_in_future");
-  const state: MealLogEntry = { id: cmd.id, date: cmd.date, base: cmd.base, recipe: cmd.recipe, source: "added", confirmed: true };
+  const state: MealLogEntry = {
+    id: cmd.id,
+    date: cmd.date,
+    base: cmd.base,
+    recipe: cmd.recipe,
+    source: "added",
+    confirmed: true,
+  };
   return succeed({ state, events: [{ type: "MealLogged", entryId: state.id, date: state.date }, ...cooked(state)] });
 }

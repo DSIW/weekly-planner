@@ -78,7 +78,9 @@ describe("CorrectLoggedMeal and AddLoggedMeal", () => {
   it("corrects an entry to another recipe: confirmed, and that recipe becomes proven", async () => {
     const { h } = await dayAfterDinner();
     await h.logPlannedMeals.execute();
-    const e = ok(await h.correctLoggedMeal.execute({ member: ME, entryId: only(h).id, base: "rice", recipeId: other.id }));
+    const e = ok(
+      await h.correctLoggedMeal.execute({ member: ME, entryId: only(h).id, base: "rice", recipeId: other.id }),
+    );
     expect(e).toMatchObject({ source: "corrected", confirmed: true, base: "rice" });
     expect([...h.experience.byRecipe.keys()]).toEqual([other.id]);
   });
@@ -100,6 +102,9 @@ describe("CorrectLoggedMeal and AddLoggedMeal", () => {
 
   it("rejects a meal dated in the future", async () => {
     const { h } = await dayAfterDinner();
-    expect(await h.addLoggedMeal.execute({ member: AC, date: THU, base: "rice", recipeId: null })).toEqual({ ok: false, reason: "date_in_future" });
+    expect(await h.addLoggedMeal.execute({ member: AC, date: THU, base: "rice", recipeId: null })).toEqual({
+      ok: false,
+      reason: "date_in_future",
+    });
   });
 });

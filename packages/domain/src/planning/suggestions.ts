@@ -35,7 +35,11 @@ export function suggestRecipes(input: SuggestionInput): Recipe[] {
   if (!day) return [];
 
   const planned = plannedDays(session).flatMap((d) => (d.recipe ? [d.recipe] : []));
-  const excluded = new Set<RecipeId>([...vetoedRecipeIds(session), ...passedRecipeIds(session), ...planned.map((r) => r.id)]);
+  const excluded = new Set<RecipeId>([
+    ...vetoedRecipeIds(session),
+    ...passedRecipeIds(session),
+    ...planned.map((r) => r.id),
+  ]);
   const eligible = input.candidates.filter(
     (r) =>
       isDinnerCandidate(r) &&
@@ -73,7 +77,11 @@ function recentBases(input: SuggestionInput, date: PlanDate, planned: readonly R
 }
 
 /** Choosing a non-vegetarian dish now would make the vegetarian share unreachable for this session. */
-function isVegetarianShareAtRisk(session: PlanningSession, planned: readonly Recipe[], config: PlanningConfig): boolean {
+function isVegetarianShareAtRisk(
+  session: PlanningSession,
+  planned: readonly Recipe[],
+  config: PlanningConfig,
+): boolean {
   const open = session.days.filter((d) => d.status === "open").length;
   const dinners = planned.length + open;
   const target = Math.ceil(config.vegetarianShare * dinners - 1e-9);

@@ -24,8 +24,11 @@ export interface CatalogAudit {
   readonly needsData: readonly { readonly name: string; readonly problems: readonly string[] }[];
 }
 
-const tally = (recipes: readonly Recipe[], key: (r: Recipe) => string): Record<string, number> =>
-  recipes.reduce<Record<string, number>>((acc, r) => ({ ...acc, [key(r)]: (acc[key(r)] ?? 0) + 1 }), {});
+const tally = (recipes: readonly Recipe[], key: (r: Recipe) => string): Record<string, number> => {
+  const counts: Record<string, number> = {};
+  for (const r of recipes) counts[key(r)] = (counts[key(r)] ?? 0) + 1;
+  return counts;
+};
 
 /** Use case: do all recipes carry the attributes the planning rules need? Read-only. */
 export class AuditRecipeCatalog {

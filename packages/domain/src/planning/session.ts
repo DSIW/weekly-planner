@@ -147,7 +147,14 @@ export function proposeRecipe(
   };
   return done(
     { ...s, proposals: [...s.proposals, proposal] },
-    { type: "RecipeProposed", sessionId: s.id, proposalId: proposal.id, date: cmd.date, recipeId: cmd.recipe.id, proposedBy: cmd.member },
+    {
+      type: "RecipeProposed",
+      sessionId: s.id,
+      proposalId: proposal.id,
+      date: cmd.date,
+      recipeId: cmd.recipe.id,
+      proposedBy: cmd.member,
+    },
   );
 }
 
@@ -191,7 +198,14 @@ export function acceptProposal(
   if (!fitsDate(proposal.recipe, proposal.date, config)) return reject("too_long_for_weekday");
   return done(
     withDay(decide(s, proposal, "accepted", cmd.member), proposal.date, plannedWith(proposal.date, proposal.recipe)),
-    { type: "ProposalAccepted", sessionId: s.id, proposalId: proposal.id, date: proposal.date, recipeId: proposal.recipe.id, decidedBy: cmd.member },
+    {
+      type: "ProposalAccepted",
+      sessionId: s.id,
+      proposalId: proposal.id,
+      date: proposal.date,
+      recipeId: proposal.recipe.id,
+      decidedBy: cmd.member,
+    },
   );
 }
 
@@ -290,7 +304,15 @@ export function finalizePlan(
       sessionId: s.id,
       dinners: planned.flatMap((d) =>
         d.recipe
-          ? [{ date: d.date, recipeId: d.recipe.id, recipeName: d.recipe.name, recipeYields: d.recipe.yields, portions: config.householdSize }]
+          ? [
+              {
+                date: d.date,
+                recipeId: d.recipe.id,
+                recipeName: d.recipe.name,
+                recipeYields: d.recipe.yields,
+                portions: config.householdSize,
+              },
+            ]
           : [],
       ),
     },
@@ -306,7 +328,10 @@ export function closeSession(s: PlanningSession, _cmd: { member: MemberId }): Do
 // --- Reminder (temporal rule RemindToFinalize) -----------------------------------------------
 
 /** When the reminder to finalize is due: the morning of the first agreed day. Null while nothing is agreed. */
-export function reminderDueAt(s: PlanningSession, config: PlanningConfig = defaultPlanningConfig): LocalDateTime | null {
+export function reminderDueAt(
+  s: PlanningSession,
+  config: PlanningConfig = defaultPlanningConfig,
+): LocalDateTime | null {
   const first = plannedDays(s)[0];
   return first ? { date: first.date, hour: config.reminderHour } : null;
 }

@@ -17,7 +17,10 @@ describe("KitchenOwlClient", () => {
   });
 
   it("parses recipes and ignores unknown fields", async () => {
-    const recipes = await new KitchenOwlClient(cfg, json([{ id: 5, name: "A", time: 20, tags: [{ name: "x", id: 1 }], extra: true }])).listRecipes();
+    const recipes = await new KitchenOwlClient(
+      cfg,
+      json([{ id: 5, name: "A", time: 20, tags: [{ name: "x", id: 1 }], extra: true }]),
+    ).listRecipes();
     expect(recipes[0]).toMatchObject({ id: 5, name: "A", time: 20, items: [] });
   });
 
@@ -27,6 +30,8 @@ describe("KitchenOwlClient", () => {
   });
 
   it("rejects an unexpected response shape", async () => {
-    await expect(new KitchenOwlClient(cfg, json({ not: "a list" })).listRecipes()).rejects.toThrow(/unexpected recipe list/);
+    await expect(new KitchenOwlClient(cfg, json({ not: "a list" })).listRecipes()).rejects.toThrow(
+      /unexpected recipe list/,
+    );
   });
 });

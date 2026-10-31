@@ -1,31 +1,70 @@
 import { z } from "zod";
 
-const schema = z.object({
+const kitchenowlSchema = z.object({
   KITCHENOWL_URL: z.string().url(),
   KITCHENOWL_TOKEN: z.string().min(1),
   KITCHENOWL_HOUSEHOLD_ID: z.coerce.number().int().positive().default(2),
 });
 
-export type Config = {
+const serverSchema = kitchenowlSchema.extend({
+  SESSION_SECRET: z.string().min(32),
+  PORT: z.coerce.number().int().positive().default(3000),
+  BASE_PATH: z
+    .string()
+    .regex(/^(\/[a-z0-9-]+)*$/)
+    .default("/plan"),
+  WEB_DIST: z.string().min(1).default("apps/web/dist"),
+  COOKIE_SECURE: z.enum(["true", "false"]).default("true"),
+  TRUST_PROXY: z.enum(["true", "false"]).default("true"),
+});
+
+type Config = {
   kitchenowlUrl: string;
   kitchenowlToken: string;
   householdId: number;
 };
 
-/** Reads the configuration from the environment. The token is never logged. */
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
-  const parsed = schema.safeParse({
-    KITCHENOWL_URL: env.KITCHENOWL_URL ?? "https://kitchenowl.s.dsiw-it.de",
-    KITCHENOWL_TOKEN: env.KITCHENOWL_TOKEN,
-    KITCHENOWL_HOUSEHOLD_ID: env.KITCHENOWL_HOUSEHOLD_ID,
-  });
+type ServerConfig = Config & {
+  sessionSecret: string;
+  port: number;
+  /** URL prefix the app is served under, without a trailing slash; empty for the root. */
+  basePath: string;
+  webDist: string;
+  cookieSecure: boolean;
+  trustProxy: boolean;
+};
+
+function parse<T extends z.ZodType>(schema: T, env: NodeJS.ProcessEnv): z.infer<T> {
+  const parsed = schema.safeParse(env);
   if (!parsed.success) {
-    const missing = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
-    throw new Error(`invalid configuration: ${missing}`);
+    // Names only: values (tokens, secrets) never reach an error message.
+    const bad = [...new Set(parsed.error.issues.map((i) => i.path.join(".")))].join(", ");
+    throw new Error(`invalid configuration: ${bad}`);
   }
+  return parsed.data;
+}
+
+const kitchenowl = (d: z.infer<typeof kitchenowlSchema>): Config => ({
+  kitchenowlUrl: d.KITCHENOWL_URL.replace(/\/+$/, ""),
+  kitchenowlToken: d.KITCHENOWL_TOKEN,
+  householdId: d.KITCHENOWL_HOUSEHOLD_ID,
+});
+
+/** The KitchenOwl settings alone, for the command line tools. */
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
+  return kitchenowl(parse(kitchenowlSchema, env));
+}
+
+/** Everything the server needs. Reads the environment only; secrets are never logged. */
+export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
+  const d = parse(serverSchema, env);
   return {
-    kitchenowlUrl: parsed.data.KITCHENOWL_URL.replace(/\/+$/, ""),
-    kitchenowlToken: parsed.data.KITCHENOWL_TOKEN,
-    householdId: parsed.data.KITCHENOWL_HOUSEHOLD_ID,
+    ...kitchenowl(d),
+    sessionSecret: d.SESSION_SECRET,
+    port: d.PORT,
+    basePath: d.BASE_PATH,
+    webDist: d.WEB_DIST,
+    cookieSecure: d.COOKIE_SECURE === "true",
+    trustProxy: d.TRUST_PROXY === "true",
   };
 }

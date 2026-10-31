@@ -1,0 +1,73 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "off"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        "noUnusedVariables": "error"
+      },
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
+      "style": {
+        "useConst": "error",
+        "noNonNullAssertion": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always"
+    }
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/dist",
+      "!**/coverage",
+      "!**/ranking-oracle.json",
+      "!package-lock.json",
+      "!apps/web/public",
+      "!**/*.md"
+    ]
+  },
+  "overrides": [
+    {
+      "includes": [
+        "packages/domain/test/eligibility.test.ts",
+        "packages/domain/test/meal-log/meal-log.test.ts",
+        "packages/domain/test/support/builders.ts",
+        "packages/domain/test/planning/start-session.test.ts",
+        "packages/domain/test/planning/propose-recipe.test.ts",
+        "packages/domain/test/planning/vote.test.ts",
+        "packages/domain/test/planning/day-operations.test.ts",
+        "packages/domain/test/planning/finalize-close.test.ts",
+        "packages/domain/test/planning/transitions.test.ts",
+        "packages/domain/test/planning/suggestions.test.ts",
+        "packages/domain/test/planning/invariants.property.test.ts"
+      ],
+      "formatter": {
+        "enabled": false
+      },
+      "linter": {
+        "enabled": false
+      }
+    }
+  ]
+}

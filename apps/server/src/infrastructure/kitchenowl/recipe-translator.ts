@@ -39,7 +39,7 @@ const baseByTag = lookup(BASE_TAGS);
  * Anti-corruption layer: KitchenOwl's tags and times are translated into the domain's own vocabulary here and
  * nowhere else. If the tag vocabulary changes, only this file changes.
  */
-export interface DerivedRecipe {
+interface DerivedRecipe {
   /** Present when meal type and diet could be determined. */
   recipe: Recipe | null;
   /** Reasons this recipe needs attention in the data (empty = fine). */
@@ -58,7 +58,8 @@ export function deriveRecipe(raw: RawRecipe): DerivedRecipe {
   const meals = [...new Set([...tags].map((t) => mealByTag.get(t)).filter((m): m is MealType => m !== undefined))];
   let mealType: MealType | undefined;
   if (meals.length === 0) problems.push("no meal-type tag");
-  else if (meals.includes("main") && meals.length > 1) problems.push(`main dish also tagged ${meals.filter((m) => m !== "main").join("/")}`);
+  else if (meals.includes("main") && meals.length > 1)
+    problems.push(`main dish also tagged ${meals.filter((m) => m !== "main").join("/")}`);
   else mealType = meals.includes("main") ? "main" : meals[0];
 
   const bases = [...new Set([...tags].map((t) => baseByTag.get(t)).filter((b): b is Base => b !== undefined))];

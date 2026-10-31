@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "workspaces": {
+    ".": {},
+    "packages/domain": { "entry": ["test/**/*.test.ts"] },
+    "packages/application": { "entry": ["test/**/*.test.ts"] },
+    "apps/server": { "entry": ["test/**/*.test.ts"] },
+    "apps/web": { "entry": ["test/**/*.{ts,tsx}"], "ignore": ["public/**"] }
+  }
+}

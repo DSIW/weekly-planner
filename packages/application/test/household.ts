@@ -1,12 +1,35 @@
 import { defaultPlanningConfig, type CatalogEntry, type Recipe } from "@weekly-planner/domain";
 import {
-  AcceptProposal, AddLoggedMeal, CloseSession, ConfirmCooked, CorrectLoggedMeal, FinalizePlan, LogPlannedMeals, MarkLeftoverDay,
-  MarkNotCooked, MovePlannedDay, PassSuggestion, ProposeRecipe, RemindToFinalize, ReopenDay, StartSession, SuggestRecipes,
-  SwapPlannedDays, VetoProposal,
+  AcceptProposal,
+  AddLoggedMeal,
+  CloseSession,
+  ConfirmCooked,
+  CorrectLoggedMeal,
+  FinalizePlan,
+  LogPlannedMeals,
+  MarkLeftoverDay,
+  MarkNotCooked,
+  MovePlannedDay,
+  PassSuggestion,
+  ProposeRecipe,
+  RemindToFinalize,
+  ReopenDay,
+  StartSession,
+  SuggestRecipes,
+  SwapPlannedDays,
+  VetoProposal,
 } from "../src/index.js";
 import {
-  FakeClock, InMemoryCatalog, InMemoryExperience, InMemoryMealLog, InMemorySessions, RecordingNotifier, RecordingPublisher,
-  SequenceIds, SessionsDinnerCalendar, immediateUow,
+  FakeClock,
+  InMemoryCatalog,
+  InMemoryExperience,
+  InMemoryMealLog,
+  InMemorySessions,
+  RecordingNotifier,
+  RecordingPublisher,
+  SequenceIds,
+  SessionsDinnerCalendar,
+  immediateUow,
 } from "./support/in-memory.js";
 
 /** The application layer wired to in-memory fakes: what the composition root will do with real adapters. */
@@ -26,7 +49,13 @@ export function household(recipes: Recipe[] = []) {
   const session = { sessions, events, uow };
   const logDeps = { mealLog, experience, events, uow };
   return {
-    sessions, mealLog, experience, catalog, events, notifier, clock,
+    sessions,
+    mealLog,
+    experience,
+    catalog,
+    events,
+    notifier,
+    clock,
     startSession: new StartSession({ ...session, ids, clock }, config),
     proposeRecipe: new ProposeRecipe({ ...session, catalog, ids }, config),
     passSuggestion: new PassSuggestion({ ...session, catalog }),

@@ -1,7 +1,23 @@
 import {
-  acceptProposal, closeSession, finalizePlan, markLeftoverDay, movePlannedDay, passSuggestion, proposalId, proposeRecipe,
-  reopenDay, sessionId, startSession, swapPlannedDays, vetoProposal,
-  type MemberId, type PlanDate, type PlanningConfig, type ProposalId, type RecipeId, type SessionId,
+  acceptProposal,
+  closeSession,
+  finalizePlan,
+  markLeftoverDay,
+  movePlannedDay,
+  passSuggestion,
+  proposalId,
+  proposeRecipe,
+  reopenDay,
+  sessionId,
+  startSession,
+  swapPlannedDays,
+  vetoProposal,
+  type MemberId,
+  type PlanDate,
+  type PlanningConfig,
+  type ProposalId,
+  type RecipeId,
+  type SessionId,
 } from "@weekly-planner/domain";
 import type { RecipeCatalog } from "../ports/recipe-catalog.js";
 import type { DinnerCalendar, IdGenerator, Clock } from "../ports/services.js";
@@ -11,7 +27,10 @@ const unknownRecipe: CommandResult = { ok: false, reason: "unknown_recipe" };
 
 /** rule StartSession */
 export class StartSession {
-  constructor(private readonly deps: SessionDeps & { ids: IdGenerator; clock: Clock }, private readonly config: PlanningConfig) {}
+  constructor(
+    private readonly deps: SessionDeps & { ids: IdGenerator; clock: Clock },
+    private readonly config: PlanningConfig,
+  ) {}
 
   async execute(cmd: { member: MemberId; dates: readonly PlanDate[] }): Promise<CommandResult> {
     const { deps } = this;
@@ -36,7 +55,12 @@ export class ProposeRecipe {
     private readonly config: PlanningConfig,
   ) {}
 
-  async execute(cmd: { member: MemberId; sessionId: SessionId; date: PlanDate; recipeId: RecipeId }): Promise<CommandResult> {
+  async execute(cmd: {
+    member: MemberId;
+    sessionId: SessionId;
+    date: PlanDate;
+    recipeId: RecipeId;
+  }): Promise<CommandResult> {
     const recipe = await this.deps.catalog.find(cmd.recipeId);
     if (!recipe) return unknownRecipe;
     const id = proposalId(this.deps.ids.next());
@@ -102,7 +126,10 @@ export class ReopenDay {
 
 /** rule SwapPlannedDays */
 export class SwapPlannedDays {
-  constructor(private readonly deps: SessionDeps, private readonly config: PlanningConfig) {}
+  constructor(
+    private readonly deps: SessionDeps,
+    private readonly config: PlanningConfig,
+  ) {}
 
   execute(cmd: { member: MemberId; sessionId: SessionId; a: PlanDate; b: PlanDate }): Promise<CommandResult> {
     return changeSession(this.deps, cmd.sessionId, async (s) => swapPlannedDays(s, cmd, this.config));
@@ -111,7 +138,10 @@ export class SwapPlannedDays {
 
 /** rule MovePlannedDay: asks the DinnerCalendar whether another session already planned the target date. */
 export class MovePlannedDay {
-  constructor(private readonly deps: SessionDeps & { calendar: DinnerCalendar }, private readonly config: PlanningConfig) {}
+  constructor(
+    private readonly deps: SessionDeps & { calendar: DinnerCalendar },
+    private readonly config: PlanningConfig,
+  ) {}
 
   execute(cmd: { member: MemberId; sessionId: SessionId; from: PlanDate; to: PlanDate }): Promise<CommandResult> {
     return changeSession(this.deps, cmd.sessionId, async (s) => {
@@ -123,7 +153,10 @@ export class MovePlannedDay {
 
 /** rule FinalizePlan */
 export class FinalizePlan {
-  constructor(private readonly deps: SessionDeps, private readonly config: PlanningConfig) {}
+  constructor(
+    private readonly deps: SessionDeps,
+    private readonly config: PlanningConfig,
+  ) {}
 
   execute(cmd: { member: MemberId; sessionId: SessionId }): Promise<CommandResult> {
     return changeSession(this.deps, cmd.sessionId, async (s) => finalizePlan(s, cmd, this.config));

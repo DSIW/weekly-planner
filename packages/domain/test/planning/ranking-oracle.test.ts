@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import {
-  acceptProposal, passSuggestion, planDate, proposalId, proposeRecipe, recipeId, sessionId, startSession, suggestRecipes,
+  acceptProposal,
+  passSuggestion,
+  planDate,
+  proposalId,
+  proposeRecipe,
+  recipeId,
+  sessionId,
+  startSession,
+  suggestRecipes,
   type Recipe,
 } from "../../src/index.js";
 import { AC, ME, config, must } from "../support/builders.js";
@@ -24,11 +32,15 @@ describe("suggestion ranking matches the reference model", () => {
 
   it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
     const byId = new Map(c.recipes.map((r) => [r.id as number, r]));
-    let session = must(startSession({ id: sessionId("oracle"), startedBy: AC, dates: c.dates.map(planDate), now: 0 }, config)).state;
+    let session = must(
+      startSession({ id: sessionId("oracle"), startedBy: AC, dates: c.dates.map(planDate), now: 0 }, config),
+    ).state;
     for (const p of c.planned) {
       const recipe = byId.get(p.recipeId)!;
       const pid = proposalId(`p${p.recipeId}`);
-      session = must(proposeRecipe(session, { proposalId: pid, member: AC, date: planDate(p.date), recipe }, config)).state;
+      session = must(
+        proposeRecipe(session, { proposalId: pid, member: AC, date: planDate(p.date), recipe }, config),
+      ).state;
       session = must(acceptProposal(session, { member: ME, proposalId: pid, dateTakenElsewhere: false }, config)).state;
     }
     for (const id of c.passed) session = must(passSuggestion(session, { member: AC, recipe: byId.get(id)! })).state;
