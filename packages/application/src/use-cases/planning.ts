@@ -13,7 +13,10 @@ import {
   swapPlannedDays,
   vetoProposal,
   type MemberId,
+  type Outcome,
+  type PlanningEvent,
   type PlanningSession,
+  type Result,
   type PlanDate,
   type PlanningConfig,
   type ProposalId,
@@ -21,7 +24,7 @@ import {
   type SessionId,
 } from "@weekly-planner/domain";
 import type { RecipeCatalog } from "../ports/recipe-catalog.js";
-import type { SessionRepository } from "../ports/repositories.js";
+import { OpenSessionConflict, type SessionRepository } from "../ports/repositories.js";
 import type { DinnerCalendar, IdGenerator, Clock } from "../ports/services.js";
 import { changeSession, type CommandResult, type SessionDeps } from "./support.js";
 
@@ -36,20 +39,26 @@ export class StartSession {
 
   async execute(cmd: { member: MemberId; dates: readonly PlanDate[] }): Promise<CommandResult> {
     const { deps } = this;
-    const result = await deps.uow.run(async () => {
-      const outcome = startSession(
-        {
-          id: sessionId(deps.ids.next()),
-          startedBy: cmd.member,
-          dates: cmd.dates,
-          now: deps.clock.now(),
-          openSessionExists: (await deps.sessions.findOpen()) !== null,
-        },
-        this.config,
-      );
-      if (outcome.ok) await deps.sessions.save(outcome.value.state);
-      return outcome;
-    });
+    let result: Result<Outcome<PlanningSession, PlanningEvent>>;
+    try {
+      result = await deps.uow.run(async () => {
+        const outcome = startSession(
+          {
+            id: sessionId(deps.ids.next()),
+            startedBy: cmd.member,
+            dates: cmd.dates,
+            now: deps.clock.now(),
+            openSessionExists: (await deps.sessions.findOpen()) !== null,
+          },
+          this.config,
+        );
+        if (outcome.ok) await deps.sessions.save(outcome.value.state);
+        return outcome;
+      });
+    } catch (error) {
+      if (error instanceof OpenSessionConflict) return { ok: false, reason: "session_already_open" };
+      throw error;
+    }
     if (!result.ok) return result;
     await deps.events.publish(result.value.events);
     return { ok: true, value: result.value.state };

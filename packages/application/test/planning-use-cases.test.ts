@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planDate, proposalId, recipeId, sessionId, type PlanningSession, type Result } from "@weekly-planner/domain";
+import { OpenSessionConflict } from "../src/index.js";
 import { household } from "./household.js";
 import { AC, ME, aRecipe } from "./support/in-memory.js";
 
@@ -66,6 +67,18 @@ describe("a planning session through the use cases", () => {
     expect(await h.getCurrentSession.execute()).toBeNull();
     const next = ok(await h.startSession.execute({ member: ME, dates: [MON, TUE] }));
     expect((await h.getCurrentSession.execute())?.id).toBe(next.id);
+  });
+
+  it("answers session_already_open when storage reports a concurrent start the check did not see", async () => {
+    const h = household();
+    h.sessions.save = async () => {
+      throw new OpenSessionConflict();
+    };
+    expect(await h.startSession.execute({ member: AC, dates: [MON, TUE] })).toEqual({
+      ok: false,
+      reason: "session_already_open",
+    });
+    expect(h.events.published).toEqual([]);
   });
 
   it("rejects an invalid start without saving a session", async () => {

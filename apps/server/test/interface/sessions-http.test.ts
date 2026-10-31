@@ -114,6 +114,15 @@ describe("sessions over HTTP", () => {
     expect(res.json()).toEqual({ error: "session_already_open" });
   });
 
+  it("lets exactly one of two simultaneous starts win", async () => {
+    const [a, b] = await Promise.all([
+      start(max, ["2026-11-02", "2026-11-03"]),
+      start(ac, ["2026-11-04", "2026-11-05"]),
+    ]);
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    expect((await call("GET", "/sessions/current", max)).json().session).not.toBeNull();
+  });
+
   it.each([
     [["2026-11-02"], 422, "too_few_days"],
     [["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"], 422, "too_many_days"],

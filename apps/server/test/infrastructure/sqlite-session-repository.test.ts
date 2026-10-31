@@ -11,6 +11,7 @@ import {
   type PlanningSession,
   type Recipe,
 } from "@weekly-planner/domain";
+import { OpenSessionConflict } from "@weekly-planner/application";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase, type Database } from "../../src/infrastructure/sqlite/database.js";
 import { SqliteSessionRepository } from "../../src/infrastructure/sqlite/sqlite-session-repository.js";
@@ -98,7 +99,7 @@ describe("SqliteSessionRepository", () => {
   it("refuses a second open session even if a caller forgot to check", async () => {
     const { sessions } = fresh();
     await sessions.save(aSession("s1"));
-    await expect(sessions.save(aSession("s2"))).rejects.toThrow();
+    await expect(sessions.save(aSession("s2"))).rejects.toBeInstanceOf(OpenSessionConflict);
     expect(await sessions.listAll()).toHaveLength(1);
   });
 

@@ -47,7 +47,7 @@ Status: released as v0.1.2 and running on the real server. Verified: sign-in wit
 - Frontend: date picker, plan board with the days, live update via SSE, reconnect refetch.
 - Verify by hand: start a session on the phone; a laptop browser signed in as the other member shows it within a second or two; reload keeps it; the server restarts without losing it.
 
-Status: built and tested; not released or verified on a phone yet. Decisions made on the way: only **one session is open at a time** (new spec rule on StartSession; a second start is refused, and "Planung verwerfen" abandons the open one so a wrong pick is not stuck), the live stream is household-wide (`GET /api/events`), SQLite is `node:sqlite` (D17, Node 22.22.2).
+Status: built, tested and `weed`ed; not released or verified on a phone yet. Decisions made on the way: only **one session is open at a time** (new spec rule on StartSession; a second start is refused, and "Planung verwerfen" abandons the open one so a wrong pick is not stuck), the live stream is household-wide (`GET /api/events`), SQLite is `node:sqlite` (D17, Node 22.22.2).
 
 
 ### S2a: Agree a dinner
@@ -80,6 +80,7 @@ Status: built and tested; not released or verified on a phone yet. Decisions mad
 
 - Backend: `FinalizePlan` as the saga from `ARCHITECTURE.md` section 6 (per-day export state, retry, no duplicates), amount scaling to two portions, consolidation preview, `PlannerGateway` on KitchenOwl; `RemindToFinalize` scheduler job, Web Push (installed PWA) with in-app banner as fallback.
 - Frontend: finalize screen with the consolidated list preview, export status and retry, reminder permission prompt and banner.
+- Before wiring the jobs (found by `weed` on S1b): `RemindToFinalize` reads sessions outside the unit of work and saves the stale aggregate inside one, so a command committed in between would be overwritten; re-read inside the unit of work. Also decide what "current session" means once a finalized and an open session coexist (open question in the spec).
 - Verify by hand: finalize a real plan and check the planner and the shopping list in KitchenOwl (amounts scaled, items merged); kill the server mid-export and see the retry finish without duplicates; the reminder arrives on the phone at 08:00 on the first agreed day.
 
 ### S5: Cook and learn
