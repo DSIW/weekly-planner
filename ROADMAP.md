@@ -52,7 +52,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 - Backend: `SuggestRecipes` and `PassSuggestion` over HTTP, recent-plan window from earlier sessions, "needs time" flag.
 - Frontend: swipe deck (right proposes, left passes) with photo, time, base, diet, new badge and the missing-time hint; replaces the plain list as the default view, the list stays as search.
-- Verify by hand: base variety, vegetarian share and one new recipe per session visibly shape the order across a few real sessions; a passed dish disappears for the other member's client too until the next session.
+- Verify by hand: base variety, vegetarian share and one new recipe per session visibly shape the order across a few real sessions; a passed dish disappears for the other member's client too until the next session; a recipe without a cooking time shows the "add time" hint.
 
 ### S3: Shape the plan
 
@@ -60,7 +60,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 - Backend: `MarkLeftoverDay`, `ReopenDay`, `SwapPlannedDays`, `MovePlannedDay` over HTTP.
 - Frontend: leftover marker, reopen, drag and drop between days (swap onto an agreed day, move onto an open day), clear message when the weekday limit forbids a move.
-- Verify by hand: drag a long recipe onto a weekday and see it refused with the reason; drag between weekend days and see it accepted; the second client follows.
+- Verify by hand: drag a long recipe onto a weekday and see it refused with the reason; drag between weekend days and see it accepted; mark a day as leftovers and reopen it, and reopen an agreed day so the deck offers it again; the second client follows each change.
 
 ### S4: Finalize into KitchenOwl
 
@@ -76,7 +76,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 - Backend: `LogPlannedMeals` daily job, `ConfirmCooked`, `MarkNotCooked`, `CorrectLoggedMeal`, `AddLoggedMeal`, experience repository, meal log feeding base variety and the proven flag into the deck.
 - Frontend: "yesterday" card with cooked / not cooked / something else, add a meal by base only, history list.
-- Verify by hand: confirm a new recipe as cooked and see it count as proven in the next session; mark one as not cooked and see its base stop weighing on the ranking.
+- Verify by hand: confirm a new recipe as cooked and see it count as proven in the next session; mark one as not cooked and see its base stop weighing on the ranking; correct an entry with "something else" (another recipe), and add a meal by its base only.
 
 ### S6: One real week
 
