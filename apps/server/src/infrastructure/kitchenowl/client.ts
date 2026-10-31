@@ -61,7 +61,12 @@ export class KitchenOwlClient {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password, device: "weekly-planner" }),
     });
-    if (res.status === 401 || res.status === 400) return null;
+    if (res.status === 401 || res.status === 400) {
+      // Never the credentials: only what KitchenOwl answered, so a misconfigured URL or proxy can be told apart.
+      const answer = (await res.text().catch(() => "")).slice(0, 120);
+      console.warn(`KitchenOwl rejected a sign-in: HTTP ${res.status} from ${this.config.kitchenowlUrl}: ${answer}`);
+      return null;
+    }
     if (!res.ok) throw new KitchenOwlError(`KitchenOwl sign-in failed with HTTP ${res.status}`, res.status);
     const parsed = authResponseSchema.safeParse(await res.json());
     if (!parsed.success) throw new KitchenOwlError("unexpected sign-in response shape");
