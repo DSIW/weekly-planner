@@ -253,7 +253,8 @@ The plan lives in [`ROADMAP.md`](ROADMAP.md). Work is cut into **vertical slices
 | S3 | shape the plan: leftovers, reopen, drag and drop |
 | S4 | finalize into KitchenOwl: planner entries, scaled shopping list, reminder |
 | S5 | cook and learn: meal log, proven recipes |
-| S6 | one real week, backup, then distil and compare the spec |
+| S6 | one real week on both phones, backup |
+| S7 | distil a spec from the code and compare it with the original |
 
 ## 14. Risks and open points
 

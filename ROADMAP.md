@@ -28,15 +28,15 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 - Backend: Fastify server in `apps/server` (section 8), composition root, sign-in with the member's KitchenOwl credentials checked against KitchenOwl and an httpOnly session cookie (section 10), `GET /api/me`, health check.
 - Frontend: React + Vite PWA shell under `/plan` (`apps/web`), installable, login form, "Hallo <name>" page.
 - Delivery: the Docker image and reverse-proxy entry from section 11 next to KitchenOwl; every later slice is tried on the real deployment.
-- Verify by hand: install on both phones from the real address; wrong password is refused; a KitchenOwl user outside the household cannot sign in; the app opens offline to its shell.
+- Verify by hand: install on one phone from the real address; wrong password is refused; a KitchenOwl user outside the household cannot sign in; the app opens offline to its shell.
 
 ### S1b: Two phones, one session
 
-*A member picks 2-3 dates and both phones show the same empty plan, live.*
+*A member picks 2-3 dates and a second client shows the same empty plan, live.*
 
 - Backend: SQLite file and migrations, `SessionRepository`, `StartSession` and read endpoints, Server-Sent Events for session changes.
 - Frontend: date picker, plan board with the days, live update via SSE, reconnect refetch.
-- Verify by hand: start a session on phone A; phone B shows it within a second or two; reload keeps it; the server restarts without losing it.
+- Verify by hand: start a session on the phone; a laptop browser signed in as the other member shows it within a second or two; reload keeps it; the server restarts without losing it.
 
 ### S2a: Agree a dinner
 
@@ -44,7 +44,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 - Backend: KitchenOwl-backed `RecipeCatalog` with a cache and manual refresh, `DinnerCalendar` on SQLite with the partial unique index, `ProposeRecipe`, `AcceptProposal`, `VetoProposal` over HTTP, SSE events for proposals and decisions. Hard rules only (dinner candidate, weekday limit, not vetoed, not planned).
 - Frontend: searchable list of eligible recipes, pending proposal card on the other phone with accept and veto, the next open day fills in date order.
-- Verify by hand: with the real recipe database, agree three days across two phones; desserts and long weekday recipes are not offered; a vetoed dish stays out of this session only; two simultaneous proposals leave exactly one pending.
+- Verify by hand: with the real recipe database, agree three days with the phone and a laptop browser as the two members; desserts and long weekday recipes are not offered; a vetoed dish stays out of this session only; two simultaneous proposals leave exactly one pending.
 
 ### S2b: The ranked deck
 
@@ -52,7 +52,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 - Backend: `SuggestRecipes` and `PassSuggestion` over HTTP, recent-plan window from earlier sessions, "needs time" flag.
 - Frontend: swipe deck (right proposes, left passes) with photo, time, base, diet, new badge and the missing-time hint; replaces the plain list as the default view, the list stays as search.
-- Verify by hand: base variety, vegetarian share and one new recipe per session visibly shape the order across a few real sessions; a passed dish disappears for both phones until the next session.
+- Verify by hand: base variety, vegetarian share and one new recipe per session visibly shape the order across a few real sessions; a passed dish disappears for the other member's client too until the next session.
 
 ### S3: Shape the plan
 
@@ -60,7 +60,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 - Backend: `MarkLeftoverDay`, `ReopenDay`, `SwapPlannedDays`, `MovePlannedDay` over HTTP.
 - Frontend: leftover marker, reopen, drag and drop between days (swap onto an agreed day, move onto an open day), clear message when the weekday limit forbids a move.
-- Verify by hand: drag a long recipe onto a weekday and see it refused with the reason; drag between weekend days and see it accepted; both phones follow.
+- Verify by hand: drag a long recipe onto a weekday and see it refused with the reason; drag between weekend days and see it accepted; the second client follows.
 
 ### S4: Finalize into KitchenOwl
 
@@ -80,14 +80,23 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 ### S6: One real week
 
-*Nothing new in features; the household uses it for a week.*
+*Nothing new in features; the household uses it for a week, on both phones.*
 
 - Backup and restore of the SQLite file, health check, log rotation, upgrade procedure, error reporting that reaches the household.
-- Findings from the week are written down and sorted into fixes and new slices. Then: distil a spec from the finished code and compare it with the original (`allium:distill`, `allium:weed`); the differences are the result of the Allium experiment.
+- Install and sign in on the second phone; repeat the earlier checklists that need two members on both phones.
+- Findings from the week are written down and sorted into fixes and new slices.
+
+### S7: Distil and compare
+
+*The Allium experiment's result.*
+
+- Distil a spec from the finished code (`allium:distill`) and compare it with the original (`allium:weed`).
+- Write down the differences and what they say about spec-first versus code-first; update `ARCHITECTURE.md` section 12.
+- No feature work; any divergence that turns out to be a real bug becomes a fix before closing.
 
 ## Order and dependencies
 
-S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 (S2b does not block S3 or S4). S3 can move after S4 if finalizing matters more to the household than rearranging; the order S3 then S4 was confirmed for now. Pantry and receipts come after S6 and plug into the `StockScore` port.
+S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 -> S7 (S2b does not block S3 or S4). S3 can move after S4 if finalizing matters more to the household than rearranging; the order S3 then S4 was confirmed for now. Pantry and receipts come after S6 and plug into the `StockScore` port.
 
 ## Open items before S1a
 
@@ -101,4 +110,4 @@ S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 (S2b does not block S3 
 1. Spec updated if behaviour is new; `allium check` has no findings.
 2. Tests pass at all layers: domain, use cases against fakes, adapters by contract tests, HTTP by request tests, UI by component and one end-to-end test on two clients.
 3. `weed` clean, `witness` PASS.
-4. Deployed to the real instance and verified by hand on both phones using the slice's checklist.
+4. Deployed to the real instance and verified by hand on one real phone using the slice's checklist. Where a check needs a second member (live updates, accept/veto), a laptop browser signed in as the other member is enough for now; checking on both phones comes with S6.
