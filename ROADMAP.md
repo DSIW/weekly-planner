@@ -21,22 +21,38 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 ## Slices
 
-### S1: Two phones, one session
+### S1a: Walking skeleton
 
-*A member opens the installed app, picks 2-3 dates and both phones show the same empty plan.*
+*Both members install the app from the real address, sign in with their KitchenOwl account and see a greeting. Nothing else works yet, but the whole delivery path does.*
 
-- Backend: Fastify server in `apps/server` (section 8), composition root, SQLite repository for sessions (whole-aggregate load/save), `StartSession` and read endpoints, Server-Sent Events for session changes, sign-in with the member's KitchenOwl credentials and an httpOnly session cookie (section 10).
-- Frontend: React PWA shell served under `/plan`, installable, date picker, plan board with the days, live update via SSE.
-- Delivery: the Docker image and reverse-proxy entry from section 11 next to KitchenOwl, so every later slice is tried on the real deployment from day one.
-- Verify by hand: start a session on phone A; phone B shows it within a second or two; reload keeps it; "add to home screen" works on both phones.
+- Backend: Fastify server in `apps/server` (section 8), composition root, sign-in with the member's KitchenOwl credentials checked against KitchenOwl and an httpOnly session cookie (section 10), `GET /api/me`, health check.
+- Frontend: React + Vite PWA shell under `/plan` (`apps/web`), installable, login form, "Hallo <name>" page.
+- Delivery: the Docker image and reverse-proxy entry from section 11 next to KitchenOwl; every later slice is tried on the real deployment.
+- Verify by hand: install on both phones from the real address; wrong password is refused; a KitchenOwl user outside the household cannot sign in; the app opens offline to its shell.
 
-### S2: Agree a dinner
+### S1b: Two phones, one session
 
-*One deck, ranked suggestions, propose, accept, veto, pass. The next open day fills in date order.*
+*A member picks 2-3 dates and both phones show the same empty plan, live.*
 
-- Backend: `SuggestRecipes`, `ProposeRecipe`, `AcceptProposal`, `VetoProposal`, `PassSuggestion` over HTTP; KitchenOwl-backed `RecipeCatalog` with caching; `DinnerCalendar` on SQLite (partial unique index as safety net); SSE events for proposals and decisions.
-- Frontend: swipe deck (top suggestion, pass, propose), pending proposal card on the other phone with accept/veto, reminder badge for recipes without a time.
-- Verify by hand: with the real recipe database, propose on one phone and accept on the other for three days; weekday limit, no desserts, base variety and "one new recipe" visibly hold; veto and pass hide a dish for the session only.
+- Backend: SQLite file and migrations, `SessionRepository`, `StartSession` and read endpoints, Server-Sent Events for session changes.
+- Frontend: date picker, plan board with the days, live update via SSE, reconnect refetch.
+- Verify by hand: start a session on phone A; phone B shows it within a second or two; reload keeps it; the server restarts without losing it.
+
+### S2a: Agree a dinner
+
+*Propose a recipe for the next open day, the other member accepts or vetoes. The list of recipes is plain: eligible dinners only, no ranking yet.*
+
+- Backend: KitchenOwl-backed `RecipeCatalog` with a cache and manual refresh, `DinnerCalendar` on SQLite with the partial unique index, `ProposeRecipe`, `AcceptProposal`, `VetoProposal` over HTTP, SSE events for proposals and decisions. Hard rules only (dinner candidate, weekday limit, not vetoed, not planned).
+- Frontend: searchable list of eligible recipes, pending proposal card on the other phone with accept and veto, the next open day fills in date order.
+- Verify by hand: with the real recipe database, agree three days across two phones; desserts and long weekday recipes are not offered; a vetoed dish stays out of this session only; two simultaneous proposals leave exactly one pending.
+
+### S2b: The ranked deck
+
+*Swipe through suggestions in the spec's order; pass hides a dish for the session.*
+
+- Backend: `SuggestRecipes` and `PassSuggestion` over HTTP, recent-plan window from earlier sessions, "needs time" flag.
+- Frontend: swipe deck (right proposes, left passes) with photo, time, base, diet, new badge and the missing-time hint; replaces the plain list as the default view, the list stays as search.
+- Verify by hand: base variety, vegetarian share and one new recipe per session visibly shape the order across a few real sessions; a passed dish disappears for both phones until the next session.
 
 ### S3: Shape the plan
 
@@ -71,12 +87,13 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 ## Order and dependencies
 
-S1 -> S2 -> S3 and S2 -> S4 -> S5 -> S6. S3 can move after S4 if finalizing matters more to the household than rearranging. Pantry and receipts come after S6 and plug into the `StockScore` port.
+S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 (S2b does not block S3 or S4). S3 can move after S4 if finalizing matters more to the household than rearranging; the order S3 then S4 was confirmed for now. Pantry and receipts come after S6 and plug into the `StockScore` port.
 
-## Open items before S1
+## Open items before S1a
 
-- Spec: the `LogPlannedMeal` re-fire guard (parked question) is decided in S5 at the latest. Three more questions from the weed report (abandoned sessions, variety across sessions, stale pending proposals) are decided in the slice that touches them: S2 for the proposals and variety, S5 for abandoned sessions.
-- The stack is already decided (`ARCHITECTURE.md` sections 8, 9 and 11: Fastify, React + Vite, TanStack Query, `@dnd-kit`, Docker image under `/plan`). S1 only has to prove it end to end.
+- Spec: the `LogPlannedMeal` re-fire guard (parked question) is decided in S5 at the latest. Three more questions from the weed report (abandoned sessions, variety across sessions, stale pending proposals) are decided in the slice that touches them: S2a for stale proposals, S2b for variety across sessions, S5 for abandoned sessions.
+- Base variety only sees the meal log once S5 exists, so the first real weeks may suggest the same base twice. Decide per slice whether a minimal "add what we ate" arrives earlier (S2b is the natural place); not decided yet.
+- The stack is already decided (`ARCHITECTURE.md` sections 8, 9 and 11: Fastify, React + Vite, TanStack Query, `@dnd-kit`, Docker image under `/plan`). S1a only has to prove it end to end.
 - Re-run `witness` on M1 after the spec reconciliation to close the groundwork.
 
 ## Done means (every slice)

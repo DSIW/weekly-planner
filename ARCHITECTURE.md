@@ -68,7 +68,7 @@ reference/              simulate_spec.py: Python reference model of the spec; ge
 packages/domain/        domain layer
 packages/application/   application layer
 apps/server/            infrastructure, interface and main
-apps/web/               React PWA (planned, slice S1); talks to the server API only
+apps/web/               React PWA (planned, slice S1a); talks to the server API only
 ARCHITECTURE.md  ROADMAP.md  README.md  .env.example
 ```
 
@@ -115,7 +115,7 @@ Aggregate methods return events instead of calling anyone: `SessionStarted`, `Re
 
 ### Persistence mapping (infrastructure, planned)
 
-Nothing is persisted yet; M1 uses in-memory fakes. The mapping below is the target for slice S1 onwards.
+Nothing is persisted yet; M1 uses in-memory fakes. The mapping below is the target for slice S1b onwards.
 
 | Aggregate part | Table | Notes |
 |---|---|---|
@@ -196,7 +196,7 @@ How it is tested: the domain by pure unit and property tests, most of them gener
 
 ## 8. API and real-time
 
-*Planned (slice S1 onwards).* REST with zod schemas shared by server and web:
+*Planned (slice S1a onwards).* REST with zod schemas shared by server and web:
 
 - `POST /api/login`, `POST /api/logout`, `GET /api/me`
 - `GET /api/sessions/current`, `POST /api/sessions`, `POST /api/sessions/:id/finalize`, `POST /api/sessions/:id/close`
@@ -222,11 +222,11 @@ Screens (German UI):
 
 Offline: the shell and last-seen state are cached so the app opens instantly; actions need the network because the session is shared. The reminder uses Web Push (iOS supports it for installed PWAs); an in-app banner is the fallback.
 
-## 10. Authentication (planned, slice S1)
+## 10. Authentication (planned, slice S1a)
 
 The login form posts the member's KitchenOwl username and password to our server, which checks them against KitchenOwl and then issues its own httpOnly session cookie. Server-to-KitchenOwl calls use the service token. If you later switch KitchenOwl to OIDC, the login step changes and nothing else does. Only the household's KitchenOwl users can sign in.
 
-## 11. Deployment (planned, slice S1)
+## 11. Deployment (planned, slice S1a)
 
 One Docker image (multi-stage: build the web app, serve it from Fastify) as an extra service next to KitchenOwl, behind the same reverse proxy and served under `/plan` (configurable base path `BASE_PATH=/plan`). State lives in one SQLite file on a volume, copied nightly. Environment: `KITCHENOWL_URL`, `KITCHENOWL_TOKEN`, `SESSION_SECRET`, `VAPID_*`, `TZ`. No secrets in the repository.
 
@@ -246,8 +246,10 @@ The plan lives in [`ROADMAP.md`](ROADMAP.md). Work is cut into **vertical slices
 
 | Slice | Outcome |
 |---|---|
-| S1 | two phones, one session, deployed |
-| S2 | agree a dinner: deck, propose, accept, veto, pass |
+| S1a | walking skeleton: install, sign in with KitchenOwl, deployed under `/plan` |
+| S1b | two phones, one session, live |
+| S2a | agree a dinner: propose, accept, veto from a plain list |
+| S2b | the ranked swipe deck with pass |
 | S3 | shape the plan: leftovers, reopen, drag and drop |
 | S4 | finalize into KitchenOwl: planner entries, scaled shopping list, reminder |
 | S5 | cook and learn: meal log, proven recipes |
@@ -259,7 +261,7 @@ The plan lives in [`ROADMAP.md`](ROADMAP.md). Work is cut into **vertical slices
 - Description scaling (section 6) has to cope with free text; unparseable lines are listed rather than guessed.
 - Web Push on iOS needs the app installed to the home screen first.
 - Pantry and receipts plug into the `StockScore` port later; nothing here depends on them.
-- Rules that span aggregates (one dinner per date) depend on the use case asking the `DinnerCalendar`; two requests at the same moment are caught only by the database index, so S2 needs a test for that race.
+- Rules that span aggregates (one dinner per date) depend on the use case asking the `DinnerCalendar`; two requests at the same moment are caught only by the database index, so S2a needs a test for that race.
 - Open spec questions (abandoned sessions, variety across sessions, stale pending proposals, re-logging after "not cooked") are assigned to slices in `ROADMAP.md`.
 
 ## 15. Decision log
