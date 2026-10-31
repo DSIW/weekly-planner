@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: **draft for review**. It replaces the milestone table in `ARCHITECTURE.md` section 13 once agreed.
+Status: **draft for review**. It replaces the milestone table that used to be in `ARCHITECTURE.md` section 13; that section now only points here.
 
 ## How the work is cut
 
@@ -25,7 +25,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 *A member opens the installed app, picks 2-3 dates and both phones show the same empty plan.*
 
-- Backend: Fastify server in `apps/server` (section 8), composition root, SQLite repository for sessions (whole-aggregate load/save), `StartSession` and read endpoints, Server-Sent Events for session changes, identification of the two members (shared household token, member chosen on first start).
+- Backend: Fastify server in `apps/server` (section 8), composition root, SQLite repository for sessions (whole-aggregate load/save), `StartSession` and read endpoints, Server-Sent Events for session changes, sign-in with the member's KitchenOwl credentials and an httpOnly session cookie (section 10).
 - Frontend: React PWA shell served under `/plan`, installable, date picker, plan board with the days, live update via SSE.
 - Delivery: the Docker image and reverse-proxy entry from section 11 next to KitchenOwl, so every later slice is tried on the real deployment from day one.
 - Verify by hand: start a session on phone A; phone B shows it within a second or two; reload keeps it; "add to home screen" works on both phones.

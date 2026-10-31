@@ -1,6 +1,6 @@
 # Architecture: Weekly Planner (weekly dinner planner, sidecar to KitchenOwl)
 
-Status: accepted, M0 in progress. Behaviour is defined by `spec/weekly-planning.allium`; this document says how we build it and records why (section 15).
+Status: accepted. M0 (scaffold) and M1 (domain and use cases) are built; the rest is cut into vertical slices in `ROADMAP.md`. Behaviour is defined by `spec/weekly-planning.allium`; this document says how we build it and records why (section 15). Parts not built yet are marked *planned*.
 
 ## 1. Goals and constraints
 
@@ -63,17 +63,18 @@ The rule is enforced by a test (`apps/server/test/architecture/dependency-rule.t
 ```
 (repo root = weekly-planner/)
 spec/                   weekly-planning.allium (behaviour)
-reference/              simulate_spec.py: Python reference model of the spec, test oracle for the ranking
+reference/              simulate_spec.py: Python reference model of the spec; generate_ranking_cases.py writes
+                        the golden cases that packages/domain/test/planning/ranking-oracle.test.ts replays
 packages/domain/        domain layer
 packages/application/   application layer
 apps/server/            infrastructure, interface and main
-apps/web/               React PWA (from M3); talks to the server API only
-ARCHITECTURE.md  README.md  .env.example
+apps/web/               React PWA (planned, slice S1); talks to the server API only
+ARCHITECTURE.md  ROADMAP.md  README.md  .env.example
 ```
 
 The one-off data tools live **outside** this repository, in the parent folder `cooking-mgmt/`: `import/` (Notion and KptnCook importers and their exports) and `foundation/` (the data-foundation scripts and backups of the full recipe database). They contain personal data and are finished jobs, so this repository stays safe to publish; the tag vocabulary they established is encoded in one place, the KitchenOwl translator in the infrastructure layer.
 
-Tooling: npm workspaces on Node 22, strict TypeScript, Vitest, fast-check (property tests), ESLint, tsx for running TypeScript.
+Tooling: npm workspaces on Node 22, strict TypeScript, Vitest, fast-check (property tests), tsx for running TypeScript, zod for validating KitchenOwl responses. ESLint is planned.
 
 ## 4. Domain model (DDD)
 
@@ -98,28 +99,31 @@ The ubiquitous language is the spec's: *session, plan day, proposal, veto, pass,
 
 Aggregates reference each other by id only. Two rules reach across aggregates and are therefore handled one level up, with a database constraint as the safety net:
 
-- **One dinner per date** spans sessions. The `AcceptProposal` use case asks the `DinnerCalendar` port whether the date is already taken, then calls the aggregate; a partial unique index rejects a race.
+- **One dinner per date** spans sessions. The `AcceptProposal` and `MovePlannedDay` use cases ask the `DinnerCalendar` port whether the date is already taken by another session and pass the answer to the domain rule as `dateTakenElsewhere`; a partial unique index rejects a race. (The move case was missing from the first version of the spec; the generated property test did not find it, implementing the use cases did.)
 - **Confirming a meal as cooked** also creates the recipe's experience. `MealLogEntry` raises `MealConfirmedAsCooked`; the use case handles it in the same unit of work (one SQLite transaction, a deliberate shortcut over eventual consistency).
 
 ### Value objects and domain services
 
-- Value objects: `RecipeId`, `PlanDate` (calendar date; `isWeekend()` in Europe/Berlin), `MealType`, `Base`, `Diet`, `Portions`, `Amount` (number + unit, used for shopping).
-- Policies (pure functions): `EligibilityPolicy` for the hard rules; `SuggestionRanking` for the soft rules in the spec's order (base variety, vegetarian share, one new recipe with wants-to-try first, recent window, stock) with an injectable random source for the tie-break; `ShoppingConsolidator` for scaling and summing amounts (section 6).
-- The ranking is a port of the reference model in `reference/simulate_spec.py`, which doubles as its test oracle. Stock is a port (`StockScore`) that returns nothing for now; the pantry step plugs in there.
+- Value objects: `RecipeId`, `MemberId`, `SessionId`, `ProposalId`, `MealLogEntryId` (branded ids), `PlanDate` (plain calendar date; weekend means Saturday or Sunday), `LocalDateTime` (date and hour, for the reminder), `MealType`, `Base`, `Diet`. *Planned:* `Portions` and `Amount` (number + unit) with slice S4.
+- Style: aggregates are immutable data and their rules are pure functions that return `Result<{ state, events }>`: the new state and the events it raised, or the name of the precondition that failed (`reject("not_next_open_day")`). The functions are named after the spec's rules (`proposeRecipe`, `acceptProposal`, ...). There are no classes with hidden state; the application layer does the loading and saving. See D12.
+- Policies (pure functions): `isDinnerCandidate` and `fitsWeekdayLimit` for the hard rules; `suggestRecipes` for the soft rules in the spec's order (base variety, vegetarian share, one new recipe with wants-to-try first, recent window) with an injectable random source for the tie-break; `invariantViolations` checks the spec's four invariants over all sessions (used by the property tests). *Planned:* the shopping consolidator for scaling and summing amounts (section 6).
+- The ranking is a port of the reference model in `reference/simulate_spec.py`, which doubles as its test oracle: 300 golden cases are replayed against it on every test run. Stock is a port (`StockScore`) that does not exist yet; the pantry step plugs in there.
 
 ### Domain events
 
-Aggregate methods return events instead of calling anyone: `SessionStarted`, `RecipeProposed`, `ProposalAccepted`, `ProposalVetoed`, `SuggestionPassed`, `DayMarkedLeftovers`, `DayReopened`, `DaysSwapped`, `DayMoved`, `PlanFinalized`, `SessionClosed`, `MealLogged`, `MealConfirmedAsCooked`, `MealMarkedNotCooked`. The application layer publishes them after the commit; infrastructure turns them into Server-Sent Events, Web Push messages and the KitchenOwl export.
+Aggregate methods return events instead of calling anyone: `SessionStarted`, `RecipeProposed`, `ProposalAccepted`, `ProposalVetoed`, `SuggestionPassed`, `DayMarkedLeftovers`, `DayReopened`, `DaysSwapped`, `DayMoved`, `PlanFinalized` (carries the agreed dinners with date, recipe and portions, instead of one `IngredientsNeeded` per day), `FinalizeReminderDue`, `SessionClosed`, `MealLogged`, `MealConfirmedAsCooked`, `MealMarkedNotCooked`. The application layer publishes them after the commit; infrastructure will turn them into Server-Sent Events, Web Push messages and the KitchenOwl export (planned).
 
-### Persistence mapping (infrastructure)
+### Persistence mapping (infrastructure, planned)
+
+Nothing is persisted yet; M1 uses in-memory fakes. The mapping below is the target for slice S1 onwards.
 
 | Aggregate part | Table | Notes |
 |---|---|---|
-| PlanningSession | `sessions` | status open / finalized / closed; `version` for optimistic locking |
+| PlanningSession | `sessions` | status open / finalized / closed; `reminder_sent`; `version` for optimistic locking |
 | PlanDay | `plan_days` | status open / planned / leftovers; `recipe_id` only when planned |
 | Proposal | `proposals` | status pending / accepted / vetoed |
 | PassedSuggestion | `passes` | unique (session, recipe) |
-| MealLogEntry | `meal_log` | source from_plan / corrected / added; `confirmed` |
+| MealLogEntry | `meal_log` | source from_plan / corrected / added; `confirmed`; a removed `from_plan` entry leaves its date in a tombstone so the daily job does not log it again |
 | RecipeExperience | `cooked_recipes` | recipe id is the key |
 | Member (external) | `members` | the two KitchenOwl users |
 
@@ -168,34 +172,35 @@ KitchenOwl keeps one list row per ingredient. When an ingredient is added that i
 
 ## 7. Application layer: one use case per spec rule
 
-A use case loads aggregates through ports, calls a domain method, saves, and publishes the returned events. It contains no business rules (those are in the domain) and no framework or database code. Names match the spec so conformance can be checked mechanically.
+A use case loads aggregates through ports, calls a domain rule, saves, and publishes the returned events after the commit. It contains no business rules (those are in the domain) and no framework or database code. Names match the spec so conformance can be checked mechanically. Rules that need an answer from a port first (the `DinnerCalendar`, the recipe catalogue) ask it before calling the domain; the domain never calls a port.
 
-| Spec rule | Use case | Aggregate method |
+| Spec rule | Use case | Domain rule (pure function) |
 |---|---|---|
-| StartSession | `StartSession` | `PlanningSession.start` |
-| ProposeRecipe | `ProposeRecipe` | `PlanningSession.propose` |
-| AcceptProposal | `AcceptProposal` (also asks `DinnerCalendar`) | `PlanningSession.accept` |
-| VetoProposal, PassSuggestion | `VetoProposal`, `PassSuggestion` | `veto`, `pass` |
-| MarkLeftoverDay, ReopenPlannedDay, ReopenLeftoverDay | `MarkLeftoverDay`, `ReopenDay` | same names |
-| SwapPlannedDays, MovePlannedDay | same names (drag and drop) | `swap`, `move` |
-| FinalizePlan, CloseSession (two rules) | `FinalizePlan`, `CloseSession` | `finalize`, `close` |
-| LogPlannedMeal (temporal) | `LogPlannedMeals` (daily job) | `MealLogEntry.fromPlan` |
-| ConfirmCooked, MarkNotCooked, CorrectLoggedMeal, AddLoggedMeal | same names | `MealLogEntry` methods |
-| RemindToFinalize (temporal) | `RemindToFinalize` (scheduler job) | read-only, then `Notifier` |
-| suggestions (deck) | `SuggestRecipes` | `EligibilityPolicy` + `SuggestionRanking` |
+| StartSession | `StartSession` | `startSession` |
+| ProposeRecipe | `ProposeRecipe` (looks the recipe up in the catalogue) | `proposeRecipe` |
+| AcceptProposal | `AcceptProposal` (asks `DinnerCalendar`) | `acceptProposal` |
+| VetoProposal, PassSuggestion | `VetoProposal`, `PassSuggestion` | `vetoProposal`, `passSuggestion` |
+| MarkLeftoverDay, ReopenPlannedDay, ReopenLeftoverDay | `MarkLeftoverDay`, `ReopenDay` | `markLeftoverDay`, `reopenDay` |
+| SwapPlannedDays, MovePlannedDay | same names (drag and drop; the move asks `DinnerCalendar`) | `swapPlannedDays`, `movePlannedDay` |
+| FinalizePlan | `FinalizePlan` (the KitchenOwl export is slice S4) | `finalizePlan` |
+| AbandonSession, CloseFinalizedSession | `CloseSession` | `closeSession` |
+| LogPlannedMeal (temporal) | `LogPlannedMeals` (daily job) | `dinnersDueForLogging`, `logPlannedMeal` |
+| ConfirmCooked, MarkNotCooked, CorrectLoggedMeal, AddLoggedMeal | same names; confirming also records the recipe's experience in the same unit of work | `confirmCooked`, `markNotCooked`, `correctLoggedMeal`, `addLoggedMeal`, `registerCooking` |
+| RemindToFinalize (temporal) | `RemindToFinalize` (scheduler job; fires once per session) | `remindToFinalize` |
+| suggestions (deck) | `SuggestRecipes` (read-only; gathers catalogue, meal log, experience and recent plans) | `suggestRecipes` |
 | M0 | `AuditRecipeCatalog` | read-only |
 
-Ports (interfaces owned by the application layer, implemented by adapters): `SessionRepository`, `MealLogRepository`, `RecipeExperienceRepository`, `RecipeCatalog`, `DinnerCalendar`, `PlannerGateway` (KitchenOwl planner and shopping list), `Notifier`, `EventPublisher`, `Clock`, `UnitOfWork`, `StockScore`.
+Ports (interfaces owned by the application layer, implemented by adapters): `SessionRepository`, `MealLogRepository`, `RecipeExperienceRepository`, `RecipeCatalog` (`listAll`, `find`), `DinnerCalendar`, `EventPublisher`, `Notifier`, `Clock`, `IdGenerator`, `Randomness`, `UnitOfWork`. *Planned:* `PlannerGateway` (KitchenOwl planner and shopping list, S4) and `StockScore` (pantry, after S6).
 
-How it is tested: the domain by pure unit and property tests; use cases against in-memory fakes of the ports; adapters by contract tests (the KitchenOwl client against recorded responses and the real instance, SQLite against a temporary file); the HTTP layer by request tests; the dependency rule by the architecture test.
+How it is tested: the domain by pure unit and property tests, most of them generated from the spec; use cases against in-memory fakes of the ports (`packages/application/test/support/in-memory.ts`); adapters by contract tests (the KitchenOwl client against recorded responses and the real instance, SQLite against a temporary file); the HTTP layer by request tests; the dependency rule by the architecture test.
 
 ## 8. API and real-time
 
-REST with zod schemas shared by server and web:
+*Planned (slice S1 onwards).* REST with zod schemas shared by server and web:
 
 - `POST /api/login`, `POST /api/logout`, `GET /api/me`
 - `GET /api/sessions/current`, `POST /api/sessions`, `POST /api/sessions/:id/finalize`, `POST /api/sessions/:id/close`
-- `GET /api/sessions/:id/deck?limit=` (next ranked cards for the next open date)
+- `GET /api/sessions/:id/deck` (ranked cards for the next open date; the deck is not capped, the client pages through it)
 - `POST /api/days/:id/proposals`, `POST /api/proposals/:id/accept`, `POST /api/proposals/:id/veto`, `POST /api/sessions/:id/passes`
 - `POST /api/days/swap`, `POST /api/days/move`, `POST /api/days/:id/leftovers`, `POST /api/days/:id/reopen`
 - `GET /api/log`, `POST /api/log/:id/confirm`, `POST /api/log/:id/not-cooked`, `PUT /api/log/:id`, `POST /api/log`
@@ -204,7 +209,7 @@ REST with zod schemas shared by server and web:
 
 Commands return the new session state; stale writes are rejected through `version` and the client simply refetches.
 
-## 9. Frontend (PWA)
+## 9. Frontend (PWA, planned)
 
 React + Vite + TypeScript, TanStack Query for server state, `@dnd-kit` for drag and drop (works with touch), Framer Motion for swiping, `vite-plugin-pwa` for the manifest and service worker. Styling uses CSS custom properties that follow KitchenOwl's Material look (colours, rounded cards, same icon style); the design is recreated, not copied from its code (AGPL).
 
@@ -217,39 +222,45 @@ Screens (German UI):
 
 Offline: the shell and last-seen state are cached so the app opens instantly; actions need the network because the session is shared. The reminder uses Web Push (iOS supports it for installed PWAs); an in-app banner is the fallback.
 
-## 10. Authentication
+## 10. Authentication (planned, slice S1)
 
 The login form posts the member's KitchenOwl username and password to our server, which checks them against KitchenOwl and then issues its own httpOnly session cookie. Server-to-KitchenOwl calls use the service token. If you later switch KitchenOwl to OIDC, the login step changes and nothing else does. Only the household's KitchenOwl users can sign in.
 
-## 11. Deployment
+## 11. Deployment (planned, slice S1)
 
 One Docker image (multi-stage: build the web app, serve it from Fastify) as an extra service next to KitchenOwl, behind the same reverse proxy and served under `/plan` (configurable base path `BASE_PATH=/plan`). State lives in one SQLite file on a volume, copied nightly. Environment: `KITCHENOWL_URL`, `KITCHENOWL_TOKEN`, `SESSION_SECRET`, `VAPID_*`, `TZ`. No secrets in the repository.
 
 ## 12. Spec-driven workflow (the Allium test)
 
-1. Generate tests from the spec (`allium:propagate`) into `packages/domain`: one test per rule precondition and outcome, property tests for the invariants.
-2. Implement the domain until those pass; the spec's rule names are the function names.
-3. Run the checker (`allium check`) on every spec change; any behaviour decision goes into the spec first, then the code.
-4. At the end: distil a spec from the finished code (`allium:distill`) and compare it with the original (`allium:weed`). Differences are the result of the experiment and get written down.
+1. Behaviour first: new or changed behaviour goes into `spec/weekly-planning.allium`, then `allium check` runs on every change.
+2. Generate tests from the spec (`allium:propagate`) into `packages/domain`: one test per rule precondition and outcome, property tests for the invariants. They must fail before the code exists.
+3. Implement the domain until those pass; the spec's rule names are the function names. Never edit a generated test to make it pass; fix the spec and propagate again.
+4. Verify with `allium:weed` (spec and code agree) and `allium:witness` (an independent re-run confirms tests pass, no generated test changed, nothing was parked silently). A slice counts as done only on a clean weed and a witness PASS.
+5. At the end: distil a spec from the finished code (`allium:distill`) and compare it with the original (`allium:weed`). Differences are the result of the experiment and get written down.
 
-## 13. Milestones
+What M1 taught: writing the code found two gaps the generated tests did not (`MovePlannedDay` across sessions, `AcceptProposal` planning a recipe twice); the reference-model oracle found one ranking divergence; weed found four places where the spec was silent about behaviour the code needed. All are fixed in the spec; one question is parked in it.
 
-| # | Result | Done when |
-|---|---|---|
-| M0 | scaffold, KitchenOwl client, recipe attribute mapping, `recipes:check` command | `recipes:check` reports no recipe that needs data on the real instance |
-| M1 (implemented; spec reconciliation open, see witness) | domain layer (aggregates, policies, events) + application use cases with in-memory fakes, tests generated from the spec | all rules and invariants pass, ranking matches the reference model |
-| M2 | server, persistence, SSE | two clients see the same session live |
-| M3 | PWA: plan, deck, drag and drop | a full plan can be made on a phone |
-| M4 | finalize saga: planner entries + scaled shopping list | list and planner correct in KitchenOwl, retry works |
-| M5 | meal log, cooked confirmation, reminder | confirming moves a recipe from new to proven |
-| M6 | deployment, backup, install on both phones | used for one real week |
+## 13. Roadmap
+
+The plan lives in [`ROADMAP.md`](ROADMAP.md). Work is cut into **vertical slices**, each a thing a member can do on a phone through the whole stack (PWA, server, SQLite, KitchenOwl), verified by hand on both phones before the slice is done. M0 (scaffold, KitchenOwl client, `recipes:check`) and M1 (domain and use cases for every spec rule) are the groundwork and are built.
+
+| Slice | Outcome |
+|---|---|
+| S1 | two phones, one session, deployed |
+| S2 | agree a dinner: deck, propose, accept, veto, pass |
+| S3 | shape the plan: leftovers, reopen, drag and drop |
+| S4 | finalize into KitchenOwl: planner entries, scaled shopping list, reminder |
+| S5 | cook and learn: meal log, proven recipes |
+| S6 | one real week, backup, then distil and compare the spec |
 
 ## 14. Risks and open points
 
 - KitchenOwl's REST API is not formally versioned; a thin client with contract tests against the real instance limits the blast radius.
 - Description scaling (section 6) has to cope with free text; unparseable lines are listed rather than guessed.
 - Web Push on iOS needs the app installed to the home screen first.
-- Pantry and receipts plug into `StockProvider` later; nothing here depends on them.
+- Pantry and receipts plug into the `StockScore` port later; nothing here depends on them.
+- Rules that span aggregates (one dinner per date) depend on the use case asking the `DinnerCalendar`; two requests at the same moment are caught only by the database index, so S2 needs a test for that race.
+- Open spec questions (abandoned sessions, variety across sessions, stale pending proposals, re-logging after "not cooked") are assigned to slices in `ROADMAP.md`.
 
 ## 15. Decision log
 
@@ -266,3 +277,5 @@ One Docker image (multi-stage: build the web app, serve it from Fastify) as an e
 | D9 | npm workspaces, not pnpm | Node 22 is already installed via nodenv; no extra tool to install | pnpm |
 | D10 | Repository root is `weekly-planner/`; spec, architecture and reference model live inside it; `import/` and `foundation/` stay outside | the app can be deployed, shared and checked in CI without personal recipe data; spec and code stay together for the Allium tools | one repo at `cooking-mgmt/` with the data folders ignored: works, but one wrong `git add` would publish the recipe database |
 | D11 | Domain-driven design with an onion architecture: domain and application are separate packages with no outward dependencies, adapters implement ports, one composition root, the dependency rule is enforced by a test | the behaviour is rule-heavy and will grow (pantry, receipts); the core must be testable without a server, a database or KitchenOwl, and KitchenOwl's tag vocabulary must not leak into it | one `server` package with services calling the KitchenOwl client and SQLite directly: faster to start, but rules and I/O would mix |
+| D12 | Aggregates are immutable data with pure rule functions returning `Result<{ state, events }>`, not classes with methods | the spec's rules map one to one onto functions; rejected commands cannot leave half-changed state; property tests can run thousands of random command sequences cheaply | classes with mutable state and exceptions (first sketch of section 7): hidden state, harder to test exhaustively |
+| D13 | Work is cut into vertical slices through the whole stack, not by layer | the first plan built every rule before anything could be used on a phone; slices give real feedback early and keep each Allium loop small | milestones by layer (M0 to M6 as first written) |

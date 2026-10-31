@@ -1,6 +1,6 @@
 # Weekly Planner
 
-Weekly dinner planner for two, a sidecar to KitchenOwl. Behaviour: `spec/weekly-planning.allium`. Design and decisions: `ARCHITECTURE.md`.
+Weekly dinner planner for two, a sidecar to KitchenOwl. Behaviour: `spec/weekly-planning.allium`. Design and decisions: `ARCHITECTURE.md`. Plan: `ROADMAP.md`.
 
 ```
 npm install
