@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.3...weekly-planner-v0.1.4) (2026-10-31)
+
+
+### Bug Fixes
+
+* discarding a planning did nothing because the request had a JSON content type and no body ([aacb5ff](https://github.com/DSIW/weekly-planner/commit/aacb5ff8353b03bf613232b9e37d04b972d84bab))
+
 ## [0.1.3](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.2...weekly-planner-v0.1.3) (2026-10-31)
 
 
