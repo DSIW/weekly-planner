@@ -18,3 +18,7 @@ coverage/
 # editors
 *.swp
 *~
+
+# python
+__pycache__/
+*.pyc
