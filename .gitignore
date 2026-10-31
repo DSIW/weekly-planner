@@ -22,3 +22,6 @@ coverage/
 # python
 __pycache__/
 *.pyc
+
+# allium loop state (ledger, witness record, trace)
+.allium-loop/
