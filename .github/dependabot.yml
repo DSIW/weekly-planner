@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
+    ignore:
+      # Node is upgraded by hand, LTS only (ARCHITECTURE.md D16); the types follow the runtime.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     groups:
       react:
         patterns:
@@ -32,3 +36,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # Only LTS (even) majors of Node; the upgrade to a new LTS is done by hand (D16).
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
