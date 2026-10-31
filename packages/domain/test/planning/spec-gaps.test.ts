@@ -103,8 +103,13 @@ describe("eligibleRecipes (the hard rules of the next open day, without ranking)
     expect(eligibleRecipes(afterVeto, all, config).map((r) => r.id)).toEqual([unknownTime.id]);
   });
 
-  it("offers nothing once the session is not open or no day is open", () => {
+  it("offers nothing once the session is not open", () => {
     const s = aSession([MON, TUE]);
     expect(eligibleRecipes(must(closeSession(s, { member: AC })).state, all, config)).toEqual([]);
+  });
+
+  it("offers nothing once every day is planned", () => {
+    const s = plan(plan(aSession([MON, TUE]), MON, quick), TUE, unknownTime);
+    expect(eligibleRecipes(s, all, config)).toEqual([]);
   });
 });

@@ -56,7 +56,7 @@ Status: released (v0.1.4) and verified by hand on the real server: both members 
 
 - Backend: KitchenOwl-backed `RecipeCatalog` with a cache and manual refresh, `DinnerCalendar` on SQLite with the partial unique index, `ProposeRecipe`, `AcceptProposal`, `VetoProposal` over HTTP, SSE events for proposals and decisions. Hard rules only (dinner candidate, weekday limit, not vetoed, not planned).
 - Frontend: searchable list of eligible recipes, pending proposal card on the other phone with accept and veto, the next open day fills in date order.
-Status: built and tested (`npm run smoke` covers the whole flow as two members); not released or verified on a phone yet. Decided on the way: a proposal can only be decided while its session is open (closes the "stale proposals" question for what S2a can reach; days marked as leftovers stay a question for S3), the recipe list is remembered for ten minutes and "Rezepte neu laden" skips the wait, and the database refuses a second planned dinner on one date, as a backstop to the DinnerCalendar check.
+Status: released as v0.1.5, `weed` clean and `witness` PASS; not verified on a phone yet. Decided on the way: a proposal can only be decided while its session is open (closes the "stale proposals" question for what S2a can reach; days marked as leftovers stay a question for S3), the recipe list is remembered for ten minutes and "Rezepte neu laden" skips the wait, and the database refuses a second planned dinner on one date, as a backstop to the DinnerCalendar check.
 - Verify by hand: with the real recipe database, agree three days with the phone and a laptop browser as the two members; desserts and long weekday recipes are not offered; a vetoed dish stays out of this session only; two simultaneous proposals leave exactly one pending.
 
 ### S2b: The ranked deck
@@ -73,6 +73,7 @@ Status: built and tested (`npm run smoke` covers the whole flow as two members);
 
 - Backend: `MarkLeftoverDay`, `ReopenDay`, `SwapPlannedDays`, `MovePlannedDay` over HTTP.
 - Frontend: leftover marker, reopen, drag and drop between days (swap onto an agreed day, move onto an open day), clear message when the weekday limit forbids a move.
+- Decide before wiring `MarkLeftoverDay`, `ReopenDay` and `MovePlannedDay` (open question in the spec, widened by `weed` on S2a): what happens to the pending proposal of a day that is marked as leftovers, moved onto, or vacated; and whether one pending proposal per session becomes an invariant, since a reopened earlier day can become the next open day while a later day still holds a pending proposal.
 - Verify by hand: drag a long recipe onto a weekday and see it refused with the reason; drag between weekend days and see it accepted; mark a day as leftovers and reopen it, and reopen an agreed day so the deck offers it again; the second client follows each change.
 
 ### S4: Finalize into KitchenOwl
@@ -116,7 +117,7 @@ S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 -> S7 (S2b does not blo
 
 - GitHub setup to do once: the repository setting that lets Actions create pull requests (Settings, Actions, General), and the GHCR package visibility after the first image push. No extra secret is needed (the workflow uses `GITHUB_TOKEN`, as in `nodos`). The `gh` token used in this environment may lack the `workflow` permission needed to push files under `.github/workflows/`; if the push is refused, that permission has to be added.
 
-- Spec: the `LogPlannedMeal` re-fire guard (parked question) is decided in S5 at the latest. Three more questions from the weed report (abandoned sessions, variety across sessions, stale pending proposals) are decided in the slice that touches them: S2a for stale proposals, S2b for variety across sessions, S5 for abandoned sessions.
+- Spec: the `LogPlannedMeal` re-fire guard (parked question) is decided in S5 at the latest. Three more questions from the weed report (abandoned sessions, variety across sessions, stale pending proposals) are decided in the slice that touches them: stale proposals were narrowed in S2a (a proposal can only be decided in an open session) and the rest is decided in S3, S2b for variety across sessions, S5 for abandoned sessions.
 - Base variety only sees the meal log once S5 exists, so the first real weeks may suggest the same base twice. Decide per slice whether a minimal "add what we ate" arrives earlier (S2b is the natural place); not decided yet.
 - The stack is already decided (`ARCHITECTURE.md` sections 8, 9 and 11: Fastify, React + Vite, TanStack Query, `@dnd-kit`, Docker image under `/plan`). S1a only has to prove it end to end.
 - The three questions above are now in the spec's open questions section, as `witness` required. Re-run `witness` on M1 to close the groundwork.
