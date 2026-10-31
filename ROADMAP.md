@@ -66,7 +66,7 @@ Status: released as v0.1.5, `weed` clean and `witness` PASS. First real use foun
 - Backend: `SuggestRecipes` and `PassSuggestion` over HTTP, recent-plan window from earlier sessions, "needs time" flag.
 - Frontend: swipe deck (right proposes, left passes) with photo, time, base, diet, new badge and the missing-time hint; replaces the plain list as the default view, the list stays as search.
 - Already in place from S2a: recipes over 6 h (`plan_ahead_time`) rank last and carry the "Vorlauf nötig" badge (found on the first real use, D19); the deck only has to keep them at the bottom.
-Status: built and tested (`npm run smoke` covers deck, pass and photos); not released or verified on a phone yet. Decided on the way: "add what we ate" waits for S5 (you chose that); base variety counts dinners planned in other sessions (resolves that open question); the deck order is stable per session (D20); `NoMealsRecordedYet` stands in for the meal log until S5.
+Status: `weed` clean and `witness` PASS (a mutation sweep closed six test gaps); not released or verified on a phone yet. Decided on the way: "add what we ate" waits for S5 (you chose that); base variety counts dinners planned in other sessions (resolves that open question); the deck order is stable per session (D20); `NoMealsRecordedYet` stands in for the meal log until S5.
 - Verify by hand: base variety, vegetarian share and one new recipe per session visibly shape the order across a few real sessions; a passed dish disappears for the other member's client too until the next session; a recipe without a cooking time shows the "add time" hint.
 
 ### S3: Shape the plan

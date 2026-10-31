@@ -51,10 +51,8 @@ describe("KitchenOwlClient", () => {
       const png = (async () =>
         new Response(new Uint8Array([1]), { headers: { "content-type": "image/png" } })) as typeof fetch;
       expect((await new KitchenOwlClient(cfg, png).fetchPhoto("a.png"))?.contentType).toBe("image/png");
-      const bare = (async () => new Response(new Uint8Array([1]), { headers: { "content-type": "" } })) as typeof fetch;
-      expect((await new KitchenOwlClient(cfg, bare).fetchPhoto("a"))?.contentType).toMatch(
-        /^(application\/octet-stream|)$/,
-      );
+      const bare = (async () => new Response(new Uint8Array([1]))) as typeof fetch; // no content-type header at all
+      expect((await new KitchenOwlClient(cfg, bare).fetchPhoto("a"))?.contentType).toBe("application/octet-stream");
     });
 
     it("is null when KitchenOwl does not have the file, and fails on other errors", async () => {
