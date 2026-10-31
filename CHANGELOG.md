@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.5...weekly-planner-v0.1.6) (2026-10-31)
+
+
+### Features
+
+* recipes that need a day's lead time are flagged and ranked last ([8b47808](https://github.com/DSIW/weekly-planner/commit/8b478089b49854c14ed1a472656f7c840c6f7cb2))
+
 ## [0.1.5](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.4...weekly-planner-v0.1.5) (2026-10-31)
 
 
