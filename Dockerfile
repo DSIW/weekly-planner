@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ RUN npm run build
 # Keep only what the server needs at runtime
 RUN npm prune --omit=dev
 
-FROM node:22-alpine
+FROM node:25-alpine
 
 WORKDIR /app
 
