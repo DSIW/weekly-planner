@@ -517,9 +517,10 @@ surface PlanningBoard {
         -- config.plan_ahead_time come last: they stay eligible on a weekend
         -- but need preparing the day before, so they are flagged "plan
         -- ahead" and never lead the deck.
-        -- Recipes that rank equally appear in random order. The order stays
-        -- the same while the session lasts, so the deck does not reshuffle
-        -- while someone is swiping through it.
+        -- Recipes that rank equally appear in random order. That order stays
+        -- the same while the session lasts (the ranking itself may change
+        -- when a day is agreed), so the deck does not reshuffle while
+        -- someone is swiping through it.
         -- Agreed dishes are reordered by dragging: dropping onto another
         -- agreed day is SwapPlannedDays, dropping onto an open day is
         -- MovePlannedDay.
@@ -530,7 +531,7 @@ surface PlanningBoard {
 -- Open Questions
 ------------------------------------------------------------
 open question "LogPlannedMeal fires on every evaluation once a planned day is a day old. After MarkNotCooked removes the entry, nothing in the rules stops the entry from being created again; the implementation remembers which planned dates were logged (MealLogRepository.loggedPlanDates). Should the spec carry that guard?"
-open question "Abandoned sessions: AbandonSession closes a session that was never finalized, yet LogPlannedMeal accepts closed sessions, so its agreed days still become meal-log entries, and its planned days keep their dates taken under OneDinnerPerDay. Should an abandoned session's days be logged and keep blocking their dates?"
+open question "Abandoned sessions: AbandonSession closes a session that was never finalized, yet LogPlannedMeal accepts closed sessions, so its agreed days still become meal-log entries, and its planned days keep their dates taken under OneDinnerPerDay. Should an abandoned session's days be logged and keep blocking their dates? The suggestion ranking (base variety and the recent window) counts planned days of every other session today, abandoned ones included; should it?"
 open question "Pending proposals on a day that stops being open: MarkLeftoverDay leaves a pending proposal on its day, and ReopenDay brings the day back with that old proposal still pending (it blocks a new proposal for the day until it is decided). MovePlannedDay onto an open day with a pending proposal makes the day planned while the proposal stays pending (it can be vetoed but not accepted). And a reopened or vacated earlier day becomes the next open day while a later day still holds a pending proposal, so ProposeRecipe allows a second pending proposal in the session. Should these rules withdraw the pending proposals of the days they change, and should one pending proposal per session be an invariant?"
 open question "Current session: the PlanningBoard shows sessions that are open or finalized, and StartSession now only needs no other open session, so a finalized session and a new open one can exist together. Which one does the board show, and how does a member close the finalized one? (The planner shows the open session only; nothing can be finalized before S4.)"
 open question "StartSession accepts any dates, including past dates and dates another finalized or abandoned session already planned; OneDinnerPerDay only fails later at AcceptProposal. Should StartSession refuse such dates up front?"
