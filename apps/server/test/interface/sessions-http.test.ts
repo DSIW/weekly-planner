@@ -53,7 +53,8 @@ const tiramisu = aRecipe(4, "Tiramisu", { mealType: "dessert" });
 const braten = aRecipe(5, "Schmorbraten", { totalTimeMinutes: 120, diet: "meat" });
 const biga = aRecipe(6, "Pizza Biga", { totalTimeMinutes: 1285 });
 const kuerbis = aRecipe(7, "Kürbissuppe", { isProven: false }); // never cooked: a new recipe
-const recipes = [pasta, risotto, curry, tiramisu, braten, biga, kuerbis];
+const ohneZeit = aRecipe(8, "Ohne Zeit", { totalTimeMinutes: null }); // nobody entered a time yet
+const recipes = [pasta, risotto, curry, tiramisu, braten, biga, kuerbis, ohneZeit];
 
 let refreshes: number;
 let catalogDown: boolean;
@@ -312,6 +313,15 @@ describe("agreeing a dinner over HTTP", () => {
           needsTime: false,
           planAhead: false,
         },
+        {
+          id: 8,
+          name: "Ohne Zeit",
+          minutes: null,
+          base: "pasta",
+          diet: "vegetarian",
+          needsTime: true,
+          planAhead: false,
+        },
         { id: 1, name: "Pasta", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
         { id: 2, name: "Risotto", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
       ],
@@ -443,7 +453,7 @@ describe("the ranked deck over HTTP", () => {
     const { session } = (await start(max, [MON, TUE])).json();
     const d = await deck(ac, session.id);
     expect(d.date).toBe(MON);
-    expect(cardNames(d).sort()).toEqual(["Curry", "Kürbissuppe", "Pasta", "Risotto"]); // no dessert, no long recipe
+    expect(cardNames(d).sort()).toEqual(["Curry", "Kürbissuppe", "Ohne Zeit", "Pasta", "Risotto"]); // no dessert, no long recipe
     expect(d.cards.find((c: { name: string }) => c.name === "Pasta")).toEqual({
       id: 1,
       name: "Pasta",
@@ -460,8 +470,14 @@ describe("the ranked deck over HTTP", () => {
     const { session } = (await start(max, [MON, TUE])).json();
     const d = await deck(ac, session.id);
     const flags = Object.fromEntries(d.cards.map((c: { name: string; isNew: boolean }) => [c.name, c.isNew]));
-    expect(flags).toEqual({ Kürbissuppe: true, Pasta: false, Curry: false, Risotto: false });
+    expect(flags).toEqual({ Kürbissuppe: true, "Ohne Zeit": false, Pasta: false, Curry: false, Risotto: false });
     expect(d.cards[0].name).toBe("Kürbissuppe"); // one new recipe per session is wanted, so the new one leads
+  });
+
+  it("flags a recipe without a time so the card can ask for it, and still offers it on a weekday", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    const card = (await deck(ac, session.id)).cards.find((c: { name: string }) => c.name === "Ohne Zeit");
+    expect(card).toMatchObject({ minutes: null, needsTime: true, planAhead: false });
   });
 
   it("keeps its order between requests and for both members, and puts plan-ahead recipes last", async () => {
@@ -475,6 +491,7 @@ describe("the ranked deck over HTTP", () => {
     const { session } = (await start(max, [MON, TUE])).json();
     const passed = await pass(max, session.id, pasta);
     expect(passed.statusCode).toBe(200);
+    expect(passed.json().session).toMatchObject({ id: session.id, status: "open" });
     expect(cardNames(await deck(ac, session.id))).not.toContain("Pasta");
     expect((await pass(ac, session.id, pasta)).statusCode).toBe(409);
     expect((await propose(ac, session.id, MON, pasta)).statusCode).toBe(409); // passed dishes are not proposed either
@@ -489,6 +506,8 @@ describe("the ranked deck over HTTP", () => {
     const { session } = (await start(max, [MON, TUE])).json();
     expect((await call("POST", `/sessions/${session.id}/passes`, max, { recipeId: 99 })).statusCode).toBe(404);
     expect((await call("POST", `/sessions/${session.id}/passes`, max, { recipeId: "x" })).statusCode).toBe(400);
+    expect((await call("POST", `/sessions/${session.id}/passes`, max, { recipeId: "3" })).statusCode).toBe(400);
+    expect((await call("POST", `/sessions/${session.id}/passes`, max, { recipeId: 1.5 })).statusCode).toBe(400);
     await call("POST", `/sessions/${session.id}/close`, max);
     expect((await call("GET", `/sessions/${session.id}/deck`, max)).statusCode).toBe(404);
   });
@@ -501,5 +520,6 @@ describe("the ranked deck over HTTP", () => {
     expect([...res.rawPayload]).toEqual([255, 216, 1]);
     expect((await call("GET", "/recipes/2/photo", max)).statusCode).toBe(404);
     expect((await call("GET", "/recipes/abc/photo", max)).statusCode).toBe(400);
+    expect((await call("GET", "/recipes/1.5/photo", max)).statusCode).toBe(400);
   });
 });

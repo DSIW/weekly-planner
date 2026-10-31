@@ -43,3 +43,24 @@ describe("KitchenOwlRecipeCatalog.photo", () => {
     expect(await c.photo(recipeId(1))).toBeNull();
   });
 });
+
+describe("KitchenOwlRecipeCatalog photo files after a re-read", () => {
+  it("uses the file named in the latest list, so a recipe photographed later gets its photo", async () => {
+    let recipes = [raw(1, null)];
+    const fetched: string[] = [];
+    const c = new KitchenOwlRecipeCatalog({
+      async listRecipes() {
+        return recipes as never;
+      },
+      async fetchPhoto(file: string) {
+        fetched.push(file);
+        return { contentType: "image/jpeg", data: new Uint8Array([1]) };
+      },
+    });
+    expect(await c.photo(recipeId(1))).toBeNull();
+    recipes = [raw(1, "new.jpg")];
+    await c.listAll(); // what a refresh does
+    expect(await c.photo(recipeId(1))).not.toBeNull();
+    expect(fetched).toEqual(["new.jpg"]);
+  });
+});

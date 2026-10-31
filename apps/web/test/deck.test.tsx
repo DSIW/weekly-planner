@@ -83,6 +83,12 @@ describe("the swipe deck", () => {
     expect(screen.getByRole("heading", { name: /Abendessen am .*2\.11\./ })).toBeInTheDocument();
   });
 
+  it("shows the new badge only on new recipes", async () => {
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Bekannt")) });
+    renderApp();
+    expect(await screen.findByRole("article", { name: "Bekannt" })).not.toHaveTextContent("Neu");
+  });
+
   it("reminds to add a missing time and flags recipes that need a lead time", async () => {
     server({
       ...signedIn,
@@ -157,6 +163,7 @@ describe("the swipe deck", () => {
     renderApp();
     drag(await screen.findByRole("article", { name: "Pasta" }), 40);
     drag(screen.getByRole("article", { name: "Pasta" }), -40);
+    await new Promise((resolve) => setTimeout(resolve, 100)); // a decision would send its request asynchronously
     expect(calls.some((c) => c.key === PROPOSE || c.key === PASS)).toBe(false);
   });
 

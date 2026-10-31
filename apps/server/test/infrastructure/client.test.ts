@@ -47,6 +47,16 @@ describe("KitchenOwlClient", () => {
       expect(photo).toEqual({ contentType: "image/jpeg", data: new Uint8Array([1, 2, 3]) });
     });
 
+    it("passes the content type through and falls back to a generic one", async () => {
+      const png = (async () =>
+        new Response(new Uint8Array([1]), { headers: { "content-type": "image/png" } })) as typeof fetch;
+      expect((await new KitchenOwlClient(cfg, png).fetchPhoto("a.png"))?.contentType).toBe("image/png");
+      const bare = (async () => new Response(new Uint8Array([1]), { headers: { "content-type": "" } })) as typeof fetch;
+      expect((await new KitchenOwlClient(cfg, bare).fetchPhoto("a"))?.contentType).toMatch(
+        /^(application\/octet-stream|)$/,
+      );
+    });
+
     it("is null when KitchenOwl does not have the file, and fails on other errors", async () => {
       expect(await new KitchenOwlClient(cfg, json({}, 404)).fetchPhoto("x.jpg")).toBeNull();
       await expect(new KitchenOwlClient(cfg, json({}, 500)).fetchPhoto("x.jpg")).rejects.toMatchObject({ status: 500 });

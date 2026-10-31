@@ -287,6 +287,7 @@ try {
     );
     const list = await as("dsiw", () => web.fetchEligibleRecipes(sessionId));
     assert.equal(list.date, D2);
+    assert.equal((await as("ac", () => web.fetchDeck(sessionId))).date, D2, "the deck moves on to the next day too");
     assert.deepEqual(names(list), ["Curry", "Risotto"]);
   });
 

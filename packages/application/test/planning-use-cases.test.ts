@@ -157,6 +157,33 @@ describe("the ranked deck", () => {
     expect(at("Nudeln")).toBeGreaterThan(at("Kartoffeln"));
   });
 
+  describe("the recent-plan window (14 days) counts plans of earlier sessions", () => {
+    // Both dishes have the base "other", which variety never holds against a recipe, so only the window can reorder them.
+    const x = aRecipe(40, { name: "X", base: "other" });
+    const y = aRecipe(41, { name: "Y", base: "other" });
+    const afterSession = async (planned: string) => {
+      const { h, s: first } = await started(household([x, y]), [planDate(planned), planDate("2026-10-31")]);
+      await agree(h, first, planDate(planned), x);
+      ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
+      const second = ok(await h.startSession.execute({ member: AC, dates: [MON, TUE] }));
+      return (await h.suggestRecipes.execute({ sessionId: second.id })).map((r) => r.name);
+    };
+
+    it("ranks a dish planned inside the window after an equal one", async () => {
+      expect(await afterSession("2026-10-20")).toEqual(["Y", "X"]); // 12 days before the clock's today (2026-11-01)
+    });
+
+    it("does not hold a dish planned before the window against it", async () => {
+      expect(await afterSession("2026-10-10")).toEqual(["X", "Y"]); // 22 days before; catalog order decides
+    });
+  });
+
+  it("is for the next open day once the first one is agreed", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    await agree(h, s, MON, pasta);
+    expect((await h.getDeck.execute({ sessionId: s.id }))?.date).toBe(TUE);
+  });
+
   it("asks for its tie-break once per recipe and session, so the order cannot change between requests", async () => {
     const { h, s } = await started(household(all), [MON, TUE]);
     await h.suggestRecipes.execute({ sessionId: s.id });
