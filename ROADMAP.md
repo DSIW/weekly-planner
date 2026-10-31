@@ -23,7 +23,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 ### S1a: Walking skeleton
 
-Status: built and tested locally (sign-in refusal checked against the real KitchenOwl); the release pipeline, the image and the manual checks below have not run yet.
+Status: released as v0.1.2 and running on the real server. Verified: sign-in with a real household account, wrong credentials refused, release-please PR, release, image on GHCR, server on the new image. `weed` clean and `witness` PASS (2026-10-31). Still to check by hand: install on one phone, offline shell, and a KitchenOwl user outside the household.
 
 *Both members install the app from the real address, sign in with their KitchenOwl account and see a greeting. Nothing else works yet, but the whole delivery path does.*
 
@@ -114,7 +114,8 @@ S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 -> S7 (S2b does not blo
 - Spec: the `LogPlannedMeal` re-fire guard (parked question) is decided in S5 at the latest. Three more questions from the weed report (abandoned sessions, variety across sessions, stale pending proposals) are decided in the slice that touches them: S2a for stale proposals, S2b for variety across sessions, S5 for abandoned sessions.
 - Base variety only sees the meal log once S5 exists, so the first real weeks may suggest the same base twice. Decide per slice whether a minimal "add what we ate" arrives earlier (S2b is the natural place); not decided yet.
 - The stack is already decided (`ARCHITECTURE.md` sections 8, 9 and 11: Fastify, React + Vite, TanStack Query, `@dnd-kit`, Docker image under `/plan`). S1a only has to prove it end to end.
-- Re-run `witness` on M1 after the spec reconciliation to close the groundwork.
+- The three questions above are now in the spec's open questions section, as `witness` required. Re-run `witness` on M1 to close the groundwork.
+- Sign-in sessions last 30 days and are not rechecked against the household: a member removed from KitchenOwl keeps access until the cookie expires. Decide in S6 (recheck on `/api/me`, or a shorter cookie).
 
 ## Done means (every slice)
 
