@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.4...weekly-planner-v0.1.5) (2026-10-31)
+
+
+### Features
+
+* agree a dinner, one member proposes and the other accepts or vetoes (S2a) ([1199f35](https://github.com/DSIW/weekly-planner/commit/1199f35c391a5af6a5dd7178d882ceec1ee7da9f))
+
 ## [0.1.4](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.3...weekly-planner-v0.1.4) (2026-10-31)
 
 
