@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.0...weekly-planner-v0.1.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* add the missing .npmrc the Dockerfile copies ([43afc18](https://github.com/DSIW/weekly-planner/commit/43afc182ef6af0b71b09917ade364edeb6969340))
+
 ## 0.1.0 (2026-10-31)
 
 
