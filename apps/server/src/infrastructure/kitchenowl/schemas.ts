@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** The parts of a KitchenOwl recipe the planner reads. Unknown fields are ignored. */
-export const rawRecipeSchema = z.object({
+const rawRecipeSchema = z.object({
   id: z.number().int(),
   name: z.string(),
   description: z.string().default(""),
