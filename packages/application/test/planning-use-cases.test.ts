@@ -155,6 +155,20 @@ describe("one dinner per date across sessions (DinnerCalendar)", () => {
   });
 });
 
+describe("one dinner per date across sessions: moving", () => {
+  it("rejects moving a dinner onto a date a finalized session already planned", async () => {
+    const { h, s: first } = await started(household([r1, r2, r3]), [WED, planDate("2026-11-05")]);
+    await agree(h, first, WED, r1);
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
+    const second = ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
+    await agree(h, second, TUE, r2);
+    expect(await h.movePlannedDay.execute({ member: AC, sessionId: second.id, from: TUE, to: WED })).toEqual({
+      ok: false,
+      reason: "date_already_taken",
+    });
+  });
+});
+
 describe("RemindToFinalize", () => {
   it("notifies once, at 08:00 on the first agreed day, and only while the plan is open", async () => {
     const { h, s } = await started();
