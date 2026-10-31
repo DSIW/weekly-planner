@@ -237,7 +237,7 @@ One Docker image (multi-stage: build the web app, serve it from Fastify) as an e
 | # | Result | Done when |
 |---|---|---|
 | M0 | scaffold, KitchenOwl client, recipe attribute mapping, `recipes:check` command | `recipes:check` reports no recipe that needs data on the real instance |
-| M1 | domain layer (aggregates, policies, events) + application use cases with in-memory fakes, tests generated from the spec | all rules and invariants pass, ranking matches the reference model |
+| M1 (done) | domain layer (aggregates, policies, events) + application use cases with in-memory fakes, tests generated from the spec | all rules and invariants pass, ranking matches the reference model |
 | M2 | server, persistence, SSE | two clients see the same session live |
 | M3 | PWA: plan, deck, drag and drop | a full plan can be made on a phone |
 | M4 | finalize saga: planner entries + scaled shopping list | list and planner correct in KitchenOwl, retry works |

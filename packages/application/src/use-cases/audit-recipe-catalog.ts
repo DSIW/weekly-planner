@@ -30,7 +30,7 @@ const tally = (recipes: readonly Recipe[], key: (r: Recipe) => string): Record<s
 /** Use case: do all recipes carry the attributes the planning rules need? Read-only. */
 export class AuditRecipeCatalog {
   constructor(
-    private readonly catalog: RecipeCatalog,
+    private readonly catalog: Pick<RecipeCatalog, "listAll">,
     private readonly config: Pick<PlanningConfig, "weekdayTimeLimitMinutes">,
   ) {}
 

@@ -15,7 +15,7 @@ const recipe = (id: number, over: Partial<Recipe> = {}): Recipe => ({
   ...over,
 });
 const ready = (r: Recipe): CatalogEntry => ({ kind: "ready", recipe: r });
-const catalogOf = (entries: CatalogEntry[]): RecipeCatalog => ({ listAll: async () => entries });
+const catalogOf = (entries: CatalogEntry[]): Pick<RecipeCatalog, "listAll"> => ({ listAll: async () => entries });
 const audit = (entries: CatalogEntry[]) => new AuditRecipeCatalog(catalogOf(entries), { weekdayTimeLimitMinutes: 45 }).execute();
 
 describe("AuditRecipeCatalog", () => {

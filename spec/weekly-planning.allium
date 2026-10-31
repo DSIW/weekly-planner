@@ -509,4 +509,4 @@ surface PlanningBoard {
 ------------------------------------------------------------
 -- Open Questions
 ------------------------------------------------------------
-
+open question "LogPlannedMeal fires on every evaluation once a planned day is a day old. After MarkNotCooked removes the entry, nothing in the rules stops the entry from being created again; the implementation remembers which planned dates were logged (MealLogRepository.loggedPlanDates). Should the spec carry that guard?"

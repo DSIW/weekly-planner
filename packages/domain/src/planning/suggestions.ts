@@ -53,7 +53,8 @@ export function suggestRecipes(input: SuggestionInput): Recipe[] {
     key: [
       usedBases.has(recipe.base) ? 1 : 0,
       vegetarianAtRisk && !isVegetarian(recipe) ? 1 : 0,
-      newnessKey(recipe, isNew(recipe), newWanted),
+      newWanted ? (isNew(recipe) ? 0 : 1) : isNew(recipe) ? 1 : 0,
+      isNew(recipe) && recipe.wantsToTry ? 0 : 1,
       input.recentlyPlanned.has(recipe.id) ? 1 : 0,
       input.random(),
     ],
@@ -78,13 +79,6 @@ function isVegetarianShareAtRisk(session: PlanningSession, planned: readonly Rec
   const target = Math.ceil(config.vegetarianShare * dinners - 1e-9);
   const vegetarianSoFar = planned.filter(isVegetarian).length;
   return vegetarianSoFar + (open - 1) < target;
-}
-
-/** New recipes first (wants-to-try before the rest) until the session has its one; proven ones first afterwards. */
-function newnessKey(recipe: Recipe, isNew: boolean, newWanted: boolean): number {
-  if (!newWanted) return isNew ? 1 : 0;
-  if (isNew) return recipe.wantsToTry ? 0 : 1;
-  return 2;
 }
 
 function compareKeys(a: readonly number[], b: readonly number[]): number {

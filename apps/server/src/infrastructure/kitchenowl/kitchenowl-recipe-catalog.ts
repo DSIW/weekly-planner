@@ -1,5 +1,5 @@
 import type { RecipeCatalog } from "@weekly-planner/application";
-import type { CatalogEntry } from "@weekly-planner/domain";
+import type { CatalogEntry, Recipe, RecipeId } from "@weekly-planner/domain";
 import type { KitchenOwlClient } from "./client.js";
 import { toCatalogEntry } from "./recipe-translator.js";
 
@@ -9,5 +9,10 @@ export class KitchenOwlRecipeCatalog implements RecipeCatalog {
 
   async listAll(): Promise<readonly CatalogEntry[]> {
     return (await this.client.listRecipes()).map(toCatalogEntry);
+  }
+
+  async find(id: RecipeId): Promise<Recipe | null> {
+    const entry = (await this.listAll()).find((e) => (e.kind === "ready" ? e.recipe.id : e.recipeId) === id);
+    return entry?.kind === "ready" ? entry.recipe : null;
   }
 }
