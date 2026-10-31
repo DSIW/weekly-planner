@@ -20,6 +20,8 @@ interface AppOptions {
   readonly cookieSecure: boolean;
   readonly trustProxy: boolean;
   readonly now?: () => number;
+  /** Where failed API calls are written, one line each; defaults to the console. */
+  readonly log?: (line: string) => void;
 }
 
 const loginBody = z.object({ username: z.string().max(200), password: z.string().max(500) });
@@ -63,6 +65,26 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   };
 
   const api = `${options.basePath}/api`;
+
+  // Every failed API call leaves one line (method, path without query, status, reason): without it a rejected
+  // request is invisible on the server. Never the body, headers or cookies. "Nobody is signed in" on /me is normal.
+  const log = options.log ?? ((line: string) => console.warn(line));
+  app.addHook("onSend", async (req, reply, payload) => {
+    const path = req.url.split("?")[0] ?? "";
+    if (reply.statusCode < 400 || !path.startsWith(`${api}/`)) return payload;
+    if (path === `${api}/me` && reply.statusCode === 401) return payload;
+    let reason = "";
+    try {
+      const body = JSON.parse(String(payload)) as { error?: unknown; message?: unknown };
+      reason = String(
+        typeof body.error === "string" && body.error !== "Bad Request" ? body.error : (body.message ?? ""),
+      );
+    } catch {
+      // Not JSON; the status says enough.
+    }
+    log(`${req.method} ${path} -> ${reply.statusCode}${reason ? ` ${reason.slice(0, 120)}` : ""}`);
+    return payload;
+  });
 
   app.get(`${api}/health`, async () => ({ status: "ok" }));
 

@@ -29,6 +29,7 @@ const noSessions = {
 let webDist: string;
 let clock: number;
 beforeEach(() => {
+  logged = [];
   attempts = [];
   clock = 1_000_000;
   webDist = mkdtempSync(join(tmpdir(), "web-"));
@@ -38,6 +39,7 @@ beforeEach(() => {
   writeFileSync(join(webDist, "sw.js"), "// sw");
 });
 
+let logged: string[];
 const app = (over: { basePath?: string; signIn?: Pick<SignIn, "execute"> } = {}) =>
   buildApp({
     ...noSessions,
@@ -48,6 +50,7 @@ const app = (over: { basePath?: string; signIn?: Pick<SignIn, "execute"> } = {})
     cookieSecure: false,
     trustProxy: false,
     now: () => clock,
+    log: (line) => logged.push(line),
     ...over,
   });
 
@@ -205,5 +208,35 @@ describe("health and web app", () => {
     const a = await app({ basePath: "" });
     expect((await a.inject({ method: "GET", url: "/api/health" })).statusCode).toBe(200);
     expect((await a.inject({ method: "GET", url: "/" })).body).toContain("planner");
+  });
+});
+
+describe("the error log", () => {
+  it("records every failed API call with method, path, status and the reason, nothing else", async () => {
+    const a = await app();
+    await a.inject({ method: "POST", url: "/plan/api/login", payload: { username: "dsiw", password: "secret-pw" } });
+    await a.inject({
+      method: "POST",
+      url: "/plan/api/login",
+      payload: "not json",
+      headers: { "content-type": "application/json" },
+    });
+    await a.inject({ method: "GET", url: "/plan/api/nope?token=abc" });
+    expect(logged).toEqual([
+      "POST /plan/api/login -> 401 invalid_credentials",
+      expect.stringMatching(/^POST \/plan\/api\/login -> 400 /),
+      "GET /plan/api/nope -> 404 not_found",
+    ]);
+    expect(logged.join("\n")).not.toMatch(/secret-pw|token|abc/);
+  });
+
+  it("stays quiet about successes, the normal 'nobody is signed in' answer of /me, and the web app", async () => {
+    const a = await app();
+    await login(a);
+    await a.inject({ method: "GET", url: "/plan/api/health" });
+    await a.inject({ method: "GET", url: "/plan/api/me" });
+    await a.inject({ method: "GET", url: "/plan/" });
+    await a.inject({ method: "GET", url: "/plan/assets/missing.js" });
+    expect(logged).toEqual([]);
   });
 });

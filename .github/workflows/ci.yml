@@ -22,6 +22,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test:ci
+      - name: Smoke test the built app (real web client, real server, real SQLite)
+        run: npm run smoke
       - name: Fetch dependabot metadata
         if: ${{ github.actor == 'dependabot[bot]' }}
         id: metadata

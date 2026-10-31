@@ -192,7 +192,7 @@ A use case loads aggregates through ports, calls a domain rule, saves, and publi
 
 Ports (interfaces owned by the application layer, implemented by adapters): `SessionRepository`, `MealLogRepository`, `RecipeExperienceRepository`, `RecipeCatalog` (`listAll`, `find`), `DinnerCalendar`, `EventPublisher`, `Notifier`, `Clock`, `IdGenerator`, `Randomness`, `UnitOfWork`. *Planned:* `PlannerGateway` (KitchenOwl planner and shopping list, S4) and `StockScore` (pantry, after S6).
 
-How it is tested: the domain by pure unit and property tests, most of them generated from the spec; use cases against in-memory fakes of the ports (`packages/application/test/support/in-memory.ts`); adapters by contract tests (the KitchenOwl client against recorded responses and the real instance, SQLite against a temporary file); the HTTP layer by request tests; the dependency rule by the architecture test.
+How it is tested: the domain by pure unit and property tests, most of them generated from the spec; use cases against in-memory fakes of the ports (`packages/application/test/support/in-memory.ts`); adapters by contract tests (the KitchenOwl client against recorded responses and the real instance, SQLite against a temporary file); the HTTP layer by request tests; the seam between the web client and the server by `scripts/smoke.mjs` (the real client code against the built server and a real SQLite file, as two members; it caught what mocks on either side cannot, see the S1b discard bug); the dependency rule by the architecture test.
 
 ## 8. API and real-time
 

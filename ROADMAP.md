@@ -47,7 +47,7 @@ Status: released as v0.1.2 and running on the real server. Verified: sign-in wit
 - Frontend: date picker, plan board with the days, live update via SSE, reconnect refetch.
 - Verify by hand: start a session on the phone; a laptop browser signed in as the other member shows it within a second or two; reload keeps it; the server restarts without losing it.
 
-Status: built, tested and `weed`ed; not released or verified on a phone yet. Decisions made on the way: only **one session is open at a time** (new spec rule on StartSession; a second start is refused, and "Planung verwerfen" abandons the open one so a wrong pick is not stuck), the live stream is household-wide (`GET /api/events`), SQLite is `node:sqlite` (D17, Node 22.22.2).
+Status: released (v0.1.4) and verified by hand on the real server: both members see the same session live, discarding works, a second start is refused. Decisions made on the way: only **one session is open at a time** (new spec rule on StartSession; a second start is refused, and "Planung verwerfen" abandons the open one so a wrong pick is not stuck), the live stream is household-wide (`GET /api/events`), SQLite is `node:sqlite` (D17, Node 22.22.2).
 
 
 ### S2a: Agree a dinner
@@ -124,6 +124,6 @@ S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 -> S7 (S2b does not blo
 ## Done means (every slice)
 
 1. Commits follow the conventional format release-please reads (`feat:`, `fix:`, `docs:`, `chore:`). Spec updated if behaviour is new; `allium check` has no findings.
-2. Tests pass at all layers: domain, use cases against fakes, adapters by contract tests, HTTP by request tests, UI by component and one end-to-end test on two clients.
+2. Tests pass at all layers: domain, use cases against fakes, adapters by contract tests, HTTP by request tests, UI by component tests, and `npm run smoke`, which drives the built server with the real web client code as two members (it runs in CI). A slice adds its steps to `scripts/smoke.mjs`. Every action in the UI shows a message when it fails (guard tests in `apps/web/test/planning.test.tsx`), and the server logs every failed API call.
 3. `weed` clean, `witness` PASS.
 4. Deployed to the real instance and verified by hand on one real phone using the slice's checklist. Where a check needs a second member (live updates, accept/veto), a laptop browser signed in as the other member is enough for now; checking on both phones comes with S6.

@@ -43,7 +43,8 @@ export async function login(username: string, password: string): Promise<Member>
 }
 
 export async function logout(): Promise<void> {
-  await fetch(`${base}/logout`, { method: "POST", credentials: "same-origin" });
+  const res = await fetch(`${base}/logout`, { method: "POST", credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 interface PlanDay {

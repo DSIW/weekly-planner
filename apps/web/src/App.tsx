@@ -86,6 +86,11 @@ export function App() {
           Abmelden
         </button>
       </header>
+      {signOut.isError && (
+        <p role="alert" className="error">
+          Abmelden hat nicht geklappt. Bitte noch einmal versuchen.
+        </p>
+      )}
       <Planning />
     </main>
   );

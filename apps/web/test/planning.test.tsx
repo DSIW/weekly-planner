@@ -197,3 +197,52 @@ describe("the shared board", () => {
     expect(FakeEventSource.instances.every((s) => s.closed)).toBe(true);
   });
 });
+
+// Every action a member can take must say so when it fails; a silent failure looks like a broken button.
+describe("failed actions are visible", () => {
+  const LOGIN = `POST ${api}/login`;
+  const LOGOUT = `POST ${api}/logout`;
+
+  it("login that the server fails on", async () => {
+    server({ [ME]: { status: 401 }, [LOGIN]: { status: 500, body: {} } });
+    renderApp();
+    await userEvent.type(await screen.findByLabelText("Benutzername"), "x");
+    await userEvent.type(screen.getByLabelText("Passwort"), "y");
+    await userEvent.click(screen.getByRole("button", { name: "Anmelden" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht erreichbar");
+  });
+
+  it("starting a session that the server fails on", async () => {
+    server({ ...signedIn, [CURRENT]: { status: 200, body: { session: null } }, [START]: { status: 500, body: {} } });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: /^Mo.*2\.11\./ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Di.*3\.11\./ }));
+    await userEvent.click(screen.getByRole("button", { name: "Planung starten" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
+  });
+
+  it("discarding a session that the server fails on", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: open(["2026-11-02", "2026-11-03"]) } },
+      [CLOSE]: { status: 500, body: {} },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Planung verwerfen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
+  });
+
+  it("signing out that fails, and the member stays signed in", async () => {
+    server({ ...signedIn, [CURRENT]: { status: 200, body: { session: null } }, [LOGOUT]: { status: 500, body: {} } });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Abmelden" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Abmelden");
+    expect(screen.getByRole("heading", { name: "Hallo, Max" })).toBeInTheDocument();
+  });
+
+  it("loading the session that the server fails on", async () => {
+    server({ ...signedIn, [CURRENT]: { status: 500, body: {} } });
+    renderApp();
+    expect(await screen.findByText(/konnte nicht geladen werden/)).toBeInTheDocument();
+  });
+});
