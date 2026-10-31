@@ -52,7 +52,8 @@ const curry = aRecipe(3, "Curry");
 const tiramisu = aRecipe(4, "Tiramisu", { mealType: "dessert" });
 const braten = aRecipe(5, "Schmorbraten", { totalTimeMinutes: 120, diet: "meat" });
 const biga = aRecipe(6, "Pizza Biga", { totalTimeMinutes: 1285 });
-const recipes = [pasta, risotto, curry, tiramisu, braten, biga];
+const kuerbis = aRecipe(7, "Kürbissuppe", { isProven: false }); // never cooked: a new recipe
+const recipes = [pasta, risotto, curry, tiramisu, braten, biga, kuerbis];
 
 let refreshes: number;
 let catalogDown: boolean;
@@ -302,6 +303,15 @@ describe("agreeing a dinner over HTTP", () => {
       date: MON,
       recipes: [
         { id: 3, name: "Curry", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
+        {
+          id: 7,
+          name: "Kürbissuppe",
+          minutes: 30,
+          base: "pasta",
+          diet: "vegetarian",
+          needsTime: false,
+          planAhead: false,
+        },
         { id: 1, name: "Pasta", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
         { id: 2, name: "Risotto", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
       ],
@@ -433,10 +443,10 @@ describe("the ranked deck over HTTP", () => {
     const { session } = (await start(max, [MON, TUE])).json();
     const d = await deck(ac, session.id);
     expect(d.date).toBe(MON);
-    expect(cardNames(d).sort()).toEqual(["Curry", "Pasta", "Risotto"]); // no dessert, no long recipe on a weekday
-    expect(d.cards[0]).toEqual({
-      id: expect.any(Number),
-      name: expect.any(String),
+    expect(cardNames(d).sort()).toEqual(["Curry", "Kürbissuppe", "Pasta", "Risotto"]); // no dessert, no long recipe
+    expect(d.cards.find((c: { name: string }) => c.name === "Pasta")).toEqual({
+      id: 1,
+      name: "Pasta",
       minutes: 30,
       base: "pasta",
       diet: "vegetarian",
@@ -444,6 +454,14 @@ describe("the ranked deck over HTTP", () => {
       planAhead: false,
       isNew: false,
     });
+  });
+
+  it("marks only recipes that were never cooked as new, and offers the new one first while the session has none", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    const d = await deck(ac, session.id);
+    const flags = Object.fromEntries(d.cards.map((c: { name: string; isNew: boolean }) => [c.name, c.isNew]));
+    expect(flags).toEqual({ Kürbissuppe: true, Pasta: false, Curry: false, Risotto: false });
+    expect(d.cards[0].name).toBe("Kürbissuppe"); // one new recipe per session is wanted, so the new one leads
   });
 
   it("keeps its order between requests and for both members, and puts plan-ahead recipes last", async () => {
