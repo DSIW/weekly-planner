@@ -68,7 +68,7 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 - Backend: `FinalizePlan` as the saga from `ARCHITECTURE.md` section 6 (per-day export state, retry, no duplicates), amount scaling to two portions, consolidation preview, `PlannerGateway` on KitchenOwl; `RemindToFinalize` scheduler job, Web Push (installed PWA) with in-app banner as fallback.
 - Frontend: finalize screen with the consolidated list preview, export status and retry, reminder permission prompt and banner.
-- Verify by hand: finalize a real plan and check the planner and the shopping list in KitchenOwl (amounts scaled, items merged); kill the server mid-export and see the retry finish without duplicates; the reminder arrives on both phones at 08:00 on the first agreed day.
+- Verify by hand: finalize a real plan and check the planner and the shopping list in KitchenOwl (amounts scaled, items merged); kill the server mid-export and see the retry finish without duplicates; the reminder arrives on the phone at 08:00 on the first agreed day.
 
 ### S5: Cook and learn
 
