@@ -74,7 +74,7 @@ ARCHITECTURE.md  ROADMAP.md  README.md  .env.example
 
 The one-off data tools live **outside** this repository, in the parent folder `cooking-mgmt/`: `import/` (Notion and KptnCook importers and their exports) and `foundation/` (the data-foundation scripts and backups of the full recipe database). They contain personal data and are finished jobs, so this repository stays safe to publish; the tag vocabulary they established is encoded in one place, the KitchenOwl translator in the infrastructure layer.
 
-Tooling: npm workspaces on Node 22, strict TypeScript, Vitest, fast-check (property tests), tsx for running TypeScript, zod for validating KitchenOwl responses. ESLint is planned.
+Tooling: npm workspaces on Node 22, strict TypeScript, Vitest, fast-check (property tests), tsx for running TypeScript, zod for validating KitchenOwl responses. Commits use the conventional format that release-please reads. ESLint, Prettier and the CI and release workflows (section 11) are planned for slice S1a.
 
 ## 4. Domain model (DDD)
 
@@ -230,6 +230,14 @@ The login form posts the member's KitchenOwl username and password to our server
 
 One Docker image (multi-stage: build the web app, serve it from Fastify) as an extra service next to KitchenOwl, behind the same reverse proxy and served under `/plan` (configurable base path `BASE_PATH=/plan`). State lives in one SQLite file on a volume, copied nightly. Environment: `KITCHENOWL_URL`, `KITCHENOWL_TOKEN`, `SESSION_SECRET`, `VAPID_*`, `TZ`. No secrets in the repository.
 
+Delivery follows the pipeline of the household's `overtimer` repository, with a container registry in place of Vercel:
+
+- CI (GitHub Actions) runs install, typecheck, tests and build on every push and pull request.
+- release-please turns conventional commits into a release pull request, a changelog and a version tag. Publishing the release builds the image and pushes it to GHCR as `ghcr.io/dsiw/weekly-planner:<version>` and `latest`.
+- Dependabot opens grouped dependency updates; minor and patch updates auto-merge once CI passes.
+- A separate workflow runs `allium check` (errors fail the build) and `allium analyse` when the spec changes.
+- The server pulls the new image (Watchtower or `docker compose pull`); GitHub holds no credentials for the server.
+
 ## 12. Spec-driven workflow (the Allium test)
 
 1. Behaviour first: new or changed behaviour goes into `spec/weekly-planning.allium`, then `allium check` runs on every change.
@@ -282,3 +290,4 @@ The plan lives in [`ROADMAP.md`](ROADMAP.md). Work is cut into **vertical slices
 | D11 | Domain-driven design with an onion architecture: domain and application are separate packages with no outward dependencies, adapters implement ports, one composition root, the dependency rule is enforced by a test | the behaviour is rule-heavy and will grow (pantry, receipts); the core must be testable without a server, a database or KitchenOwl, and KitchenOwl's tag vocabulary must not leak into it | one `server` package with services calling the KitchenOwl client and SQLite directly: faster to start, but rules and I/O would mix |
 | D12 | Aggregates are immutable data with pure rule functions returning `Result<{ state, events }>`, not classes with methods | the spec's rules map one to one onto functions; rejected commands cannot leave half-changed state; property tests can run thousands of random command sequences cheaply | classes with mutable state and exceptions (first sketch of section 7): hidden state, harder to test exhaustively |
 | D13 | Work is cut into vertical slices through the whole stack, not by layer | the first plan built every rule before anything could be used on a phone; slices give real feedback early and keep each Allium loop small | milestones by layer (M0 to M6 as first written) |
+| D14 | Delivery copies the `overtimer` pipeline (CI, release-please, Dependabot with auto-merge, Allium spec check) and publishes a Docker image to GHCR on release; the server pulls it | one release process for all the household's projects; the app is a long-running service with SQLite, which Vercel cannot host | Vercel (used by `overtimer`, static only); building on the server; deploying over SSH from the workflow (needs server credentials in GitHub) |

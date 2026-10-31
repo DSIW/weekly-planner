@@ -27,8 +27,15 @@ These were cut by layer, not by slice. That was a mistake in the original plan: 
 
 - Backend: Fastify server in `apps/server` (section 8), composition root, sign-in with the member's KitchenOwl credentials checked against KitchenOwl and an httpOnly session cookie (section 10), `GET /api/me`, health check.
 - Frontend: React + Vite PWA shell under `/plan` (`apps/web`), installable, login form, "Hallo <name>" page.
-- Delivery: the Docker image and reverse-proxy entry from section 11 next to KitchenOwl; every later slice is tried on the real deployment.
-- Verify by hand: install on one phone from the real address; wrong password is refused; a KitchenOwl user outside the household cannot sign in; the app opens offline to its shell.
+- Delivery, following the pipeline of the `overtimer` repository, with a Docker image instead of Vercel (section 11):
+  - Multi-stage Dockerfile and a compose example for the server, next to KitchenOwl behind the reverse proxy under `/plan`.
+  - CI on push and pull request: `npm ci`, typecheck, tests, build.
+  - release-please (`release-please-config.json`, manifest, conventional commits): it opens a release PR; publishing the release builds the image and pushes it to GHCR as `ghcr.io/dsiw/weekly-planner:<version>` and `latest`.
+  - Dependabot with grouped updates; minor and patch updates auto-merge once CI is green.
+  - Allium spec check workflow (`allium check` fails only on errors, then `allium analyse`).
+  - `.npmrc` with `save-exact`, pinned `.node-version`, Prettier and ESLint config, `CHANGELOG.md` written by release-please.
+  - The server updates by pulling the new image (Watchtower or a manual `docker compose pull`); no server credentials live in GitHub.
+- Verify by hand: install on one phone from the real address; wrong password is refused; a KitchenOwl user outside the household cannot sign in; the app opens offline to its shell; release-please opens a release PR, publishing it pushes an image to GHCR, and the server runs the new version after a pull.
 
 ### S1b: Two phones, one session
 
@@ -100,6 +107,8 @@ S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 -> S7 (S2b does not blo
 
 ## Open items before S1a
 
+- GitHub setup the user has to do once: the `RELEASE_PLEASE_TOKEN` repository secret (as in `overtimer`), the repository setting that lets Actions create pull requests, and package visibility for GHCR. The `gh` token used in this environment cannot create repositories and may also lack the `workflow` permission needed to push files under `.github/workflows/`; if the push is refused, that permission has to be added.
+
 - Spec: the `LogPlannedMeal` re-fire guard (parked question) is decided in S5 at the latest. Three more questions from the weed report (abandoned sessions, variety across sessions, stale pending proposals) are decided in the slice that touches them: S2a for stale proposals, S2b for variety across sessions, S5 for abandoned sessions.
 - Base variety only sees the meal log once S5 exists, so the first real weeks may suggest the same base twice. Decide per slice whether a minimal "add what we ate" arrives earlier (S2b is the natural place); not decided yet.
 - The stack is already decided (`ARCHITECTURE.md` sections 8, 9 and 11: Fastify, React + Vite, TanStack Query, `@dnd-kit`, Docker image under `/plan`). S1a only has to prove it end to end.
@@ -107,7 +116,7 @@ S1a -> S1b -> S2a -> S2b -> S3 and S2a -> S4 -> S5 -> S6 -> S7 (S2b does not blo
 
 ## Done means (every slice)
 
-1. Spec updated if behaviour is new; `allium check` has no findings.
+1. Commits follow the conventional format release-please reads (`feat:`, `fix:`, `docs:`, `chore:`). Spec updated if behaviour is new; `allium check` has no findings.
 2. Tests pass at all layers: domain, use cases against fakes, adapters by contract tests, HTTP by request tests, UI by component and one end-to-end test on two clients.
 3. `weed` clean, `witness` PASS.
 4. Deployed to the real instance and verified by hand on one real phone using the slice's checklist. Where a check needs a second member (live updates, accept/veto), a laptop browser signed in as the other member is enough for now; checking on both phones comes with S6.
