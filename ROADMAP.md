@@ -1,6 +1,6 @@
 # Roadmap
 
-Status: **draft for review**. It replaces the milestone table that used to be in `ARCHITECTURE.md` section 13; that section now only points here.
+Status: **agreed** (2026-10-31). It replaces the milestone table that used to be in `ARCHITECTURE.md` section 13; that section now only points here.
 
 ## How the work is cut
 
