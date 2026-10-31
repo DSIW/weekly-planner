@@ -164,6 +164,7 @@ entity Proposal {
 -- every few days (typically Sunday and midweek); the days are not fixed.
 rule StartSession {
     when: StartSession(member, dates)
+    requires: dates.unique.count = dates.count   -- one plan day per date
     requires: dates.count >= config.min_days_per_session
     requires: dates.count <= config.max_days_per_session
     ensures:
