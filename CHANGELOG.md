@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.1...weekly-planner-v0.1.2) (2026-10-31)
+
+
+### Bug Fixes
+
+* log what KitchenOwl answered when it rejects a sign-in ([561b6a1](https://github.com/DSIW/weekly-planner/commit/561b6a1543bd8415f08915695f25c7b3d67c33d0))
+* report a failing KitchenOwl lookup as unavailable, not as a wrong password ([18c352c](https://github.com/DSIW/weekly-planner/commit/18c352c2197890da62e24d3c9706637dc976d7ea))
+
 ## [0.1.1](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.0...weekly-planner-v0.1.1) (2026-10-31)
 
 
