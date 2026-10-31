@@ -25,6 +25,30 @@ export interface SuggestionInput {
 }
 
 /**
+ * The hard rules for the next open day, without any ranking: main dishes only, on a weekday within the time limit,
+ * and not vetoed, passed or planned in this session. Empty when the session is not open or no day is open.
+ */
+export function eligibleRecipes(
+  session: PlanningSession,
+  candidates: readonly Recipe[],
+  config: PlanningConfig,
+): Recipe[] {
+  const day = session.status === "open" ? nextOpenDay(session) : undefined;
+  if (!day) return [];
+  const excluded = new Set<RecipeId>([
+    ...vetoedRecipeIds(session),
+    ...passedRecipeIds(session),
+    ...plannedDays(session).flatMap((d) => (d.recipe ? [d.recipe.id] : [])),
+  ]);
+  return candidates.filter(
+    (r) =>
+      isDinnerCandidate(r) &&
+      (isWeekend(day.date) || fitsWeekdayLimit(r, config.weekdayTimeLimitMinutes)) &&
+      !excluded.has(r.id),
+  );
+}
+
+/**
  * The deck for the next open day: hard rules filter, soft preferences rank (spec: surface PlanningBoard).
  * In order of priority: base variety, mostly vegetarian, one new recipe per session, not planned recently.
  * Recipes that rank equally come in random order. The deck is not capped.
@@ -35,17 +59,7 @@ export function suggestRecipes(input: SuggestionInput): Recipe[] {
   if (!day) return [];
 
   const planned = plannedDays(session).flatMap((d) => (d.recipe ? [d.recipe] : []));
-  const excluded = new Set<RecipeId>([
-    ...vetoedRecipeIds(session),
-    ...passedRecipeIds(session),
-    ...planned.map((r) => r.id),
-  ]);
-  const eligible = input.candidates.filter(
-    (r) =>
-      isDinnerCandidate(r) &&
-      (isWeekend(day.date) || fitsWeekdayLimit(r, config.weekdayTimeLimitMinutes)) &&
-      !excluded.has(r.id),
-  );
+  const eligible = eligibleRecipes(session, input.candidates, config);
 
   const usedBases = recentBases(input, day.date, planned);
   const vegetarianAtRisk = isVegetarianShareAtRisk(session, planned, config);

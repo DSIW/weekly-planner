@@ -23,6 +23,11 @@ const noSessions = {
   getCurrentSession: { execute: async () => null },
   startSession: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   closeSession: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  listEligibleRecipes: { execute: async () => null },
+  proposeRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  acceptProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  vetoProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  refreshRecipes: { execute: async () => {} },
   subscribe: () => () => {},
 };
 

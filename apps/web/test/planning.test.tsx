@@ -15,6 +15,7 @@ const open = (dates: string[]) => ({
   status: "open",
   startedBy: "2",
   days: dates.map((date) => ({ date, status: "open" })),
+  proposals: [],
 });
 
 /** Stands in for the browser's EventSource so a test can play the part of the other phone's changes. */

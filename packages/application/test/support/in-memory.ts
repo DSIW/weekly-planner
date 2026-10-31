@@ -78,7 +78,11 @@ export class InMemoryExperience implements RecipeExperienceRepository {
 }
 
 export class InMemoryCatalog implements RecipeCatalog {
+  refreshes = 0;
   constructor(public entries: CatalogEntry[] = []) {}
+  async refresh() {
+    this.refreshes++;
+  }
   async listAll() {
     return this.entries;
   }

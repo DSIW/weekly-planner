@@ -1,9 +1,11 @@
 import {
   acceptProposal,
   closeSession,
+  eligibleRecipes,
   finalizePlan,
   markLeftoverDay,
   movePlannedDay,
+  nextOpenDay,
   passSuggestion,
   proposalId,
   proposeRecipe,
@@ -16,6 +18,7 @@ import {
   type Outcome,
   type PlanningEvent,
   type PlanningSession,
+  type Recipe,
   type Result,
   type PlanDate,
   type PlanningConfig,
@@ -71,6 +74,32 @@ export class GetCurrentSession {
 
   execute(): Promise<PlanningSession | null> {
     return this.sessions.findOpen();
+  }
+}
+
+/** The recipes a member may propose for the next open day, by name, and which day that is. Read-only. */
+export class ListEligibleRecipes {
+  constructor(
+    private readonly deps: { sessions: Pick<SessionRepository, "get">; catalog: Pick<RecipeCatalog, "listAll"> },
+    private readonly config: PlanningConfig,
+  ) {}
+
+  async execute(cmd: { sessionId: SessionId }): Promise<{ date: PlanDate; recipes: readonly Recipe[] } | null> {
+    const session = await this.deps.sessions.get(cmd.sessionId);
+    const day = session && session.status === "open" ? nextOpenDay(session) : undefined;
+    if (!session || !day) return null;
+    const ready = (await this.deps.catalog.listAll()).flatMap((e) => (e.kind === "ready" ? [e.recipe] : []));
+    const recipes = eligibleRecipes(session, ready, this.config).sort((a, b) => a.name.localeCompare(b.name, "de"));
+    return { date: day.date, recipes };
+  }
+}
+
+/** Re-reads the recipes from KitchenOwl, for when someone just fixed a tag or a time there. */
+export class RefreshRecipes {
+  constructor(private readonly catalog: Pick<RecipeCatalog, "refresh">) {}
+
+  execute(): Promise<void> {
+    return this.catalog.refresh();
   }
 }
 

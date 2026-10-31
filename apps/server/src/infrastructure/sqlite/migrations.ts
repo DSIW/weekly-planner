@@ -26,6 +26,11 @@ const MIGRATIONS: readonly string[] = [
     primary key (session_id, date)
   );
   `,
+  // 2: one planned dinner per date across all sessions (spec invariant OneDinnerPerDay); the use cases ask the
+  // DinnerCalendar first, this makes a race between two sessions impossible.
+  `
+  create unique index one_dinner_per_date on plan_day (date) where status = 'planned';
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

@@ -47,9 +47,27 @@ export async function logout(): Promise<void> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
+export interface RecipeView {
+  id: number;
+  name: string;
+  minutes: number | null;
+  base: string;
+  diet: string;
+  needsTime: boolean;
+}
+
 interface PlanDay {
   date: string;
   status: "open" | "planned" | "leftovers";
+  recipe?: RecipeView;
+}
+
+export interface Proposal {
+  id: string;
+  date: string;
+  recipe: RecipeView;
+  proposedBy: string;
+  status: "pending" | "accepted" | "vetoed";
 }
 
 export interface PlanSession {
@@ -57,9 +75,19 @@ export interface PlanSession {
   status: "open" | "finalized" | "closed";
   startedBy: string;
   days: PlanDay[];
+  proposals: Proposal[];
 }
 
-type SessionError = "session_already_open" | "unavailable";
+/** Reasons the server gives that a member can do something about; anything else is just "did not work". */
+const KNOWN_REASONS = [
+  "session_already_open",
+  "session_not_open",
+  "proposal_already_pending",
+  "proposal_not_pending",
+  "not_next_open_day",
+  "date_already_taken",
+] as const;
+export type SessionError = (typeof KNOWN_REASONS)[number] | "unavailable";
 
 export class SessionFailed extends Error {
   constructor(readonly reason: SessionError) {
@@ -88,11 +116,30 @@ async function sessionCommand(path: string, body?: unknown): Promise<PlanSession
   }
   if (res.ok) return ((await res.json()) as { session: PlanSession }).session;
   const error = ((await res.json().catch(() => ({}))) as { error?: string }).error;
-  throw new SessionFailed(error === "session_already_open" ? error : "unavailable");
+  throw new SessionFailed(KNOWN_REASONS.find((r) => r === error) ?? "unavailable");
 }
 
 export const startSession = (dates: string[]) => sessionCommand("/sessions", { dates });
 export const closeSession = (id: string) => sessionCommand(`/sessions/${id}/close`);
+export const proposeRecipe = (sessionId: string, date: string, recipeId: number) =>
+  sessionCommand(`/sessions/${sessionId}/proposals`, { date, recipeId });
+export const acceptProposal = (sessionId: string, proposalId: string) =>
+  sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/accept`);
+export const vetoProposal = (sessionId: string, proposalId: string) =>
+  sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/veto`);
+
+/** The recipes that may be proposed for the next open day, by name. */
+export async function fetchEligibleRecipes(sessionId: string): Promise<{ date: string; recipes: RecipeView[] }> {
+  const res = await fetch(`${base}/sessions/${sessionId}/recipes`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as { date: string; recipes: RecipeView[] };
+}
+
+/** Asks the server to read the recipes from KitchenOwl again, after someone fixed a tag or a time there. */
+export async function refreshRecipes(): Promise<void> {
+  const res = await fetch(`${base}/recipes/refresh`, { method: "POST", credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
 
 /** Opens the live stream; `onChange` fires when anything changed and again after every (re)connect. */
 export function listenForChanges(onChange: () => void): () => void {

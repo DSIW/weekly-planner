@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planDate, proposalId, recipeId, sessionId, type PlanningSession, type Result } from "@weekly-planner/domain";
-import { OpenSessionConflict } from "../src/index.js";
+import { DateTakenConflict, OpenSessionConflict } from "../src/index.js";
 import { household } from "./household.js";
 import { AC, ME, aRecipe } from "./support/in-memory.js";
 
@@ -133,6 +133,57 @@ describe("a planning session through the use cases", () => {
     expect(h.events.types).toEqual(
       expect.arrayContaining(["DayMarkedLeftovers", "DayReopened", "DaysSwapped", "DayMoved"]),
     );
+  });
+});
+
+describe("the list of recipes for the next open day", () => {
+  const dessert = aRecipe(10, { mealType: "dessert", name: "Tiramisu" });
+  const slow = aRecipe(11, { totalTimeMinutes: 90, name: "Schmorbraten" });
+  const zucchini = aRecipe(12, { totalTimeMinutes: 25, name: "Zucchinipfanne" });
+  const apple = aRecipe(13, { totalTimeMinutes: 30, name: "Apfelpfannkuchen" });
+  const all = [dessert, slow, zucchini, apple];
+
+  it("names the day and offers eligible dinners by name", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    expect(await h.listEligibleRecipes.execute({ sessionId: s.id })).toEqual({
+      date: MON,
+      recipes: [apple, zucchini],
+    });
+  });
+
+  it("leaves out what was vetoed and moves on to the next day once one is agreed", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: apple.id }));
+    ok(await h.vetoProposal.execute({ member: ME, sessionId: s.id, proposalId: proposed.proposals[0]!.id }));
+    expect((await h.listEligibleRecipes.execute({ sessionId: s.id }))?.recipes).toEqual([zucchini]);
+    await agree(h, s, MON, zucchini);
+    expect(await h.listEligibleRecipes.execute({ sessionId: s.id })).toEqual({ date: TUE, recipes: [] });
+  });
+
+  it("is null for an unknown session and for one that is closed", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    expect(await h.listEligibleRecipes.execute({ sessionId: sessionId("nope") })).toBeNull();
+    ok(await h.closeSession.execute({ member: AC, sessionId: s.id }));
+    expect(await h.listEligibleRecipes.execute({ sessionId: s.id })).toBeNull();
+  });
+
+  it("re-reads the recipes from their source on request", async () => {
+    const h = household(all);
+    await h.refreshRecipes.execute();
+    expect(h.catalog.refreshes).toBe(1);
+  });
+});
+
+describe("a concurrent decision on the same date", () => {
+  it("answers date_already_taken when storage reports that another session took the date meanwhile", async () => {
+    const { h, s } = await started(household([r1]), [MON, TUE]);
+    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: r1.id }));
+    h.sessions.save = async () => {
+      throw new DateTakenConflict();
+    };
+    expect(
+      await h.acceptProposal.execute({ member: ME, sessionId: s.id, proposalId: proposed.proposals[0]!.id }),
+    ).toEqual({ ok: false, reason: "date_already_taken" });
   });
 });
 

@@ -21,7 +21,17 @@ const members = {
 const listen = (server) =>
   new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server.address().port)));
 
-/** Just enough of KitchenOwl: sign-in with the password "pw", who is who, and the household's members. */
+// Every recipe carries the "proven" tag, as the real ones carry either that or "new".
+const tags = (...names) => [...names, "✅ Erprobt"].map((name) => ({ name }));
+const recipes = [
+  { id: 1, name: "Pasta", time: 30, tags: tags("🍽️ Hauptgericht", "🥬 Vegetarisch", "🍝 Pasta") },
+  { id: 2, name: "Curry", time: 25, tags: tags("🍽️ Hauptgericht", "🌱 Vegan", "🍚 Reis") },
+  { id: 3, name: "Risotto", time: 40, tags: tags("🍽️ Hauptgericht", "🥬 Vegetarisch", "🍚 Reis") },
+  { id: 4, name: "Schmorbraten", time: 120, tags: tags("🍽️ Hauptgericht", "🥩 Fleisch") },
+  { id: 5, name: "Tiramisu", time: 30, tags: tags("🍦 Dessert", "🥬 Vegetarisch") },
+];
+
+/** Just enough of KitchenOwl: sign-in with the password "pw", who is who, the household and its recipes. */
 const kitchenowl = http.createServer((req, res) => {
   let body = "";
   req.on("data", (c) => {
@@ -42,6 +52,7 @@ const kitchenowl = http.createServer((req, res) => {
       return members[name] ? send(200, { ...members[name], username: name }) : send(401, {});
     }
     if (req.url === "/api/household/2") return send(200, { member: [{ id: 2 }, { id: 3 }] });
+    if (req.url === "/api/household/2/recipe") return send(200, recipes);
     return send(404, {});
   });
 });
@@ -139,11 +150,11 @@ async function step(name, fn) {
   }
 }
 
-const day = (offset) => {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
+// Fixed weekdays (Monday to Thursday): the weekday limit on cooking times depends on the date.
+const D1 = "2026-11-02";
+const D2 = "2026-11-03";
+const D3 = "2026-11-04";
+const D4 = "2026-11-05";
 
 try {
   const kitchenowlPort = await listen(kitchenowl);
@@ -196,11 +207,11 @@ try {
       }
     };
     await until("event: ready");
-    const started = await as("dsiw", () => web.startSession([day(2), day(1)]));
+    const started = await as("dsiw", () => web.startSession([D2, D1]));
     sessionId = started.id;
     assert.deepEqual(
       started.days.map((d) => d.date),
-      [day(1), day(2)],
+      [D1, D2],
     );
     await until("event: changed");
     controller.abort();
@@ -208,14 +219,77 @@ try {
   });
 
   await step("a second start is refused while one is open", async () => {
-    const refused = await as("ac", () => web.startSession([day(3), day(4)]).catch((e) => e));
+    const refused = await as("ac", () => web.startSession([D3, D4]).catch((e) => e));
     assert.equal(refused.reason, "session_already_open");
   });
 
-  await step("the session and the sign-in survive a server restart", async () => {
+  const names = (list) => list.recipes.map((r) => r.name);
+  let firstProposal = "";
+  await step("the list offers dinners for the next open day: no dessert, no long recipe on a weekday", async () => {
+    const list = await as("ac", () => web.fetchEligibleRecipes(sessionId));
+    assert.equal(list.date, D1);
+    assert.deepEqual(names(list), ["Curry", "Pasta", "Risotto"]);
+  });
+
+  await step("one member proposes, the other sees it, and the proposer cannot accept their own", async () => {
+    const proposed = await as("dsiw", () => web.proposeRecipe(sessionId, D1, 1));
+    firstProposal = proposed.proposals.find((p) => p.status === "pending").id;
+    const seen = await as("ac", () => web.fetchCurrentSession());
+    assert.equal(seen.proposals.find((p) => p.status === "pending").recipe.name, "Pasta");
+    const own = await as("dsiw", () => web.acceptProposal(sessionId, firstProposal).catch((e) => e));
+    assert.ok(own instanceof web.SessionFailed, "accepting your own proposal is refused");
+  });
+
+  await step("the other member accepts: the day is planned and the next day comes up without that dish", async () => {
+    const accepted = await as("ac", () => web.acceptProposal(sessionId, firstProposal));
+    assert.deepEqual(
+      accepted.days.map((d) => [d.date, d.status, d.recipe?.name]),
+      [
+        [D1, "planned", "Pasta"],
+        [D2, "open", undefined],
+      ],
+    );
+    const list = await as("dsiw", () => web.fetchEligibleRecipes(sessionId));
+    assert.equal(list.date, D2);
+    assert.deepEqual(names(list), ["Curry", "Risotto"]);
+  });
+
+  let secondProposal = "";
+  await step("two simultaneous proposals leave exactly one pending", async () => {
+    const results = await Promise.allSettled([
+      as("dsiw", () => web.proposeRecipe(sessionId, D2, 2)),
+      as("ac", () => web.proposeRecipe(sessionId, D2, 3)),
+    ]);
+    const lost = results.filter((r) => r.status === "rejected");
+    assert.equal(lost.length, 1);
+    assert.equal(lost[0].reason.reason, "proposal_already_pending");
+    const current = await as("ac", () => web.fetchCurrentSession());
+    const pending = current.proposals.filter((p) => p.status === "pending");
+    assert.equal(pending.length, 1);
+    secondProposal = pending[0].id;
+  });
+
+  await step("a veto keeps the dish out of this session and the day open", async () => {
+    const pending = (await as("ac", () => web.fetchCurrentSession())).proposals.find((p) => p.id === secondProposal);
+    const decider = pending.proposedBy === "2" ? "ac" : "dsiw";
+    const vetoed = await as(decider, () => web.vetoProposal(sessionId, secondProposal));
+    assert.equal(vetoed.proposals.find((p) => p.id === secondProposal).status, "vetoed");
+    assert.equal(vetoed.days[1].status, "open");
+    const list = await as("dsiw", () => web.fetchEligibleRecipes(sessionId));
+    assert.ok(!names(list).includes(pending.recipe.name), "the vetoed dish is gone from the list");
+  });
+
+  await step("recipes can be refreshed from KitchenOwl", async () => {
+    await as("dsiw", () => web.refreshRecipes());
+  });
+
+  await step("the session, its decisions and the sign-in survive a server restart", async () => {
     await stopServer();
     await startServer(kitchenowlPort);
-    assert.equal((await as("ac", () => web.fetchCurrentSession()))?.id, sessionId);
+    const restored = await as("ac", () => web.fetchCurrentSession());
+    assert.equal(restored?.id, sessionId);
+    assert.equal(restored.days[0].recipe.name, "Pasta");
+    assert.equal(restored.proposals.length, 2);
     assert.equal((await as("ac", () => web.fetchMe())).name, "AC");
   });
 
@@ -223,7 +297,7 @@ try {
     const closed = await as("ac", () => web.closeSession(sessionId));
     assert.equal(closed.status, "closed");
     assert.equal(await as("dsiw", () => web.fetchCurrentSession()), null);
-    assert.ok(await as("dsiw", () => web.startSession([day(3), day(4)])));
+    assert.ok(await as("dsiw", () => web.startSession([D3, D4])));
   });
 
   await step("signing out ends the session", async () => {
@@ -235,6 +309,8 @@ try {
     assert.match(serverLog, /POST \/plan\/api\/login -> 401 invalid_credentials/);
     assert.match(serverLog, /POST \/plan\/api\/login -> 403 not_in_household/);
     assert.match(serverLog, /POST \/plan\/api\/sessions -> 409 session_already_open/);
+    assert.match(serverLog, /-> 403 own_proposal/);
+    assert.match(serverLog, /-> 409 proposal_already_pending/);
     assert.doesNotMatch(serverLog, /nope|"pw"|service-token/);
   });
 

@@ -16,10 +16,18 @@ export class OpenSessionConflict extends Error {
   }
 }
 
+/** Storage refused a second planned dinner on one date: another session took it between the check and the save. */
+export class DateTakenConflict extends Error {
+  constructor() {
+    super("another session already planned a dinner on that date");
+    this.name = "DateTakenConflict";
+  }
+}
+
 /** Port: planning sessions are loaded and saved whole. */
 export interface SessionRepository {
   get(id: SessionId): Promise<PlanningSession | null>;
-  /** Throws `OpenSessionConflict` when it would leave two sessions open. */
+  /** Throws `OpenSessionConflict` when it would leave two sessions open, `DateTakenConflict` for a doubled date. */
   save(session: PlanningSession): Promise<void>;
   listAll(): Promise<readonly PlanningSession[]>;
   /** The session that is still open, if any. The household has at most one. */

@@ -11,10 +11,11 @@ import {
   type PlanningSession,
   type Recipe,
 } from "@weekly-planner/domain";
-import { OpenSessionConflict } from "@weekly-planner/application";
+import { DateTakenConflict, OpenSessionConflict } from "@weekly-planner/application";
 import { afterEach, describe, expect, it } from "vitest";
 import { openDatabase, type Database } from "../../src/infrastructure/sqlite/database.js";
 import { SqliteSessionRepository } from "../../src/infrastructure/sqlite/sqlite-session-repository.js";
+import { SqliteDinnerCalendar } from "../../src/infrastructure/sqlite/sqlite-dinner-calendar.js";
 import { SqliteUnitOfWork } from "../../src/infrastructure/sqlite/sqlite-unit-of-work.js";
 
 const AC = memberId("3");
@@ -158,6 +159,47 @@ describe("migrations", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     expect(fresh(path).db.prepare("pragma user_version").get()).toEqual(version);
-    expect(version).toEqual({ user_version: 1 });
+    expect(version).toEqual({ user_version: 2 });
+  });
+});
+
+describe("SqliteDinnerCalendar and one dinner per date", () => {
+  const recipe: Recipe = {
+    id: recipeId(7),
+    name: "Pasta",
+    mealType: "main",
+    base: "pasta",
+    diet: "vegetarian",
+    totalTimeMinutes: 20,
+    isProven: true,
+    wantsToTry: false,
+    yields: 2,
+  };
+  const planned = (s: PlanningSession, date: typeof MON): PlanningSession => ({
+    ...s,
+    days: s.days.map((d) => (d.date === date ? { date, status: "planned", recipe } : d)),
+  });
+
+  it("knows which dates another session planned, and ignores the asking session and open days", async () => {
+    const { db, sessions } = fresh();
+    const calendar = new SqliteDinnerCalendar(db);
+    const first = { ...planned(aSession("s1"), MON), status: "finalized" as const };
+    await sessions.save(first);
+    expect(await calendar.isDateTaken(MON, sessionId("s2"))).toBe(true);
+    expect(await calendar.isDateTaken(MON, first.id)).toBe(false);
+    expect(await calendar.isDateTaken(TUE, sessionId("s2"))).toBe(false);
+  });
+
+  it("refuses a second planned dinner on one date even if a caller forgot to ask", async () => {
+    const { sessions } = fresh();
+    await sessions.save({ ...planned(aSession("s1"), MON), status: "finalized" });
+    await expect(sessions.save(planned(aSession("s2"), MON))).rejects.toBeInstanceOf(DateTakenConflict);
+    expect(await sessions.get(sessionId("s2"))).toBeNull();
+  });
+
+  it("allows the same date in several sessions as long as only one has it planned", async () => {
+    const { sessions } = fresh();
+    await sessions.save({ ...planned(aSession("s1"), MON), status: "closed" });
+    await expect(sessions.save(aSession("s2"))).resolves.toBeUndefined();
   });
 });

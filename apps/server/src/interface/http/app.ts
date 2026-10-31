@@ -1,7 +1,27 @@
 import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
-import type { CloseSession, DomainEvent, GetCurrentSession, SignIn, StartSession } from "@weekly-planner/application";
-import { memberId, planDate, sessionId, type PlanningSession } from "@weekly-planner/domain";
+import type {
+  AcceptProposal,
+  CloseSession,
+  DomainEvent,
+  GetCurrentSession,
+  ListEligibleRecipes,
+  ProposeRecipe,
+  RefreshRecipes,
+  SignIn,
+  StartSession,
+  VetoProposal,
+} from "@weekly-planner/application";
+import {
+  memberId,
+  needsTime,
+  planDate,
+  proposalId,
+  recipeId,
+  sessionId,
+  type PlanningSession,
+  type Recipe,
+} from "@weekly-planner/domain";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { z } from "zod";
 import { decodeSession, encodeSession, SESSION_COOKIE, SESSION_DAYS } from "./session-cookie.js";
@@ -12,6 +32,11 @@ interface AppOptions {
   readonly getCurrentSession: Pick<GetCurrentSession, "execute">;
   readonly startSession: Pick<StartSession, "execute">;
   readonly closeSession: Pick<CloseSession, "execute">;
+  readonly listEligibleRecipes: Pick<ListEligibleRecipes, "execute">;
+  readonly proposeRecipe: Pick<ProposeRecipe, "execute">;
+  readonly acceptProposal: Pick<AcceptProposal, "execute">;
+  readonly vetoProposal: Pick<VetoProposal, "execute">;
+  readonly refreshRecipes: Pick<RefreshRecipes, "execute">;
   /** Told about every committed change; returns the way to stop listening. */
   readonly subscribe: (listener: (event: DomainEvent) => void) => () => void;
   readonly sessionSecret: string;
@@ -28,18 +53,53 @@ const loginBody = z.object({ username: z.string().max(200), password: z.string()
 
 const startBody = z.object({ dates: z.array(z.string()).max(10) });
 
-/** What the phones see of a session; recipes, proposals and passes join in the slices that show them. */
+/** What the phones see of a recipe: enough to choose by. */
+const recipeView = (r: Recipe) => ({
+  id: r.id,
+  name: r.name,
+  minutes: r.totalTimeMinutes,
+  base: r.base,
+  diet: r.diet,
+  needsTime: needsTime(r),
+});
+
+/** What the phones see of a session; passes and the rest join in the slices that show them. */
 const sessionView = (s: PlanningSession) => ({
   id: s.id,
   status: s.status,
   startedBy: s.startedBy,
-  days: s.days.map((d) => ({ date: d.date, status: d.status })),
+  days: s.days.map((d) => ({ date: d.date, status: d.status, ...(d.recipe ? { recipe: recipeView(d.recipe) } : {}) })),
+  proposals: s.proposals.map((p) => ({
+    id: p.id,
+    date: p.date,
+    recipe: recipeView(p.recipe),
+    proposedBy: p.proposedBy,
+    status: p.status,
+    ...(p.decidedBy ? { decidedBy: p.decidedBy } : {}),
+  })),
 });
+
+const proposalBody = z.object({ date: z.string(), recipeId: z.number().int() });
 
 const COMMAND_REJECTIONS: Record<string, number> = {
   session_already_open: 409,
   session_already_closed: 409,
   unknown_session: 404,
+  unknown_recipe: 404,
+  unknown_proposal: 404,
+  unknown_day: 404,
+  own_proposal: 403,
+  not_next_open_day: 409,
+  proposal_already_pending: 409,
+  proposal_not_pending: 409,
+  session_not_open: 409,
+  day_not_open: 409,
+  date_already_taken: 409,
+  recipe_vetoed: 409,
+  recipe_passed: 409,
+  recipe_already_planned: 409,
+  not_a_dinner: 422,
+  too_long_for_weekday: 422,
   duplicate_dates: 422,
   too_few_days: 422,
   too_many_days: 422,
@@ -164,6 +224,60 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return { session: sessionView(result.value) };
   });
 
+  app.get<{ Params: { id: string } }>(`${api}/sessions/:id/recipes`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const list = await options.listEligibleRecipes.execute({ sessionId: sessionId(req.params.id) });
+    if (!list) return reply.code(404).send({ error: "not_found" });
+    return { date: list.date, recipes: list.recipes.map(recipeView) };
+  });
+
+  app.post<{ Params: { id: string } }>(`${api}/sessions/:id/proposals`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = proposalBody.safeParse(req.body);
+    let date: ReturnType<typeof planDate>;
+    try {
+      if (!body.success) throw new Error("invalid");
+      date = planDate(body.data.date);
+    } catch {
+      return reply.code(400).send({ error: "invalid_request" });
+    }
+    const result = await options.proposeRecipe.execute({
+      member: memberId(member.id),
+      sessionId: sessionId(req.params.id),
+      date,
+      recipeId: recipeId(body.data.recipeId),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return reply.code(201).send({ session: sessionView(result.value) });
+  });
+
+  for (const [verb, useCase] of [
+    ["accept", options.acceptProposal],
+    ["veto", options.vetoProposal],
+  ] as const) {
+    app.post<{ Params: { id: string; proposalId: string } }>(
+      `${api}/sessions/:id/proposals/:proposalId/${verb}`,
+      async (req, reply) => {
+        const member = requireMember(req, reply);
+        if (!member) return reply;
+        const result = await useCase.execute({
+          member: memberId(member.id),
+          sessionId: sessionId(req.params.id),
+          proposalId: proposalId(req.params.proposalId),
+        });
+        if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+        return { session: sessionView(result.value) };
+      },
+    );
+  }
+
+  app.post(`${api}/recipes/refresh`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    await options.refreshRecipes.execute();
+    return reply.code(204).send();
+  });
+
   // Server-Sent Events: a signal that something changed; the client refetches what it shows.
   const streams = new Set<{ end(): void }>();
   app.addHook("onClose", async () => {
@@ -191,6 +305,19 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       streams.delete(res);
     });
     return reply;
+  });
+
+  // What the routes do not catch is a failure of something we depend on (KitchenOwl, SQLite). It must not borrow that
+  // dependency's status code: a 401 from KitchenOwl would otherwise look like "you are not signed in" to the client.
+  app.setErrorHandler((error: Error & { statusCode?: number; code?: string }, req, reply) => {
+    // Errors of Fastify and its plugins (bad JSON, rate limit) carry `statusCode`; a dependency's own error does not.
+    if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+      return reply
+        .code(error.statusCode)
+        .send({ error: error.code?.toLowerCase() ?? "request_failed", message: error.message });
+    }
+    log(`${req.method} ${req.url.split("?")[0]} failed: ${error.message}`);
+    return reply.code(502).send({ error: "unavailable" });
   });
 
   // Unknown API paths are errors, never the web app.

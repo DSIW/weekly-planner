@@ -154,3 +154,30 @@ fieldset.chips {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+.recipes {
+  display: grid;
+  gap: 8px;
+  max-height: 50dvh;
+  overflow-y: auto;
+}
+.recipe {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  font-weight: 500;
+}
+.proposal {
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}

@@ -18,7 +18,7 @@ export function PlanBoard({ session, onClose, pending, error }: Props) {
         {session.days.map((day) => (
           <li key={day.date}>
             <span>{dayLabel(day.date)}</span>
-            <span className="muted">{STATUS[day.status]}</span>
+            <span className={day.recipe ? "" : "muted"}>{day.recipe ? day.recipe.name : STATUS[day.status]}</span>
           </li>
         ))}
       </ul>

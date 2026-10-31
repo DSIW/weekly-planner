@@ -1,4 +1,4 @@
-import { OpenSessionConflict, type SessionRepository } from "@weekly-planner/application";
+import { DateTakenConflict, OpenSessionConflict, type SessionRepository } from "@weekly-planner/application";
 import {
   memberId,
   planDate,
@@ -69,6 +69,7 @@ export class SqliteSessionRepository implements SessionRepository {
       if (own) this.db.exec("rollback");
       // SQLite names the column, not the index: "UNIQUE constraint failed: planning_session.status".
       if (error instanceof Error && error.message.includes("planning_session.status")) throw new OpenSessionConflict();
+      if (error instanceof Error && error.message.includes("plan_day.date")) throw new DateTakenConflict();
       throw error;
     }
   }

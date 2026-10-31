@@ -217,6 +217,7 @@ export function vetoProposal(s: PlanningSession, cmd: { member: MemberId; propos
   const proposal = s.proposals.find((p) => p.id === cmd.proposalId);
   if (!proposal) return reject("unknown_proposal");
   if (proposal.status !== "pending") return reject("proposal_not_pending");
+  if (s.status !== "open") return reject("session_not_open");
   if (cmd.member === proposal.proposedBy) return reject("own_proposal");
   return done(decide(s, proposal, "vetoed", cmd.member), {
     type: "ProposalVetoed",

@@ -11,6 +11,9 @@ export class KitchenOwlRecipeCatalog implements RecipeCatalog {
     return (await this.client.listRecipes()).map(toCatalogEntry);
   }
 
+  /** Always reads live; the cache is a decorator around this adapter. */
+  async refresh(): Promise<void> {}
+
   async find(id: RecipeId): Promise<Recipe | null> {
     const entry = (await this.listAll()).find((e) => (e.kind === "ready" ? e.recipe.id : e.recipeId) === id);
     return entry?.kind === "ready" ? entry.recipe : null;

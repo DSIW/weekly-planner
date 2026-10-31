@@ -1,5 +1,5 @@
 import type { Outcome, PlanningEvent, PlanningSession, Result, SessionId } from "@weekly-planner/domain";
-import type { SessionRepository } from "../ports/repositories.js";
+import { DateTakenConflict, type SessionRepository } from "../ports/repositories.js";
 import type { EventPublisher, UnitOfWork } from "../ports/services.js";
 
 export interface SessionDeps {
@@ -20,14 +20,21 @@ export async function changeSession(
   id: SessionId,
   change: (session: PlanningSession) => Promise<Result<Outcome<PlanningSession, PlanningEvent>>>,
 ): Promise<CommandResult> {
-  const result = await deps.uow.run(async () => {
-    const session = await deps.sessions.get(id);
-    if (!session) return { ok: false, reason: "unknown_session" } as const;
-    const outcome = await change(session);
-    if (!outcome.ok) return outcome;
-    await deps.sessions.save(outcome.value.state);
-    return outcome;
-  });
+  let result: Result<Outcome<PlanningSession, PlanningEvent>>;
+  try {
+    result = await deps.uow.run(async () => {
+      const session = await deps.sessions.get(id);
+      if (!session) return { ok: false, reason: "unknown_session" } as const;
+      const outcome = await change(session);
+      if (!outcome.ok) return outcome;
+      await deps.sessions.save(outcome.value.state);
+      return outcome;
+    });
+  } catch (error) {
+    // Another session planned the date after the DinnerCalendar was asked; the rule's own answer is the same.
+    if (error instanceof DateTakenConflict) return { ok: false, reason: "date_already_taken" };
+    throw error;
+  }
   if (!result.ok) return result;
   await deps.events.publish(result.value.events);
   return { ok: true, value: result.value.state };
