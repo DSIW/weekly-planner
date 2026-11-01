@@ -1,7 +1,7 @@
 import { useRef, useState, type PointerEvent, type ReactNode } from "react";
 
 /** How far a card has to be dragged sideways before it counts as a decision. */
-export const THRESHOLD = 90;
+const THRESHOLD = 90;
 
 interface Props {
   label: string;
