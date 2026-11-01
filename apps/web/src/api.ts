@@ -315,7 +315,7 @@ export const correctMeal = (id: string, baseName: BaseName, recipeId: number | n
 export const addMeal = (date: string, baseName: BaseName, recipeId: number | null) =>
   command<{ entry: MealEntry }>("/meal-log", { date, base: baseName, recipeId });
 
-export interface DraftIngredient {
+interface DraftIngredient {
   name: string;
   amount: string;
   optional: boolean;
