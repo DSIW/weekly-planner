@@ -309,3 +309,40 @@ button.small {
   padding: 6px 10px;
   font-size: 0.85rem;
 }
+
+.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.list-preview {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.list-preview li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+}
+.list-preview li > span:first-child {
+  flex: 1;
+}
+li.review {
+  border-color: var(--error, #b3261e);
+  background: color-mix(in srgb, var(--error, #b3261e) 10%, transparent);
+}
+.success {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--primary);
+}

@@ -9,6 +9,8 @@ const ME = `GET ${api}/me`;
 const CURRENT = `GET ${api}/sessions/current`;
 const LEFTOVERS = `POST ${api}/sessions/s1/days/2026-11-02/leftovers`;
 const REOPEN = `POST ${api}/sessions/s1/days/2026-11-03/reopen`;
+const PREVIEW = `GET ${api}/sessions/s1/finalize-preview`;
+const preview = { status: 200, body: { dinners: [], items: [] } };
 const signedIn = { [ME]: { status: 200, body: { member: { id: "2", name: "Max" } } } };
 
 const pasta = {
@@ -72,6 +74,7 @@ describe("shaping the plan on the board", () => {
     server({
       ...signedIn,
       [CURRENT]: { status: 200, body: { session: board(days) } },
+      [PREVIEW]: preview,
       [LEFTOVERS]: { status: 409, body: { error: "proposal_already_pending" } },
     });
     renderApp();
@@ -83,6 +86,7 @@ describe("shaping the plan on the board", () => {
     server({
       ...signedIn,
       [CURRENT]: { status: 200, body: { session: board(days) } },
+      [PREVIEW]: preview,
       [REOPEN]: { status: 500, body: {} },
     });
     renderApp();

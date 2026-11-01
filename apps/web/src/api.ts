@@ -72,12 +72,35 @@ export interface Proposal {
   status: "pending" | "accepted" | "vetoed";
 }
 
+export type StepStatus = "pending" | "sending" | "done";
+
+/** One line of the consolidated shopping list. */
+export interface ListLine {
+  name: string;
+  /** Amount and unit, summed over the recipes; empty when no recipe gave one. */
+  description: string;
+  /** An amount could not be read: someone should look at this line in KitchenOwl. */
+  needsReview: boolean;
+  recipes: string[];
+}
+
+/** How far writing a finalized plan to KitchenOwl has come. */
+export interface ExportView {
+  complete: boolean;
+  /** "refused": nothing was written, retry is safe. "unconfirmed": no answer, it may have arrived. */
+  failure: "refused" | "unconfirmed" | null;
+  days: { date: string; recipeName: string; status: StepStatus }[];
+  list: { status: StepStatus; items: ListLine[] };
+}
+
 export interface PlanSession {
   id: string;
   status: "open" | "finalized" | "closed";
   startedBy: string;
   days: PlanDay[];
   proposals: Proposal[];
+  /** Present on a finalized session. */
+  export?: ExportView;
 }
 
 /** Reasons the server gives that a member can do something about; anything else is just "did not work". */
@@ -92,6 +115,10 @@ const KNOWN_REASONS = [
   "day_not_planned",
   "day_already_open",
   "target_not_open",
+  "nothing_planned",
+  "export_running",
+  "step_unconfirmed",
+  "session_not_finalized",
 ] as const;
 export type SessionError = (typeof KNOWN_REASONS)[number] | "unavailable";
 
@@ -108,7 +135,8 @@ export async function fetchCurrentSession(): Promise<PlanSession | null> {
   return ((await res.json()) as { session: PlanSession | null }).session;
 }
 
-async function sessionCommand(path: string, body?: unknown): Promise<PlanSession> {
+/** A POST whose answer is `T`; a refusal becomes a `SessionFailed` with the server's reason. */
+async function command<T>(path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${base}${path}`, {
@@ -120,9 +148,30 @@ async function sessionCommand(path: string, body?: unknown): Promise<PlanSession
   } catch {
     throw new SessionFailed("unavailable");
   }
-  if (res.ok) return ((await res.json()) as { session: PlanSession }).session;
+  if (res.ok) return (await res.json()) as T;
   const error = ((await res.json().catch(() => ({}))) as { error?: string }).error;
   throw new SessionFailed(KNOWN_REASONS.find((r) => r === error) ?? "unavailable");
+}
+
+const sessionCommand = async (path: string, body?: unknown): Promise<PlanSession> =>
+  (await command<{ session: PlanSession }>(path, body)).session;
+
+/** Locks the plan and writes the planner entries and the shopping list to KitchenOwl. */
+export const finalizePlan = (sessionId: string) => sessionCommand(`/sessions/${sessionId}/finalize`);
+
+/** Sends what is still missing. `resendUnconfirmed` also sends a step that may already have arrived. */
+export async function retryExport(sessionId: string, resendUnconfirmed: boolean): Promise<ExportView> {
+  const body = resendUnconfirmed ? { resendUnconfirmed } : undefined;
+  return (await command<{ export: ExportView }>(`/sessions/${sessionId}/export/retry`, body)).export;
+}
+
+/** The consolidated shopping list of an open session as finalizing would send it. */
+export async function fetchFinalizePreview(
+  sessionId: string,
+): Promise<{ dinners: { date: string; recipeName: string }[]; items: ListLine[] }> {
+  const res = await fetch(`${base}/sessions/${sessionId}/finalize-preview`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as { dinners: { date: string; recipeName: string }[]; items: ListLine[] };
 }
 
 export const startSession = (dates: string[]) => sessionCommand("/sessions", { dates });

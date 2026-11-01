@@ -30,10 +30,11 @@ type Day = PlanSession["days"][number];
 function DayRow({
   day,
   busy,
+  readOnly,
   onLeftovers,
   onReopen,
-}: { day: Day; busy: boolean } & Pick<Props, "onLeftovers" | "onReopen">) {
-  const planned = day.status === "planned";
+}: { day: Day; busy: boolean; readOnly: boolean } & Pick<Props, "onLeftovers" | "onReopen">) {
+  const planned = day.status === "planned" && !readOnly;
   const drag = useDraggable({ id: day.date, disabled: !planned });
   const drop = useDroppable({ id: day.date, disabled: day.status === "leftovers" });
   const label = dayLabel(day.date);
@@ -57,12 +58,12 @@ function DayRow({
       )}
       <span>{label}</span>
       <span className={day.recipe ? "" : "muted"}>{day.recipe ? day.recipe.name : STATUS[day.status]}</span>
-      {day.status === "open" && (
+      {!readOnly && day.status === "open" && (
         <button type="button" className="secondary small" disabled={busy} onClick={() => onLeftovers(day.date)}>
           Reste
         </button>
       )}
-      {day.status !== "open" && (
+      {!readOnly && day.status !== "open" && (
         <button type="button" className="secondary small" disabled={busy} onClick={() => onReopen(day.date)}>
           Wieder öffnen
         </button>
@@ -78,17 +79,26 @@ export function PlanBoard({ session, onClose, onLeftovers, onReopen, onDrop, pen
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );
+  // A finalized plan is locked.
+  const readOnly = session.status !== "open";
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     const drop = over ? dropFor(session.days, String(active.id), String(over.id)) : null;
     if (drop) onDrop(drop);
   };
   return (
     <section className="card">
-      <h2>Planung</h2>
+      <h2>{readOnly ? "Abgeschlossene Planung" : "Planung"}</h2>
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <ul className="days">
           {session.days.map((day) => (
-            <DayRow key={day.date} day={day} busy={pending} onLeftovers={onLeftovers} onReopen={onReopen} />
+            <DayRow
+              key={day.date}
+              day={day}
+              busy={pending}
+              readOnly={readOnly}
+              onLeftovers={onLeftovers}
+              onReopen={onReopen}
+            />
           ))}
         </ul>
       </DndContext>
@@ -98,7 +108,7 @@ export function PlanBoard({ session, onClose, onLeftovers, onReopen, onDrop, pen
         </p>
       )}
       <button type="button" className="secondary" onClick={onClose} disabled={pending}>
-        Planung verwerfen
+        {readOnly ? "Planung schließen" : "Planung verwerfen"}
       </button>
     </section>
   );
