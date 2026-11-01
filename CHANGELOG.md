@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.19](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.18...weekly-planner-v0.1.19) (2026-11-01)
+
+
+### Features
+
+* import review as an icon grid with renamable ingredients, plural-aware item matching ([ac4d110](https://github.com/DSIW/weekly-planner/commit/ac4d110221cd8011419b035611da2be9788c7da6))
+
 ## [0.1.18](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.17...weekly-planner-v0.1.18) (2026-11-01)
 
 
