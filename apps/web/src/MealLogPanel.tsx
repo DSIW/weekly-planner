@@ -129,7 +129,7 @@ export function MealHistory({ messageFor, today = todayPlanDate() }: Props) {
             <li key={e.id}>
               <DayBadge date={e.date} />
               {e.recipe ? (
-                <RecipeLine recipe={e.recipe} detail={e.confirmed ? "gekocht" : "offen"} />
+                <RecipeLine link recipe={e.recipe} detail={e.confirmed ? "gekocht" : "offen"} />
               ) : (
                 <span className="recipe-line">
                   <span className="thumb base-thumb" aria-hidden="true">

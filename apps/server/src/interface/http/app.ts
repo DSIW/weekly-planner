@@ -99,6 +99,8 @@ interface AppOptions {
   readonly pushPublicKey: string;
   /** Recipes longer than this need a day's lead time; the phones flag them. */
   readonly planAheadMinutes: number;
+  /** Where the phones reach KitchenOwl ("" = same host); absent or null: the planner shows no links to it. */
+  readonly links?: { kitchenowl: string | null; householdId: number };
   /** Told about every committed change; returns the way to stop listening. */
   readonly subscribe: (listener: (event: DomainEvent) => void) => () => void;
   readonly sessionSecret: string;
@@ -324,6 +326,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.get(`${api}/me`, async (req, reply) => {
     const member = memberOf(req);
     return member ? { member } : reply.code(401).send({ error: "not_signed_in" });
+  });
+
+  app.get(`${api}/links`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const { kitchenowl, householdId } = options.links ?? { kitchenowl: null, householdId: 0 };
+    if (kitchenowl === null) return { links: null };
+    const home = `${kitchenowl}/household/${householdId}`;
+    return { links: { recipe: `${home}/recipes/details/{id}`, list: `${home}/items` } };
   });
 
   const requireMember = (req: FastifyRequest, reply: { code(n: number): { send(b: unknown): unknown } }) => {

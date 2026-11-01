@@ -72,7 +72,13 @@ beforeEach(() => {
 });
 
 let logged: string[];
-const app = (over: { basePath?: string; signIn?: Pick<SignIn, "execute"> } = {}) =>
+const app = (
+  over: {
+    basePath?: string;
+    signIn?: Pick<SignIn, "execute">;
+    links?: { kitchenowl: string | null; householdId: number };
+  } = {},
+) =>
   buildApp({
     ...noSessions,
     signIn,
@@ -270,5 +276,33 @@ describe("the error log", () => {
     await a.inject({ method: "GET", url: "/plan/" });
     await a.inject({ method: "GET", url: "/plan/assets/missing.js" });
     expect(logged).toEqual([]);
+  });
+});
+
+describe("links to KitchenOwl", () => {
+  const get = async (links?: { kitchenowl: string | null; householdId: number }) => {
+    const a = await app(links ? { links } : {});
+    const cookie = sessionCookie(await login(a))!;
+    return a.inject({ method: "GET", url: "/plan/api/links", cookies: { session: cookie.value } });
+  };
+
+  it("gives templates for a recipe and the shopping list, on KitchenOwl's own address", async () => {
+    expect((await get({ kitchenowl: "https://ko.test", householdId: 2 })).json()).toEqual({
+      links: {
+        recipe: "https://ko.test/household/2/recipes/details/{id}",
+        list: "https://ko.test/household/2/items",
+      },
+    });
+  });
+
+  it("works on a shared host (empty address) and gives none when KitchenOwl's address is not set", async () => {
+    expect((await get({ kitchenowl: "", householdId: 2 })).json().links.list).toBe("/household/2/items");
+    expect((await get({ kitchenowl: null, householdId: 2 })).json()).toEqual({ links: null });
+    expect((await get()).json()).toEqual({ links: null });
+  });
+
+  it("is for signed-in members only", async () => {
+    const res = await (await app()).inject({ method: "GET", url: "/plan/api/links" });
+    expect(res.statusCode).toBe(401);
   });
 });

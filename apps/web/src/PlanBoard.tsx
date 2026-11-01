@@ -87,6 +87,7 @@ function DayRow({
   if (day.status === "planned" && day.recipe) {
     body = (
       <RecipeLine
+        link
         recipe={day.recipe}
         detail={day.removedInPlanner ? "in KitchenOwl entfernt" : undefined}
         end={!readOnly && small("Neu wählen", () => onReopen(day.date))}

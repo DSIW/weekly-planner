@@ -129,6 +129,25 @@ describe("GetItemIcons", () => {
   });
 });
 
+describe("dinners chosen in KitchenOwl", () => {
+  it("take their date too, with their recipe, next to the dates of the planner's own plans", async () => {
+    const { h } = await exportedOnWed();
+    h.plannerView.dates = new Set([WED, SUN]);
+    h.plannerView.dinners.set(SUN, { recipeName: "Pizza", recipeId: 5 });
+    h.plannerView.dinners.set(WED, { recipeName: "Other", recipeId: 6 });
+    expect(await h.listTakenDates.execute()).toEqual([
+      { date: WED, recipeName: r1.name },
+      { date: SUN, recipeName: "Pizza", recipeId: 5 },
+    ]);
+  });
+
+  it("are left out, not guessed, when KitchenOwl does not answer", async () => {
+    const { h } = await exportedOnWed();
+    h.plannerView.dates = null;
+    expect(await h.listTakenDates.execute()).toEqual([{ date: WED, recipeName: r1.name }]);
+  });
+});
+
 describe("naming a meal for a day", () => {
   it("replaces what was logged for that day and leaves other days alone", async () => {
     const h = household([r1]);

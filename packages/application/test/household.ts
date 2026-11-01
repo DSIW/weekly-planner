@@ -109,7 +109,7 @@ export function household(recipes: Recipe[] = []) {
     startSession: new StartSession({ ...session, ids, clock, calendar }, config),
     plannerView,
     releaseRemovedDinners,
-    listTakenDates: new ListTakenDates({ calendar, clock, release: releaseRemovedDinners }),
+    listTakenDates: new ListTakenDates({ calendar, clock, release: releaseRemovedDinners, planner: plannerView }),
     proposeRecipe: new ProposeRecipe({ ...session, catalog, ids }, config),
     passSuggestion: new PassSuggestion({ ...session, catalog }),
     acceptProposal: new AcceptProposal({ ...session, calendar }, config),

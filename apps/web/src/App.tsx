@@ -6,6 +6,7 @@ import {
   closeSession,
   fetchCurrentSession,
   fetchFinalizePreview,
+  fetchLinks,
   fetchDeck,
   fetchEligibleRecipes,
   fetchMe,
@@ -34,6 +35,7 @@ import {
 } from "./api";
 import { ExportStatus } from "./ExportStatus";
 import { FinalizePanel } from "./FinalizePanel";
+import { LinksContext, useLinks } from "./Links";
 import { LoginForm } from "./LoginForm";
 import { DueMeals, MealHistory } from "./MealLogPanel";
 import { Notifications } from "./Notifications";
@@ -292,6 +294,7 @@ function Planning({ meId }: { meId: string }) {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [refetch]);
+  const links = useLinks();
   const [exported, setExported] = useState<string | null>(null);
   const [step, setStep] = useState<"dishes" | "list">("dishes");
   const current = useQuery({ queryKey: ["session"], queryFn: fetchCurrentSession });
@@ -392,6 +395,14 @@ function Planning({ meId }: { meId: string }) {
       {exported && (
         <p role="status" className="success">
           {exported}
+          {links && (
+            <>
+              {" "}
+              <a href={links.list} target="_blank" rel="noopener noreferrer">
+                Einkaufsliste öffnen
+              </a>
+            </>
+          )}
         </p>
       )}
       <StartSessionForm
@@ -413,6 +424,7 @@ export function App() {
   });
   const signOut = useMutation({ mutationFn: logout, onSuccess: () => client.setQueryData(["me"], null) });
   const [tab, setTab] = useState<"plan" | "log">("plan");
+  const links = useQuery({ queryKey: ["links"], queryFn: fetchLinks, enabled: me.data != null, staleTime: Infinity });
 
   if (me.isPending) return <main className="center muted">Lädt …</main>;
   if (me.isError)
@@ -437,38 +449,40 @@ export function App() {
   }
 
   return (
-    <main className="page">
-      <header className="bar">
-        <h1>Hallo, {me.data.name}</h1>
-        <div className="bar-actions">
-          <Notifications />
-          <button type="button" className="secondary" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
-            Abmelden
+    <LinksContext.Provider value={links.data ?? null}>
+      <main className="page">
+        <header className="bar">
+          <h1>Hallo, {me.data.name}</h1>
+          <div className="bar-actions">
+            <Notifications />
+            <button type="button" className="secondary" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
+              Abmelden
+            </button>
+          </div>
+        </header>
+        {signOut.isError && (
+          <p role="alert" className="error">
+            Abmelden hat nicht geklappt. Bitte noch einmal versuchen.
+          </p>
+        )}
+        <fieldset className="switch tabs">
+          <legend className="sr-only">Bereich</legend>
+          <button type="button" aria-pressed={tab === "plan"} onClick={() => setTab("plan")}>
+            Planung
           </button>
-        </div>
-      </header>
-      {signOut.isError && (
-        <p role="alert" className="error">
-          Abmelden hat nicht geklappt. Bitte noch einmal versuchen.
-        </p>
-      )}
-      <fieldset className="switch tabs">
-        <legend className="sr-only">Bereich</legend>
-        <button type="button" aria-pressed={tab === "plan"} onClick={() => setTab("plan")}>
-          Planung
-        </button>
-        <button type="button" aria-pressed={tab === "log"} onClick={() => setTab("log")}>
-          Verlauf
-        </button>
-      </fieldset>
-      {tab === "log" ? (
-        <MealHistory messageFor={messageFor} />
-      ) : (
-        <>
-          <DueMeals messageFor={messageFor} />
-          <Planning meId={me.data.id} />
-        </>
-      )}
-    </main>
+          <button type="button" aria-pressed={tab === "log"} onClick={() => setTab("log")}>
+            Verlauf
+          </button>
+        </fieldset>
+        {tab === "log" ? (
+          <MealHistory messageFor={messageFor} />
+        ) : (
+          <>
+            <DueMeals messageFor={messageFor} />
+            <Planning meId={me.data.id} />
+          </>
+        )}
+      </main>
+    </LinksContext.Provider>
   );
 }

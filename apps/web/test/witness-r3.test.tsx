@@ -553,3 +553,41 @@ describe("adding a meal by its base (witness r3)", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("links to KitchenOwl", () => {
+  const LINKS = `GET ${api}/links`;
+  const links = {
+    recipe: "https://ko.test/household/2/recipes/details/{id}",
+    list: "https://ko.test/household/2/items",
+  };
+  const taken = { dates: [{ date: "2026-11-03", recipeName: "Pasta", recipeId: 7 }] };
+
+  it("open a planned recipe and the shopping list in KitchenOwl, in a new tab", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: { status: 200, body: taken },
+      [LINKS]: { status: 200, body: { links } },
+    });
+    renderApp();
+    const recipe = await screen.findByRole("link", { name: "Pasta" });
+    expect(recipe).toHaveAttribute("href", "https://ko.test/household/2/recipes/details/7");
+    expect(recipe).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: "Einkaufsliste in KitchenOwl öffnen" })).toHaveAttribute(
+      "href",
+      "https://ko.test/household/2/items",
+    );
+  });
+
+  it("are not shown when the server does not know where KitchenOwl is", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: { status: 200, body: taken },
+      [LINKS]: { status: 200, body: { links: null } },
+    });
+    renderApp();
+    await screen.findByRole("list", { name: "Schon geplant" });
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+});

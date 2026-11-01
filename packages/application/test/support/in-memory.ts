@@ -161,8 +161,17 @@ export class SessionsDinnerCalendar implements DinnerCalendar {
 /** What KitchenOwl's planner holds, set by the test; null stands for "KitchenOwl did not answer". */
 export class FakePlannerView implements PlannerView {
   dates: Set<PlanDate> | null = null;
+  /** What the planner holds besides bare dates: the dinners by date, for the taken dates. */
+  dinners = new Map<PlanDate, { recipeName: string; recipeId?: number }>();
   async plannedDatesFrom(from: PlanDate) {
     return this.dates ? new Set([...this.dates].filter((d) => d >= from)) : null;
+  }
+  async entriesFrom(from: PlanDate) {
+    if (!this.dates) return null;
+    return [...this.dates]
+      .filter((d) => d >= from)
+      .sort()
+      .map((date) => ({ date, recipeName: "", ...this.dinners.get(date) }));
   }
 }
 

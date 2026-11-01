@@ -864,3 +864,20 @@ select {
   background: transparent;
   color: var(--text);
 }
+
+.link-button {
+  display: block;
+  text-align: center;
+  padding: 12px 16px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+.recipe-line-text a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent);
+  text-underline-offset: 3px;
+}

@@ -7,6 +7,11 @@ const kitchenowlSchema = z.object({
 });
 
 const serverSchema = kitchenowlSchema.extend({
+  /** Where the phones reach KitchenOwl, for links from the planner; a full URL, or "/" when it shares the host. */
+  KITCHENOWL_PUBLIC_URL: z
+    .string()
+    .regex(/^(https?:\/\/\S+|\/)$/)
+    .optional(),
   SHOPPING_LIST_ID: z.coerce.number().int().positive().default(2),
   SESSION_SECRET: z.string().min(32),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -34,6 +39,8 @@ type Config = {
 type ServerConfig = Config & {
   /** The KitchenOwl shopping list that finalizing fills. */
   shoppingListId: number;
+  /** KitchenOwl as the phones reach it, without a trailing slash ("" = same host); null: no links. */
+  kitchenowlPublicUrl: string | null;
   sessionSecret: string;
   port: number;
   /** URL prefix the app is served under, without a trailing slash; empty for the root. */
@@ -76,6 +83,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
   return {
     ...kitchenowl(d),
     shoppingListId: d.SHOPPING_LIST_ID,
+    kitchenowlPublicUrl: d.KITCHENOWL_PUBLIC_URL === undefined ? null : d.KITCHENOWL_PUBLIC_URL.replace(/\/+$/, ""),
     sessionSecret: d.SESSION_SECRET,
     port: d.PORT,
     basePath: d.BASE_PATH,

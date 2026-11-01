@@ -22,6 +22,8 @@ export interface TakenDate {
 export interface PlannerView {
   /** The dates from `from` on with an entry on the planner; null when KitchenOwl did not answer. */
   plannedDatesFrom(from: PlanDate): Promise<ReadonlySet<PlanDate> | null>;
+  /** The same entries with their dinner, in date order; null when KitchenOwl did not answer. */
+  entriesFrom(from: PlanDate): Promise<readonly TakenDate[] | null>;
 }
 
 /** Port: one dinner per date reaches across sessions, so the aggregate asks this. */

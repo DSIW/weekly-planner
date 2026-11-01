@@ -15,6 +15,13 @@ export async function fetchMe(): Promise<Member | null> {
   return ((await res.json()) as { member: Member }).member;
 }
 
+/** Where KitchenOwl's pages are, or null when the server does not know. */
+export async function fetchLinks(): Promise<{ recipe: string; list: string } | null> {
+  const res = await fetch(`${base}/links`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return ((await res.json()) as { links: { recipe: string; list: string } | null }).links;
+}
+
 export class LoginFailed extends Error {
   constructor(readonly reason: LoginError) {
     super(reason);

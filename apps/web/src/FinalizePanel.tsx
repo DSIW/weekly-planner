@@ -40,7 +40,7 @@ export function FinalizePanel({ dinners, items, loading, loadFailed, onFinalize,
         {dinners.map((d) => (
           <li key={d.date} className="dinner">
             <DayBadge date={d.date} />
-            <RecipeLine recipe={d.recipe} />
+            <RecipeLine link recipe={d.recipe} />
           </li>
         ))}
       </ul>

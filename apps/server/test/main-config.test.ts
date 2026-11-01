@@ -33,6 +33,17 @@ describe("loadServerConfig", () => {
     });
   });
 
+  it("takes KitchenOwl's public address for links: none by default, a URL or / on a shared host", () => {
+    expect(loadServerConfig(base).kitchenowlPublicUrl).toBeNull();
+    expect(loadServerConfig({ ...base, KITCHENOWL_PUBLIC_URL: "https://ko.example.org/" }).kitchenowlPublicUrl).toBe(
+      "https://ko.example.org",
+    );
+    expect(loadServerConfig({ ...base, KITCHENOWL_PUBLIC_URL: "/" }).kitchenowlPublicUrl).toBe("");
+    expect(() => loadServerConfig({ ...base, KITCHENOWL_PUBLIC_URL: "ko.example.org" })).toThrow(
+      /KITCHENOWL_PUBLIC_URL/,
+    );
+  });
+
   it("tells the push services who to contact, as a mailto: address or an https URL", () => {
     expect(loadServerConfig(base).vapidSubject).toBe("mailto:planner@example.org");
     expect(loadServerConfig({ ...base, VAPID_SUBJECT: "mailto:me@home.example" }).vapidSubject).toBe(

@@ -43,6 +43,7 @@ Use https: the session cookie is `Secure` by default (`COOKIE_SECURE=false` is o
 | `KITCHENOWL_URL` | yes | base URL of KitchenOwl, no trailing slash needed |
 | `KITCHENOWL_TOKEN` | yes | long-lived KitchenOwl token used by the server (never sent to browsers) |
 | `KITCHENOWL_HOUSEHOLD_ID` | no (2) | household whose members may sign in |
+| `KITCHENOWL_PUBLIC_URL` | no | where phones reach KitchenOwl (URL, or `/` on a shared host): turns on "open in KitchenOwl" links |
 | `SHOPPING_LIST_ID` | no (2) | id of the KitchenOwl shopping list that finalizing fills (an id, not a name; on the household's instance 2 is REWE and 3 is Drogerie) |
 | `VAPID_SUBJECT` | no (`mailto:planner@example.org`) | who the push services can contact about this server: a `mailto:` address or an https URL. Set a real one: some push services reject the placeholder |
 | `SESSION_SECRET` | yes | at least 32 characters; signs the session cookie. Changing it signs everybody out |

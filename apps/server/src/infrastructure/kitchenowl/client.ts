@@ -113,16 +113,28 @@ export class KitchenOwlClient {
 
   /** The dates (UTC calendar day of the entry) from `from` on that have a dinner on the household planner. */
   async plannedDatesFrom(from: string): Promise<Set<string>> {
+    return new Set((await this.plannerEntriesFrom(from)).map((e) => e.date));
+  }
+
+  /** The dinners from `from` on that the household planner holds, with their recipe, in date order. */
+  async plannerEntriesFrom(from: string): Promise<{ date: string; recipeName: string; recipeId?: number }[]> {
     const body = await this.get(`/household/${this.config.householdId}/planner`);
     const parsed = plannerListSchema.safeParse(body);
     if (!parsed.success) throw new KitchenOwlError("unexpected planner list shape");
-    return new Set(
-      parsed.data
-        .flatMap((e) =>
-          typeof e.cooking_date === "number" ? [new Date(e.cooking_date).toISOString().slice(0, 10)] : [],
-        )
-        .filter((date) => date >= from),
-    );
+    return parsed.data
+      .flatMap((e) =>
+        typeof e.cooking_date === "number"
+          ? [
+              {
+                date: new Date(e.cooking_date).toISOString().slice(0, 10),
+                recipeName: e.recipe?.name ?? "",
+                ...(e.recipe ? { recipeId: e.recipe.id } : {}),
+              },
+            ]
+          : [],
+      )
+      .filter((e) => e.date >= from)
+      .sort((a, b) => a.date.localeCompare(b.date));
   }
 
   /** Signs a person in with their own KitchenOwl account. Returns their access token, or null for wrong credentials. */

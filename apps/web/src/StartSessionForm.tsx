@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { TakenDate } from "./api";
 import { dayLabel, upcomingDates } from "./dates";
 import { DayBadge } from "./DayBadge";
+import { useLinks, useRecipeHref } from "./Links";
 import { RecipeThumb } from "./RecipeThumb";
 
 const MIN = 1;
@@ -17,7 +18,19 @@ interface Props {
   today?: Date;
 }
 
+function PlannedName({ taken }: { taken: TakenDate }) {
+  const href = useRecipeHref(taken.recipeId ?? 0);
+  return taken.recipeId !== undefined && href ? (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {taken.recipeName}
+    </a>
+  ) : (
+    <>{taken.recipeName}</>
+  );
+}
+
 export function StartSessionForm({ onStart, pending, error, takenDates = [], today }: Props) {
+  const links = useLinks();
   const [picked, setPicked] = useState<string[]>([]);
   const toggle = (date: string) =>
     setPicked((now) => (now.includes(date) ? now.filter((d) => d !== date) : now.length < MAX ? [...now, date] : now));
@@ -33,12 +46,19 @@ export function StartSessionForm({ onStart, pending, error, takenDates = [], tod
                 <span className="recipe-line">
                   {t.recipeId !== undefined && <RecipeThumb key={t.recipeId} recipeId={t.recipeId} />}
                   <span className="recipe-line-text">
-                    <strong>{t.recipeName}</strong>
+                    <strong>
+                      <PlannedName taken={t} />
+                    </strong>
                   </span>
                 </span>
               </li>
             ))}
           </ul>
+          {links && (
+            <a className="link-button" href={links.list} target="_blank" rel="noopener noreferrer">
+              Einkaufsliste in KitchenOwl öffnen
+            </a>
+          )}
         </section>
       )}
       <section className="card">

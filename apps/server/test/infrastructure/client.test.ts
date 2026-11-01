@@ -55,6 +55,21 @@ describe("KitchenOwlClient", () => {
     expect([...dates]).toEqual(["2026-11-04"]);
   });
 
+  it("reads each dinner's recipe from the planner, in date order, and copes with an entry without one", async () => {
+    const at = (iso: string, recipe?: { id: number; name: string }) => ({
+      cooking_date: Date.parse(`${iso}T00:00:00Z`),
+      recipe,
+    });
+    const entries = await new KitchenOwlClient(
+      cfg,
+      json([at("2026-11-06"), at("2026-11-05", { id: 7, name: "Pasta" }), at("2026-11-01", { id: 8, name: "Old" })]),
+    ).plannerEntriesFrom("2026-11-04");
+    expect(entries).toEqual([
+      { date: "2026-11-05", recipeName: "Pasta", recipeId: 7 },
+      { date: "2026-11-06", recipeName: "" },
+    ]);
+  });
+
   it("fetches the icon font from the web app's assets, and gives null when it is not there", async () => {
     let url = "";
     const f = (async (u: string | URL | Request) => {

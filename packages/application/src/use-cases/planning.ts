@@ -29,7 +29,7 @@ import {
 } from "@weekly-planner/domain";
 import type { RecipeCatalog } from "../ports/recipe-catalog.js";
 import { OpenSessionConflict, type SessionRepository } from "../ports/repositories.js";
-import type { DinnerCalendar, IdGenerator, Clock, TakenDate } from "../ports/services.js";
+import type { DinnerCalendar, IdGenerator, Clock, PlannerView, TakenDate } from "../ports/services.js";
 import { changeSession, type CommandResult, type SessionDeps } from "./support.js";
 
 const unknownRecipe: CommandResult = { ok: false, reason: "unknown_recipe" };
@@ -44,12 +44,24 @@ export class ListTakenDates {
       calendar: Pick<DinnerCalendar, "takenDatesFrom">;
       clock: Pick<Clock, "today">;
       release: { execute(): Promise<number> };
+      /** What KitchenOwl's planner holds: a dinner chosen there takes its date too. */
+      planner?: Pick<PlannerView, "entriesFrom">;
     },
   ) {}
 
   async execute(): Promise<readonly TakenDate[]> {
     await this.deps.release.execute().catch(() => 0);
-    return this.deps.calendar.takenDatesFrom(this.deps.clock.today());
+    const today = this.deps.clock.today();
+    const own = await this.deps.calendar.takenDatesFrom(today);
+    const elsewhere = (await this.deps.planner?.entriesFrom(today).catch(() => null)) ?? [];
+    const known = new Set(own.map((t) => t.date));
+    const added: TakenDate[] = [];
+    for (const entry of elsewhere) {
+      if (known.has(entry.date)) continue;
+      known.add(entry.date);
+      added.push(entry);
+    }
+    return [...own, ...added].sort((a, b) => a.date.localeCompare(b.date));
   }
 }
 
