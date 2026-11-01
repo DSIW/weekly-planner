@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.14](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.13...weekly-planner-v0.1.14) (2026-11-01)
+
+
+### Features
+
+* remove log entries, log on its own tab, 1-5 days, deck inside the plan card, drag preview, calmer texts ([6ff5d01](https://github.com/DSIW/weekly-planner/commit/6ff5d0122098522588691df050c7865e8b9df0aa))
+
 ## [0.1.13](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.12...weekly-planner-v0.1.13) (2026-11-01)
 
 
