@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.18](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.17...weekly-planner-v0.1.18) (2026-11-01)
+
+
+### Features
+
+* import a recipe from a link or text with a language model, reviewed before it is created ([098a66a](https://github.com/DSIW/weekly-planner/commit/098a66a662425cbc2e64ce35bb7a9a2b1524f2bf))
+
+
+### Bug Fixes
+
+* DraftIngredient is internal to the web api ([5b91018](https://github.com/DSIW/weekly-planner/commit/5b910189d46bc97abcac6d5f1128c948517e879e))
+* read several specs in the Allium check, clear lint errors in the import tests ([5ecaafd](https://github.com/DSIW/weekly-planner/commit/5ecaafdcf2f5760ecf0b904214bebab3eba6684a))
+
 ## [0.1.17](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.16...weekly-planner-v0.1.17) (2026-11-01)
 
 
