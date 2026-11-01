@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { planDate, proposalId, recipeId, sessionId, type PlanningSession, type Result } from "@weekly-planner/domain";
-import { DateTakenConflict, OpenSessionConflict } from "../src/index.js";
+import {
+  defaultPlanningConfig as config,
+  planDate,
+  proposalId,
+  recipeId,
+  sessionId,
+  type PlanningSession,
+  type Result,
+} from "@weekly-planner/domain";
+import { DateTakenConflict, OpenSessionConflict, RemindToFinalize } from "../src/index.js";
 import { household } from "./household.js";
 import { AC, ME, aRecipe } from "./support/in-memory.js";
 
@@ -340,6 +348,45 @@ describe("RemindToFinalize", () => {
     expect(await h.remindToFinalize.execute()).toBe(0);
     expect(h.sessions.byId.get(s.id)?.status).toBe("finalized");
     expect(h.notifier.reminders).toEqual([]);
+  });
+
+  const recorded = async () => {
+    const { h, s } = await started();
+    await agree(h, s, MON);
+    h.clock.date = MON;
+    h.clock.hour = 8;
+    const log: string[] = [];
+    const get = h.sessions.get.bind(h.sessions);
+    const save = h.sessions.save.bind(h.sessions);
+    h.sessions.get = async (id) => (log.push("get"), get(id));
+    h.sessions.save = async (x) => (log.push("save"), save(x));
+    const uow = {
+      run: async <T>(work: () => Promise<T>) => {
+        log.push("begin");
+        const result = await work();
+        log.push("commit");
+        return result;
+      },
+    };
+    const notifier = { finalizeReminder: async () => void log.push("notify") };
+    const job = new RemindToFinalize({ sessions: h.sessions, notifier, events: h.events, uow, clock: h.clock }, config);
+    return { h, s, log, job, save };
+  };
+
+  it("re-reads and saves inside the unit of work, and tells the phones only after the commit", async () => {
+    const { log, job } = await recorded();
+    expect(await job.execute()).toBe(1);
+    expect(log).toEqual(["begin", "get", "save", "commit", "notify"]);
+  });
+
+  it("tells nobody when the reminder could not be saved, so a failed save is not pushed again every minute", async () => {
+    const { h, s, log, job } = await recorded();
+    h.sessions.save = async () => {
+      throw new Error("disk full");
+    };
+    await expect(job.execute()).rejects.toThrow("disk full");
+    expect(log).not.toContain("notify");
+    expect(h.sessions.byId.get(s.id)?.reminderSent).toBe(false);
   });
 
   it("does not remind about a finalized plan", async () => {

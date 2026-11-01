@@ -200,7 +200,10 @@ describe("the reminder on the board", () => {
   it("is gone once the plan is finalized", async () => {
     server({
       ...signedIn,
-      [CURRENT]: { status: 200, body: { session: finalized(exportOf({ failure: "refused" })) } },
+      [CURRENT]: {
+        status: 200,
+        body: { session: { ...finalized(exportOf({ failure: "refused" })), reminderSent: true } },
+      },
     });
     renderApp();
     await screen.findByText(/Planer/);

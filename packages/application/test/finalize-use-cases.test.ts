@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planDate, type PlanningSession, type Result } from "@weekly-planner/domain";
+import { beginStep, failStep, planDate, type PlanningSession, type Result } from "@weekly-planner/domain";
 import { ExportNotApplied } from "../src/index.js";
 import { household } from "./household.js";
 import { AC, ME, aRecipe } from "./support/in-memory.js";
@@ -330,6 +330,21 @@ describe("RetryRefusedExports", () => {
     expect(h.exports.bySession.get(id)?.failure).toBe("unconfirmed");
     expect(await h.retryRefusedExports.execute()).toBe(0);
     expect(h.planner.entries).toEqual([]);
+  });
+
+  it("does not send a step a member's retry left unconfirmed between its look and its send", async () => {
+    const { h, id } = await planned();
+    h.planner.failures.push(new ExportNotApplied("down"));
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: id }));
+    const stale = h.exports.bySession.get(id)!; // still refused and waiting when the job looks
+    const sent = ok(beginStep(stale, { kind: "planner", date: MON }, { resendUnconfirmed: false })).state;
+    h.exports.bySession.set(id, ok(failStep(sent, { kind: "planner", date: MON }, "unconfirmed")).state);
+    const get = h.exports.get.bind(h.exports);
+    let looked = false;
+    h.exports.get = async (sessionId) => (looked ? get(sessionId) : ((looked = true), stale));
+    await h.retryRefusedExports.execute();
+    expect(h.planner.entries).toEqual([]);
+    expect(h.exports.bySession.get(id)?.failure).toBe("unconfirmed");
   });
 
   it("leaves a plan alone that is not finalized, even if an export record says refused", async () => {

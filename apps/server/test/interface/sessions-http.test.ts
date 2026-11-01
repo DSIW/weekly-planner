@@ -869,6 +869,7 @@ describe("notifications over HTTP", () => {
     { endpoint: "not a url", keys: { p256dh: "pk", auth: "au" } },
     { endpoint: phone.endpoint },
     { endpoint: phone.endpoint, keys: { p256dh: "", auth: "au" } },
+    { endpoint: phone.endpoint, keys: { p256dh: "pk", auth: "" } },
   ])("refuses a subscription that is not one: %j", async (body) => {
     expect((await call("POST", "/push/subscription", max, body)).statusCode).toBe(400);
     expect(await stored()).toEqual([]);

@@ -56,6 +56,18 @@ describe("notifications switch", () => {
     expect(screen.queryByText(/Home-Bildschirm/)).not.toBeInTheDocument();
   });
 
+  it("shows nothing in a browser that has a service worker but no Push API", async () => {
+    const p = phone(false);
+    vi.stubGlobal("PushManager", undefined);
+    Reflect.deleteProperty(window, "PushManager");
+    server(base);
+    renderApp();
+    await screen.findByText(/Hallo, Max/);
+    await new Promise((resolve) => setTimeout(resolve, 100)); // a switch would appear once the state is read
+    expect(p.pushManager.getSubscription).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /Benachrichtigungen/ })).not.toBeInTheDocument();
+  });
+
   it("tells an iPhone in a browser tab to add the app to the home screen first", async () => {
     Object.defineProperty(navigator, "standalone", { configurable: true, value: false });
     server(base);
