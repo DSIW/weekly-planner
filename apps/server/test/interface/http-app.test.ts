@@ -43,6 +43,7 @@ const noSessions = {
   listTakenDates: { execute: async () => [] },
   confirmCooked: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   markNotCooked: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  removeLoggedMeal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   correctLoggedMeal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   addLoggedMeal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   sendTestNotification: { execute: async () => 0 },

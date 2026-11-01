@@ -22,6 +22,10 @@ import {
   isNewRecipe,
   isStaple,
   releaseRemovedDinner,
+  removeLoggedMeal,
+  confirmCooked,
+  logPlannedMeal,
+  mealLogEntryId,
   leaveOut,
   needsPlanningAhead,
   suggestRecipes,
@@ -828,5 +832,16 @@ describe("rule ReleaseRemovedDinner", () => {
     const released = must(releaseRemovedDinner(before, { date: MON, wasExported: true })).state;
     expect(dinnersDueForLogging(before, TUE, new Set())).toEqual([{ date: MON, recipe: dayOf(before, MON).recipe }]);
     expect(dinnersDueForLogging(released, TUE, new Set())).toEqual([]);
+  });
+});
+
+describe("rule RemoveLoggedMeal", () => {
+  it("is allowed for a confirmed entry too, and says which entry and day left the log", () => {
+    const logged = logPlannedMeal({ id: mealLogEntryId("e1"), dinner: { date: MON, recipe: aRecipe() } }).state;
+    const confirmed = must(confirmCooked(logged, { member: ME })).state;
+    for (const entry of [logged, confirmed])
+      expect(must(removeLoggedMeal(entry, { member: AC })).events).toEqual([
+        { type: "MealRemoved", entryId: mealLogEntryId("e1"), date: MON },
+      ]);
   });
 });

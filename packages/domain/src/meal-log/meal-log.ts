@@ -26,7 +26,8 @@ export type MealLogEvent =
       readonly recipeId: RecipeId;
       readonly date: PlanDate;
     }
-  | { readonly type: "MealMarkedNotCooked"; readonly entryId: MealLogEntryId; readonly date: PlanDate };
+  | { readonly type: "MealMarkedNotCooked"; readonly entryId: MealLogEntryId; readonly date: PlanDate }
+  | { readonly type: "MealRemoved"; readonly entryId: MealLogEntryId; readonly date: PlanDate };
 
 const cooked = (e: MealLogEntry): MealLogEvent[] =>
   e.recipe ? [{ type: "MealConfirmedAsCooked", entryId: e.id, recipeId: e.recipe.id, date: e.date }] : [];
@@ -82,6 +83,11 @@ export function confirmCooked(e: MealLogEntry, _cmd: { member: MemberId }): Done
 export function markNotCooked(e: MealLogEntry, _cmd: { member: MemberId }): Done {
   if (e.confirmed) return reject("already_confirmed");
   return succeed({ state: e, events: [{ type: "MealMarkedNotCooked", entryId: e.id, date: e.date }] });
+}
+
+/** rule RemoveLoggedMeal: the entry is removed by the caller, cooked or not; the recipe stays proven. */
+export function removeLoggedMeal(e: MealLogEntry, _cmd: { member: MemberId }): Done {
+  return succeed({ state: e, events: [{ type: "MealRemoved", entryId: e.id, date: e.date }] });
 }
 
 /** rule CorrectLoggedMeal */

@@ -170,7 +170,6 @@ describe("the finalize panel", () => {
     await toShoppingList();
     expect(await screen.findByRole("checkbox", { name: /Salz/ })).not.toBeChecked();
     expect(screen.getByRole("checkbox", { name: /Zwiebel/ })).toBeChecked();
-    expect(screen.getByText(/Salz, Pfeffer, Öl und Wasser sind schon abgewählt/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Einkaufsliste füllen" }));
     expect(calls.find((c) => c.key === FINALIZE)?.body).toEqual({ skip: ["Salz"] });
   });
@@ -393,16 +392,14 @@ describe("the reminder on the board", () => {
   it("repeats the reminder for phones that did not get a notification, while the plan is open", async () => {
     server(withReminder());
     renderApp();
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Erinnerung: Ihr habt Tage geplant, aber die Einkaufsliste ist noch nicht gefüllt.",
-    );
+    expect(await screen.findByRole("status")).toHaveTextContent("Noch offen: die Einkaufsliste füllen.");
   });
 
   it("is not there before the reminder went out", async () => {
     server(withReminder({ reminderSent: false }));
     renderApp();
     await screen.findByRole("button", { name: "Weiter zur Einkaufsliste" });
-    expect(screen.queryByText(/Erinnerung/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Noch offen: die Einkaufsliste/)).not.toBeInTheDocument();
   });
 
   it("is not there once nothing is planned any more", async () => {
@@ -416,7 +413,7 @@ describe("the reminder on the board", () => {
     );
     renderApp();
     await screen.findByRole("heading", { name: "Planung" });
-    expect(screen.queryByText(/Erinnerung/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Noch offen: die Einkaufsliste/)).not.toBeInTheDocument();
   });
 
   it("is gone once the plan is finalized", async () => {
@@ -429,7 +426,7 @@ describe("the reminder on the board", () => {
     });
     renderApp();
     await screen.findByText(/Planer/);
-    expect(screen.queryByText(/Erinnerung/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Noch offen: die Einkaufsliste/)).not.toBeInTheDocument();
   });
 });
 

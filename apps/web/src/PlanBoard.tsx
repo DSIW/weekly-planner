@@ -8,10 +8,12 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
 } from "@dnd-kit/core";
-import type { ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { PlanSession } from "./api";
-import { dayLabel, dayParts } from "./dates";
+import { dayLabel } from "./dates";
+import { DayBadge } from "./DayBadge";
 import { dropFor, type Drop } from "./plan-moves";
 import { RecipeLine } from "./RecipeLine";
 
@@ -30,6 +32,8 @@ interface Props {
   nextBlocked?: string | null;
   pending: boolean;
   error: string | null;
+  /** Shown right under the days, inside the same card: the deck that fills them. */
+  children?: ReactNode;
 }
 
 type Day = PlanSession["days"][number];
@@ -46,14 +50,29 @@ interface RowProps {
   onLeftovers: (date: string) => void;
   onReopen: (date: string) => void;
   onWithdraw: (proposalId: string) => void;
+  /** Registers the row element, to measure how far the row under a dragged day has to slide. */
+  rowRef: (date: string, el: HTMLElement | null) => void;
+  /** Where this row slides while another day hovers over it: pixels down (negative: up), or null. */
+  shift: number | null;
 }
 
-function DayRow({ day, proposal, meId, isNext, busy, readOnly, onLeftovers, onReopen, onWithdraw }: RowProps) {
+function DayRow({
+  day,
+  proposal,
+  meId,
+  isNext,
+  busy,
+  readOnly,
+  onLeftovers,
+  onReopen,
+  onWithdraw,
+  rowRef,
+  shift,
+}: RowProps) {
   const planned = day.status === "planned" && !readOnly;
   const drag = useDraggable({ id: day.date, disabled: !planned });
   const drop = useDroppable({ id: day.date, disabled: day.status === "leftovers" });
   const label = dayLabel(day.date);
-  const parts = dayParts(day.date);
   const small = (text: string, onClick: () => void) => (
     <button type="button" className="secondary small" disabled={busy} onClick={onClick}>
       {text}
@@ -97,10 +116,19 @@ function DayRow({ day, proposal, meId, isNext, busy, readOnly, onLeftovers, onRe
   const state = proposal ? "waiting" : day.status;
   return (
     <li
-      ref={drop.setNodeRef}
+      ref={(el) => {
+        drop.setNodeRef(el);
+        rowRef(day.date, el);
+      }}
       data-state={state}
-      className={`day ${isNext ? "next " : ""}${drop.isOver ? "over " : ""}${drag.isDragging ? "dragging" : ""}`}
-      style={drag.transform ? { transform: `translate(${drag.transform.x}px, ${drag.transform.y}px)` } : undefined}
+      className={`day ${isNext ? "next " : ""}${drop.isOver ? "over " : ""}${drag.isDragging ? "dragging " : ""}${shift !== null ? "yielding" : ""}`}
+      style={
+        drag.transform
+          ? { transform: `translate(${drag.transform.x}px, ${drag.transform.y}px)` }
+          : shift !== null
+            ? { transform: `translateY(${shift}px)` }
+            : undefined
+      }
     >
       {planned ? (
         <button
@@ -116,11 +144,7 @@ function DayRow({ day, proposal, meId, isNext, busy, readOnly, onLeftovers, onRe
       ) : (
         <span className="handle-space" />
       )}
-      <span className="day-badge">
-        <b aria-hidden="true">{parts.weekday}</b>
-        <span aria-hidden="true">{parts.date}</span>
-        <span className="sr-only">{label}</span>
-      </span>
+      <DayBadge date={day.date} />
       <span className="day-body">{body}</span>
     </li>
   );
@@ -142,6 +166,7 @@ export function PlanBoard({
   nextBlocked = null,
   pending,
   error,
+  children,
 }: Props) {
   // A handle drags at once with the mouse; on a touch screen it needs a short press, so scrolling stays possible.
   const sensors = useSensors(
@@ -153,14 +178,37 @@ export function PlanBoard({
   const readOnly = session.status !== "open";
   const waitingOn = (date: string) => session.proposals.find((p) => p.date === date && p.status === "pending");
   const nextDate = session.days.find((d) => d.status === "open" && !waitingOn(d.date))?.date;
+  const rows = useRef(new Map<string, HTMLElement>());
+  const rowRef = (date: string, el: HTMLElement | null) => {
+    if (el) rows.current.set(date, el);
+    else rows.current.delete(date);
+  };
+  // The day being dragged and the day under it, while a drop there would do something.
+  const [hover, setHover] = useState<{ from: string; to: string } | null>(null);
+  const hoverOf = ({ active, over }: DragOverEvent) =>
+    over && dropFor(session.days, String(active.id), String(over.id))
+      ? { from: String(active.id), to: String(over.id) }
+      : null;
+  const shiftOf = (date: string): number | null => {
+    if (!hover || hover.to !== date) return null;
+    const from = rows.current.get(hover.from);
+    const to = rows.current.get(hover.to);
+    return from && to ? from.offsetTop - to.offsetTop : null;
+  };
   const onDragEnd = ({ active, over }: DragEndEvent) => {
+    setHover(null);
     const drop = over ? dropFor(session.days, String(active.id), String(over.id)) : null;
     if (drop) onDrop(drop);
   };
   return (
     <section className="card">
       <h2>{readOnly ? "Abgeschlossene Planung" : "Planung"}</h2>
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragOver={(e) => setHover(hoverOf(e))}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setHover(null)}
+      >
         <ul className="days" aria-label="Tage der Planung">
           {session.days.map((day) => (
             <DayRow
@@ -174,10 +222,13 @@ export function PlanBoard({
               onLeftovers={onLeftovers}
               onReopen={onReopen}
               onWithdraw={onWithdraw}
+              rowRef={rowRef}
+              shift={shiftOf(day.date)}
             />
           ))}
         </ul>
       </DndContext>
+      {children}
       {error && (
         <p role="alert" className="error">
           {error}

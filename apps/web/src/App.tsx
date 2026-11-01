@@ -34,7 +34,7 @@ import {
 import { ExportStatus } from "./ExportStatus";
 import { FinalizePanel } from "./FinalizePanel";
 import { LoginForm } from "./LoginForm";
-import { MealLogPanel } from "./MealLogPanel";
+import { DueMeals, MealHistory } from "./MealLogPanel";
 import { Notifications } from "./Notifications";
 import { PlanBoard } from "./PlanBoard";
 import type { Drop } from "./plan-moves";
@@ -340,7 +340,7 @@ function Planning({ meId }: { meId: string }) {
         <Stepper current={open && !onList ? 2 : 3} />
         {session.status === "open" && session.reminderSent && session.days.some((d) => d.status === "planned") && (
           <p role="status" className="banner">
-            Erinnerung: Ihr habt Tage geplant, aber die Einkaufsliste ist noch nicht gefüllt. Schließt die Planung ab.
+            Noch offen: die Einkaufsliste füllen. Dann ist die Planung abgeschlossen.
           </p>
         )}
         {onList ? (
@@ -358,8 +358,9 @@ function Planning({ meId }: { meId: string }) {
               {...(open ? { onNext: () => setStep("list"), nextBlocked: blockedReason(session) } : {})}
               pending={close.isPending || shape.isPending || withdraw.isPending}
               error={close.isError ? SESSION_MESSAGES.unavailable : messageFor(shape.error ?? withdraw.error)}
-            />
-            {open && <Proposing session={session} meId={meId} refetch={refetch} apply={apply} />}
+            >
+              {open && <Proposing session={session} meId={meId} refetch={refetch} apply={apply} />}
+            </PlanBoard>
             {session.status === "finalized" && <Exporting session={session} onDone={setExported} />}
           </>
         )}
@@ -393,6 +394,7 @@ export function App() {
     onSuccess: (member) => client.setQueryData(["me"], member),
   });
   const signOut = useMutation({ mutationFn: logout, onSuccess: () => client.setQueryData(["me"], null) });
+  const [tab, setTab] = useState<"plan" | "log">("plan");
 
   if (me.isPending) return <main className="center muted">Lädt …</main>;
   if (me.isError)
@@ -432,8 +434,23 @@ export function App() {
           Abmelden hat nicht geklappt. Bitte noch einmal versuchen.
         </p>
       )}
-      <MealLogPanel messageFor={messageFor} />
-      <Planning meId={me.data.id} />
+      <fieldset className="switch tabs">
+        <legend className="sr-only">Bereich</legend>
+        <button type="button" aria-pressed={tab === "plan"} onClick={() => setTab("plan")}>
+          Planung
+        </button>
+        <button type="button" aria-pressed={tab === "log"} onClick={() => setTab("log")}>
+          Verlauf
+        </button>
+      </fieldset>
+      {tab === "log" ? (
+        <MealHistory messageFor={messageFor} />
+      ) : (
+        <>
+          <DueMeals messageFor={messageFor} />
+          <Planning meId={me.data.id} />
+        </>
+      )}
     </main>
   );
 }

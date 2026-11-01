@@ -9,6 +9,7 @@ import type {
   ListRecipes,
   ListTakenDates,
   MarkNotCooked,
+  RemoveLoggedMeal,
   CloseSession,
   DomainEvent,
   FinalizePlan,
@@ -86,6 +87,7 @@ interface AppOptions {
   readonly listTakenDates: Pick<ListTakenDates, "execute">;
   readonly confirmCooked: Pick<ConfirmCooked, "execute">;
   readonly markNotCooked: Pick<MarkNotCooked, "execute">;
+  readonly removeLoggedMeal: Pick<RemoveLoggedMeal, "execute">;
   readonly correctLoggedMeal: Pick<CorrectLoggedMeal, "execute">;
   readonly addLoggedMeal: Pick<AddLoggedMeal, "execute">;
   readonly subscribeToPush: Pick<SubscribeToPush, "execute">;
@@ -634,6 +636,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   for (const [verb, useCase] of [
     ["confirm", options.confirmCooked],
     ["not-cooked", options.markNotCooked],
+    ["remove", options.removeLoggedMeal],
   ] as const) {
     app.post<{ Params: { id: string } }>(`${api}/meal-log/:id/${verb}`, async (req, reply) => {
       const member = requireMember(req, reply);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { ListLine, RecipeView } from "./api";
-import { dayLabel } from "./dates";
+import { DayBadge } from "./DayBadge";
 import { ItemIcon } from "./ItemIcon";
 import { RecipeLine } from "./RecipeLine";
 
@@ -33,22 +33,17 @@ export function FinalizePanel({ dinners, items, loading, loadFailed, onFinalize,
   const isOff = (i: ListLine) => (i.staple === true) !== flipped.has(i.name);
   const off = items?.filter(isOff) ?? [];
   const review = items?.filter((i) => i.needsReview && !isOff(i)).length ?? 0;
-  const hasStaples = items?.some((i) => i.staple) ?? false;
   return (
     <section className="card">
       <h2>Einkaufsliste</h2>
       <ul className="plain" aria-label="Gerichte">
         {dinners.map((d) => (
           <li key={d.date} className="dinner">
-            <span className="day-tag">{dayLabel(d.date)}</span>
+            <DayBadge date={d.date} />
             <RecipeLine recipe={d.recipe} />
           </li>
         ))}
       </ul>
-      <p className="muted">
-        Mit einem Tipp kommen die geplanten Tage in den Planer und die Zutaten (für 2 Portionen) auf die Einkaufsliste.
-        Danach lässt sich die Planung nicht mehr ändern.
-      </p>
       {loading && <p className="muted">Lädt …</p>}
       {loadFailed && (
         <p role="alert" className="error">
@@ -57,25 +52,19 @@ export function FinalizePanel({ dinners, items, loading, loadFailed, onFinalize,
       )}
       {items && items.length === 0 && <p className="muted">Für diese Rezepte sind keine Zutaten hinterlegt.</p>}
       {items && items.length > 0 && (
-        <>
-          <p className="muted">
-            Was ihr schon da habt, einfach abwählen. Es kommt dann nicht auf die Liste.
-            {hasStaples && " Salz, Pfeffer, Öl und Wasser sind schon abgewählt."}
-          </p>
-          <ul className="ingredient-grid" aria-label="Einkaufsliste">
-            {items.map((i) => (
-              <li key={i.name} className={i.needsReview ? "review" : ""}>
-                <label className={isOff(i) ? "tile off" : "tile"}>
-                  <input type="checkbox" checked={!isOff(i)} onChange={() => toggle(i.name)} />
-                  <ItemIcon icon={i.icon ?? null} name={i.name} />
-                  <span className="tile-name">{i.name}</span>
-                  <span className="tile-amount">{i.description || "ohne Menge"}</span>
-                  {i.needsReview && <span className="badge">bitte prüfen</span>}
-                </label>
-              </li>
-            ))}
-          </ul>
-        </>
+        <ul className="ingredient-grid" aria-label="Einkaufsliste">
+          {items.map((i) => (
+            <li key={i.name} className={i.needsReview ? "review" : ""}>
+              <label className={isOff(i) ? "tile off" : "tile"}>
+                <input type="checkbox" checked={!isOff(i)} onChange={() => toggle(i.name)} />
+                <ItemIcon icon={i.icon ?? null} name={i.name} />
+                <span className="tile-name">{i.name}</span>
+                <span className="tile-amount">{i.description || "ohne Menge"}</span>
+                {i.needsReview && <span className="badge">bitte prüfen</span>}
+              </label>
+            </li>
+          ))}
+        </ul>
       )}
       {review > 0 && (
         <p className="hint">

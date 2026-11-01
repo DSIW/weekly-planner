@@ -6,6 +6,7 @@ import {
   markNotCooked,
   mealLogEntryId,
   registerCooking,
+  removeLoggedMeal,
   type Base,
   type MealLogEntry,
   type MealLogEntryId,
@@ -81,6 +82,19 @@ export class MarkNotCooked {
       this.deps,
       cmd.entryId,
       async (e) => markNotCooked(e, cmd),
+      (e) => this.deps.mealLog.remove(e.id),
+    );
+  }
+}
+
+/** rule RemoveLoggedMeal: any entry leaves the log; the recipe stays proven. */
+export class RemoveLoggedMeal {
+  constructor(private readonly deps: MealLogDeps) {}
+  execute(cmd: { member: MemberId; entryId: MealLogEntryId }): Promise<EntryResult> {
+    return changeEntry(
+      this.deps,
+      cmd.entryId,
+      async (e) => removeLoggedMeal(e, cmd),
       (e) => this.deps.mealLog.remove(e.id),
     );
   }

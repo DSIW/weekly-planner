@@ -77,6 +77,7 @@ describe("the question the day after", () => {
       ),
     });
     renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
     await screen.findByText(/Hallo, Max/);
     await waitFor(() => expect(screen.getByRole("list", { name: "Verlauf" })).toBeInTheDocument());
     expect(screen.queryByRole("heading", { name: /Habt ihr das gekocht/ })).not.toBeInTheDocument();
@@ -208,6 +209,7 @@ describe("the history", () => {
       ),
     });
     renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
     const list = await screen.findByRole("list", { name: "Verlauf" });
     const [first, second] = within(list).getAllByRole("listitem");
     expect(first).toHaveTextContent(/31\.10\.\s*Pasta\s*offen/);
@@ -219,17 +221,19 @@ describe("the history", () => {
   it("says so when nothing was eaten yet, and when the history cannot be loaded", async () => {
     server({ ...base, [LOG]: logOf() });
     const view = renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
     expect(await screen.findByText("Noch nichts eingetragen.")).toBeInTheDocument();
     view.unmount();
     server({ ...base, [LOG]: { status: 500, body: {} } });
     renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
     expect(await screen.findByText("Der Verlauf konnte nicht geladen werden.")).toBeInTheDocument();
   });
 });
 
 describe("adding a meal", () => {
   const open = async () => {
-    await userEvent.click(await screen.findByText("Verlauf und Mahlzeit nachtragen"));
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
     await userEvent.click(screen.getByRole("button", { name: "Mahlzeit nachtragen" }));
   };
 
@@ -338,6 +342,7 @@ describe("the question the day after, further cases", () => {
   it("does not ask about an unconfirmed meal that did not come from the plan", async () => {
     server({ ...base, [LOG]: logOf(entry({ id: "added", source: "added", confirmed: false })) });
     renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
     await waitFor(() => expect(screen.getByRole("list", { name: "Verlauf" })).toBeInTheDocument());
     expect(screen.queryByRole("heading", { name: /Habt ihr das gekocht/ })).not.toBeInTheDocument();
   });
@@ -410,6 +415,7 @@ describe("the history, further cases", () => {
   it("does not claim nothing was eaten when the history cannot be loaded", async () => {
     server({ ...base, [LOG]: { status: 500, body: {} } });
     renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
     expect(await screen.findByText("Der Verlauf konnte nicht geladen werden.")).toBeInTheDocument();
     expect(screen.queryByText("Noch nichts eingetragen.")).not.toBeInTheDocument();
   });
@@ -424,5 +430,36 @@ describe("today's date", () => {
     } finally {
       process.env.TZ = tz;
     }
+  });
+});
+
+describe("removing a meal from the log", () => {
+  it("takes any entry out, confirmed or not, and shows the log without it", async () => {
+    let entries = [entry({ id: "e1", confirmed: true }), entry({ id: "e2", date: "2026-10-30", confirmed: true })];
+    const calls = server({
+      ...base,
+      [LOG]: () => logOf(...entries),
+      [`POST ${api}/meal-log/e1/remove`]: () => {
+        entries = entries.filter((e) => e.id !== "e1");
+        return { status: 200, body: { entry: entry({ id: "e1" }) } };
+      },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Pasta, .*31\.10\..*entfernen/ }));
+    await waitFor(() =>
+      expect(within(screen.getByRole("list", { name: "Verlauf" })).getAllByRole("listitem")).toHaveLength(1),
+    );
+    expect(calls.some((c) => c.key === `POST ${api}/meal-log/e1/remove`)).toBe(true);
+  });
+
+  it("keeps the log on its own tab, and the plan on the other", async () => {
+    server({ ...base, [LOG]: logOf(entry({ confirmed: true })) });
+    renderApp();
+    await screen.findByRole("heading", { name: "Neue Planung" });
+    expect(screen.queryByRole("heading", { name: "Verlauf" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Verlauf" }));
+    expect(screen.getByRole("heading", { name: "Verlauf" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Neue Planung" })).not.toBeInTheDocument();
   });
 });

@@ -297,6 +297,7 @@ export async function fetchRecipes(): Promise<RecipeView[]> {
 }
 
 export const confirmMeal = (id: string) => command<{ entry: MealEntry }>(`/meal-log/${id}/confirm`);
+export const removeMeal = (id: string) => command<{ entry: MealEntry }>(`/meal-log/${id}/remove`);
 export const notCooked = (id: string) => command<{ entry: MealEntry }>(`/meal-log/${id}/not-cooked`);
 export const correctMeal = (id: string, baseName: BaseName, recipeId: number | null) =>
   command<{ entry: MealEntry }>(`/meal-log/${id}/correct`, { base: baseName, recipeId });

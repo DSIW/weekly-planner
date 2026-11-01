@@ -93,6 +93,23 @@ describe("MarkNotCooked", () => {
   });
 });
 
+describe("RemoveLoggedMeal", () => {
+  it("removes a confirmed entry, keeps the recipe proven, and does not bring the dinner back", async () => {
+    const { h } = await dayAfterDinner();
+    await h.logPlannedMeals.execute();
+    ok(await h.confirmCooked.execute({ member: ME, entryId: only(h).id }));
+    const id = only(h).id;
+    ok(await h.removeLoggedMeal.execute({ member: AC, entryId: id }));
+    expect(h.mealLog.entries.size).toBe(0);
+    expect(h.experience.byRecipe.size).toBe(1);
+    expect(await h.logPlannedMeals.execute()).toBe(0);
+    expect(await h.removeLoggedMeal.execute({ member: AC, entryId: id })).toEqual({
+      ok: false,
+      reason: "unknown_entry",
+    });
+  });
+});
+
 describe("CorrectLoggedMeal and AddLoggedMeal", () => {
   it("corrects an entry to another recipe: confirmed, and that recipe becomes proven", async () => {
     const { h } = await dayAfterDinner();

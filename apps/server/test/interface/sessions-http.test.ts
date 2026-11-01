@@ -11,6 +11,7 @@ import {
   ListTakenDates,
   LogPlannedMeals,
   MarkNotCooked,
+  RemoveLoggedMeal,
   CloseSession,
   ExportFinalizedPlan,
   ExportNotApplied,
@@ -204,6 +205,7 @@ beforeEach(async () => {
     listRecipes: new ListRecipes(catalog),
     confirmCooked: new ConfirmCooked(logDeps),
     markNotCooked: new MarkNotCooked(logDeps),
+    removeLoggedMeal: new RemoveLoggedMeal(logDeps),
     correctLoggedMeal: new CorrectLoggedMeal({ ...logDeps, catalog }),
     addLoggedMeal: new AddLoggedMeal({ ...logDeps, catalog, ids, clock }),
     subscribeToPush: new SubscribeToPush(new SqlitePushSubscriptions(db)),
@@ -310,8 +312,8 @@ describe("sessions over HTTP", () => {
   });
 
   it.each([
-    [["2026-11-02"], 422, "too_few_days"],
-    [["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05"], 422, "too_many_days"],
+    [[], 422, "too_few_days"],
+    [["2026-11-02", "2026-11-03", "2026-11-04", "2026-11-05", "2026-11-06", "2026-11-07"], 422, "too_many_days"],
     [["2026-11-02", "2026-11-02"], 422, "duplicate_dates"],
     [["2026-11-02", "not-a-date"], 400, "invalid_request"],
     [["2026-02-30", "2026-11-02"], 400, "invalid_request"],
@@ -1175,6 +1177,15 @@ describe("the meal log over HTTP", () => {
     expect(await entriesOf(max)).toEqual([]);
     const second = await post(`/meal-log/${entry.id}/not-cooked`, max);
     expect(second.statusCode).toBe(404);
+  });
+
+  it("removes any entry from the log, confirmed or not, and answers 404 the second time", async () => {
+    const entry = await loggedFromPlan();
+    await post(`/meal-log/${entry.id}/confirm`, max);
+    expect((await post(`/meal-log/${entry.id}/remove`, undefined)).statusCode).toBe(401);
+    expect((await post(`/meal-log/${entry.id}/remove`, ac)).statusCode).toBe(200);
+    expect(await entriesOf(max)).toEqual([]);
+    expect((await post(`/meal-log/${entry.id}/remove`, ac)).statusCode).toBe(404);
   });
 
   it("refuses to call a confirmed meal not cooked", async () => {

@@ -405,7 +405,6 @@ describe("the shopping list panel (witness r3)", () => {
     renderApp();
     await toList();
     await screen.findByRole("checkbox", { name: /Zwiebel/ });
-    expect(screen.getByText(/Was ihr schon da habt/)).toBeInTheDocument();
     expect(screen.queryByText(/Salz, Pfeffer, Öl und Wasser/)).not.toBeInTheDocument();
   });
 
@@ -511,7 +510,7 @@ describe("adding a meal by its base (witness r3)", () => {
       [ALL_RECIPES]: { status: 200, body: { recipes: [pasta] } },
     });
     renderApp();
-    await userEvent.click(await screen.findByText("Verlauf und Mahlzeit nachtragen"));
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
     await userEvent.click(screen.getByRole("button", { name: "Mahlzeit nachtragen" }));
     await userEvent.click(screen.getByRole("button", { name: "Nur Basis" }));
     expect(

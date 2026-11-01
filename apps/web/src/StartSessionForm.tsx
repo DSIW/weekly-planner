@@ -2,8 +2,8 @@ import { useState } from "react";
 import type { TakenDate } from "./api";
 import { dayLabel, upcomingDates } from "./dates";
 
-const MIN = 2;
-const MAX = 3;
+const MIN = 1;
+const MAX = 5;
 
 interface Props {
   onStart: (dates: string[]) => void;
@@ -22,9 +22,6 @@ export function StartSessionForm({ onStart, pending, error, takenDates = [], tod
   return (
     <section className="card">
       <h2>Neue Planung</h2>
-      <p className="muted">
-        Wähle {MIN} oder {MAX} Tage, für die ihr das Abendessen festlegen wollt.
-      </p>
       <fieldset className="day-chips">
         <legend className="sr-only">Tage</legend>
         {upcomingDates(7, today).map((date) => {

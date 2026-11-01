@@ -19,6 +19,7 @@ import {
   LogPlannedMeals,
   MarkLeftoverDay,
   MarkNotCooked,
+  RemoveLoggedMeal,
   MovePlannedDay,
   PassSuggestion,
   ProposeRecipe,
@@ -127,6 +128,7 @@ export function household(recipes: Recipe[] = []) {
     listRecipes: new ListRecipes(catalog),
     confirmCooked: new ConfirmCooked(logDeps),
     markNotCooked: new MarkNotCooked(logDeps),
+    removeLoggedMeal: new RemoveLoggedMeal(logDeps),
     correctLoggedMeal: new CorrectLoggedMeal({ ...logDeps, catalog }),
     addLoggedMeal: new AddLoggedMeal({ ...logDeps, catalog, ids, clock }),
   };

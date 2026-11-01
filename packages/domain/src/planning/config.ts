@@ -22,7 +22,7 @@ export const defaultPlanningConfig: PlanningConfig = {
   recentWindowDays: 14,
   vegetarianShare: 0.66,
   newRecipesPerSession: 1,
-  minDaysPerSession: 2,
-  maxDaysPerSession: 3,
+  minDaysPerSession: 1,
+  maxDaysPerSession: 5,
   reminderHour: 8,
 };

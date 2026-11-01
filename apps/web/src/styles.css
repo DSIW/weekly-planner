@@ -46,6 +46,15 @@ body {
   gap: 14px;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
 }
+/* The deck and the proposals sit inside the plan's card, joined to the days above by a line. */
+.card .card {
+  width: auto;
+  padding: 16px 0 0;
+  border-radius: 0;
+  border-top: 1px dashed var(--primary);
+  background: none;
+  box-shadow: none;
+}
 h1 {
   margin: 0;
   font-size: 1.5rem;
@@ -456,7 +465,14 @@ li.review {
   display: grid;
   gap: 8px;
 }
+.bar-actions button {
+  height: 44px;
+  padding-block: 0;
+}
 .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 44px;
   min-width: 44px;
   padding: 0;
@@ -547,6 +563,11 @@ li.review {
 .day.over {
   border-color: var(--primary);
 }
+/* The row a dragged day would swap with slides to where the dragged one was: that is where its dish lands. */
+.day.yielding {
+  transition: transform 150ms ease;
+  border-style: dashed;
+}
 .day.dragging {
   position: relative;
   z-index: 1;
@@ -556,6 +577,8 @@ li.review {
   width: 8px;
 }
 .day-badge {
+  flex: none;
+  width: 52px;
   display: grid;
   justify-items: center;
   line-height: 1.15;
@@ -612,6 +635,9 @@ button.small {
   flex: 1;
   min-width: 0;
   text-align: left;
+}
+.recipe-line-text .muted {
+  font-weight: 400;
 }
 .recipe-line-text strong {
   overflow: hidden;

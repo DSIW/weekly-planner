@@ -93,7 +93,7 @@ describe("a planning session through the use cases", () => {
 
   it("rejects an invalid start without saving a session", async () => {
     const h = household();
-    expect(await h.startSession.execute({ member: AC, dates: [MON] })).toEqual({ ok: false, reason: "too_few_days" });
+    expect(await h.startSession.execute({ member: AC, dates: [] })).toEqual({ ok: false, reason: "too_few_days" });
     expect(await h.sessions.listAll()).toEqual([]);
   });
 

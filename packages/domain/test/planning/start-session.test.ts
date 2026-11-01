@@ -23,12 +23,12 @@ describe("rule StartSession", () => {
   });
 
   it("is rejected below the minimum number of days", () => {
-    expect(start([MON])).toEqual({ ok: false, reason: "too_few_days" });
+    expect(start([])).toEqual({ ok: false, reason: "too_few_days" });
   });
 
   it("is rejected above the maximum number of days", () => {
-    const four = [MON, TUE, WED, planDate("2026-11-05")];
-    expect(start(four)).toEqual({ ok: false, reason: "too_many_days" });
+    const six = [MON, TUE, WED, ...["2026-11-05", "2026-11-06", "2026-11-07"].map(planDate)];
+    expect(start(six)).toEqual({ ok: false, reason: "too_many_days" });
   });
 
   it("sorts the days by date regardless of input order", () => {
@@ -39,8 +39,8 @@ describe("rule StartSession", () => {
 describe("config defaults", () => {
   it("has the household's agreed values", () => {
     expect(config).toMatchObject({
-      minDaysPerSession: 2,
-      maxDaysPerSession: 3,
+      minDaysPerSession: 1,
+      maxDaysPerSession: 5,
       weekdayTimeLimitMinutes: 45,
       householdSize: 2,
       varietyWindowDays: 2,

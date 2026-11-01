@@ -1,7 +1,7 @@
 -- allium: 3
 -- weekly-planning.allium
 
--- Scope: Agreeing, usually on a Sunday, what to cook for the next 2-3 days.
+-- Scope: Agreeing, usually on a Sunday, what to cook for the next few days (1-5).
 --   Two household members propose dinners and vote on them. Suggestions
 --   are ranked so that nobody has to be creative on a weekday evening.
 -- Includes: planning sessions, proposals and votes, hard and soft suggestion
@@ -51,8 +51,8 @@ enum Base { pasta | rice | potatoes | grains | bread | other }
 ------------------------------------------------------------
 
 config {
-    min_days_per_session: Integer = 2
-    max_days_per_session: Integer = 3
+    min_days_per_session: Integer = 1
+    max_days_per_session: Integer = 5
     weekday_time_limit: Duration = 45.minutes
     plan_ahead_time: Duration = 6.hours   -- longer recipes (dough resting, marinating) need a day's lead time
     recent_window: Duration = 14.days    -- recipes planned within this window rank lower
@@ -205,7 +205,7 @@ entity Proposal {
 -- Rules
 ------------------------------------------------------------
 
--- A session covers whichever 2-3 dates the household picks. Sessions happen
+-- A session covers whichever 1-5 dates the household picks. Sessions happen
 -- every few days (typically Sunday and midweek); the days are not fixed.
 rule StartSession {
     when: StartSession(member, dates)
@@ -353,6 +353,14 @@ rule ConfirmCooked {
 rule MarkNotCooked {
     when: MarkNotCooked(member, entry)
     requires: not entry.confirmed
+    ensures: not exists entry
+}
+
+-- Any entry can be taken out of the log, cooked or not. What it taught about
+-- the recipe (CookedRecipe) stays, and a planned dinner that was logged once
+-- does not come back as due.
+rule RemoveLoggedMeal {
+    when: RemoveLoggedMeal(member, entry)
     ensures: not exists entry
 }
 
@@ -685,6 +693,7 @@ surface PlanningBoard {
         MovePlannedDay(viewer, from_day, to_day)
         ConfirmCooked(viewer, entry)
         MarkNotCooked(viewer, entry)
+        RemoveLoggedMeal(viewer, entry)
         CorrectLoggedMeal(viewer, entry, base, recipe)
         AddLoggedMeal(viewer, date, base, recipe)
         ReopenDay(viewer, day)
