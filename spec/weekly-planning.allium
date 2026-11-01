@@ -84,7 +84,8 @@ entity PlanningSession {
     planned_days: days where status = planned
     pending_proposals: proposals where status = pending
     unfinished_export_steps: export_steps where status != done
-    refused_export_steps: export_steps where status = pending and export_failure = refused
+    pending_export_steps: export_steps where status = pending
+    sending_export_steps: export_steps where status = sending
 
     -- Derived
     export_complete: status = finalized and unfinished_export_steps.count = 0
@@ -205,7 +206,7 @@ rule StartSession {
     -- or abandoned.
     requires: not exists PlanningSession{status: open}
     ensures:
-        let session = PlanningSession.created(started_by: member, started_at: now, status: open, reminder_sent: false)
+        let session = PlanningSession.created(started_by: member, started_at: now, status: open, reminder_sent: false, export_failure: none)
         for date in dates:
             PlanDay.created(session: session, date: date, status: open)
 }
@@ -458,11 +459,13 @@ rule ExportStepRefused {
 -- repeat cannot duplicate anything. The scheduler looks every
 -- config.export_retry_interval. A step that was sent without an answer is
 -- never part of this: only a member decides about it (ResendUnconfirmedStep).
+-- While such a step exists (also after a crash left a retried step sending),
+-- the session is not retried at all: its steps go out in order.
 rule RetryRefusedExports {
     when: schedule: ExportRetrySchedule.next_run_at <= now
     ensures: schedule.next_run_at = now + config.export_retry_interval
-    for session in PlanningSessions where status = finalized and export_failure = refused:
-        for step in session.refused_export_steps:
+    for session in PlanningSessions where status = finalized and export_failure = refused and sending_export_steps.count = 0:
+        for step in session.pending_export_steps:
             ensures: SendExportStep(member: session.started_by, step: step)
 }
 
