@@ -319,6 +319,18 @@ describe("consolidateIngredients", () => {
     ).toBe("0.03 g");
   });
 
+  it("adds mass and volume units up whatever their letter case", () => {
+    const items = consolidateIngredients(
+      [
+        recipe("A", 2, ing("Milch", "1 L"), ing("Mehl", "1 KG")),
+        recipe("B", 2, ing("Milch", "500 ml"), ing("Mehl", "500 g")),
+      ],
+      2,
+    );
+    expect(one(items, "Milch").description).toBe("1.5 l");
+    expect(one(items, "Mehl").description).toBe("1.5 kg");
+  });
+
   it("keeps different units side by side and adds identical unit text only", () => {
     const items = consolidateIngredients(
       [recipe("A", 2, ing("Öl", "2 EL")), recipe("B", 2, ing("Öl", "5 g")), recipe("C", 2, ing("Öl", "1 EL"))],

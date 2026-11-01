@@ -202,6 +202,18 @@ describe("the export status", () => {
     expect(calls.find((c) => c.key === RETRY)?.body).toEqual({ resendUnconfirmed: true });
   });
 
+  it("also asks before resending when the list was still being sent and nothing reported a failure (the server stopped)", async () => {
+    const crashed = exportOf({
+      list: { status: "sending", items: preview.items },
+      days: [{ date: "2026-11-02", recipeName: "Pasta", status: "done" }],
+    });
+    server({ ...signedIn, [CURRENT]: { status: 200, body: { session: finalized(crashed) } } });
+    renderApp();
+    expect(await screen.findByRole("alert")).toHaveTextContent("unklar, ob der Schritt angekommen ist");
+    expect(screen.getByRole("button", { name: "Trotzdem erneut senden" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Erneut versuchen" })).not.toBeInTheDocument();
+  });
+
   it("shows the finalized plan locked: no handles, no leftovers, and it can be closed", async () => {
     let current: unknown = finalized(exportOf({ failure: "refused" }));
     const calls = server({

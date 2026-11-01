@@ -103,6 +103,30 @@ describe("KitchenOwlPlannerGateway", () => {
     expect(error).not.toBeInstanceOf(ExportNotApplied);
   });
 
+  it.each(["ECONNRESET", "UND_ERR_SOCKET", "ETIMEDOUT"])(
+    "leaves a connection lost after sending (%s) unconfirmed: the request may have arrived",
+    async (code) => {
+      const lost = {
+        addPlannerRecipe: async () => {
+          throw new TypeError("fetch failed", { cause: { code } });
+        },
+        addShoppingListRecipeItems: async () => {
+          throw new TypeError("fetch failed", { cause: { code } });
+        },
+      };
+      const gateway = new KitchenOwlPlannerGateway(lost, 2);
+      for (const result of [
+        await gateway
+          .addPlannerEntry({ recipeId: recipeId(1), date: planDate("2026-11-02"), portions: 2 })
+          .catch((e: unknown) => e),
+        await gateway.addShoppingListItems([{ name: "A", description: "", optional: false }]).catch((e: unknown) => e),
+      ]) {
+        expect(result).toBeInstanceOf(Error);
+        expect(result).not.toBeInstanceOf(ExportNotApplied);
+      }
+    },
+  );
+
   it("reports a refused connection as not applied but a lost answer as unconfirmed", async () => {
     const client = await fake();
     for (const s of servers.splice(0)) await new Promise((r) => s.close(r));
