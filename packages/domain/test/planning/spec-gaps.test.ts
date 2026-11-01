@@ -5,6 +5,7 @@ import {
   completeStep,
   consolidateIngredients,
   eligibleRecipes,
+  finalizePlan,
   exportComplete,
   failStep,
   newExport,
@@ -77,12 +78,18 @@ describe("day operations while a proposal is pending", () => {
     expect(movePlannedDay(session, { member: ME, from: MON, to: SAT }, config)).toEqual(pendingRejection);
   });
 
+  it("FinalizePlan is refused too", () => {
+    const { session } = voting();
+    expect(finalizePlan(session, { member: ME })).toEqual(pendingRejection);
+  });
+
   it("all of them work once the proposal is decided", () => {
     const { session, id } = voting();
     const decided = must(vetoProposal(session, { member: ME, proposalId: id })).state;
     expect(reopenDay(decided, { member: ME, date: MON }).ok).toBe(true);
     expect(movePlannedDay(decided, { member: ME, from: MON, to: SAT }, config).ok).toBe(true);
     expect(markLeftoverDay(decided, { member: ME, date: TUE }).ok).toBe(true);
+    expect(finalizePlan(decided, { member: ME }).ok).toBe(true);
   });
 
   it("a discarded session no longer holds its dates (OneDinnerPerDay)", () => {

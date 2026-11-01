@@ -307,6 +307,7 @@ export function finalizePlan(
   if (s.status !== "open") return reject("session_not_open");
   const planned = plannedDays(s);
   if (planned.length === 0) return reject("nothing_planned");
+  if (hasPendingProposal(s)) return reject("proposal_already_pending");
   return done(
     { ...s, status: "finalized" },
     {

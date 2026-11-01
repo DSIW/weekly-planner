@@ -410,6 +410,8 @@ rule FinalizePlan {
     when: FinalizePlan(member, session)
     requires: session.status = open
     requires: session.planned_days.count > 0
+    -- Like every change to the plan, not while a vote runs.
+    requires: session.pending_proposals.count = 0
     ensures:
         session.status = finalized
         for day in session.planned_days:
@@ -440,8 +442,9 @@ rule ExportStepRefused {
     ensures: step.status = pending
 }
 
--- No answer at all (timeout, the planner stopped): the step stays sending and
--- is not sent again by itself. A member who has looked at KitchenOwl may send
+-- No usable answer (a timeout, a server error after which the write may have
+-- happened, the planner stopped): the step stays sending and is not sent
+-- again by itself. A member who has looked at KitchenOwl may send
 -- it once more, knowing it can then appear twice.
 rule ResendUnconfirmedStep {
     when: ResendUnconfirmedStep(member, step)
