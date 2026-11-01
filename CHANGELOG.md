@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.15...weekly-planner-v0.1.16) (2026-11-01)
+
+
+### Features
+
+* ask again when the app returns to the foreground ([bb96f09](https://github.com/DSIW/weekly-planner/commit/bb96f091bb3b2a3d5ac35e28ce67cf8d03cae436))
+
 ## [0.1.15](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.14...weekly-planner-v0.1.15) (2026-11-01)
 
 
