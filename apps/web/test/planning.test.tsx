@@ -91,7 +91,7 @@ describe("starting a session", () => {
     server({ ...signedIn, [CURRENT]: { status: 200, body: { session: null } } });
     renderApp();
     const start = await screen.findByRole("button", { name: "Planung starten" });
-    expect(screen.getAllByRole("button", { pressed: false })).toHaveLength(8); // seven days and the Verlauf tab
+    expect(screen.getAllByRole("button", { pressed: false })).toHaveLength(9); // seven days and the Verlauf and Import tabs
     expect(start).toBeDisabled();
     await userEvent.click(screen.getByRole("button", { name: /^Mo.*2\.11\./ }));
     expect(start).toBeEnabled();

@@ -1,5 +1,7 @@
 import {
   AcceptProposal,
+  CreateImportedRecipe,
+  DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
   ConfirmCooked,
@@ -47,6 +49,9 @@ import { CachedRecipeCatalog } from "../infrastructure/kitchenowl/cached-recipe-
 import { KitchenOwlClient } from "../infrastructure/kitchenowl/client.js";
 import { KitchenOwlHouseholdDirectory } from "../infrastructure/kitchenowl/kitchenowl-household-directory.js";
 import { KitchenOwlPlannerGateway } from "../infrastructure/kitchenowl/kitchenowl-planner-gateway.js";
+import { LlmRecipeExtractor } from "../infrastructure/import/llm-extractor.js";
+import { WebRecipeSource } from "../infrastructure/import/web-recipe-source.js";
+import { KitchenOwlRecipeWriter } from "../infrastructure/kitchenowl/kitchenowl-recipe-writer.js";
 import { KitchenOwlPlannerView } from "../infrastructure/kitchenowl/kitchenowl-planner-view.js";
 import { KitchenOwlRecipeCatalog } from "../infrastructure/kitchenowl/kitchenowl-recipe-catalog.js";
 import { loadOrCreateVapidKeys } from "../infrastructure/push/vapid-keys.js";
@@ -120,6 +125,7 @@ async function main(): Promise<void> {
     uow: deps.uow,
     clock,
   });
+  const recipeWriter = new KitchenOwlRecipeWriter(client);
   const app = await buildApp({
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
     getCurrentSession: new GetCurrentSession({ sessions, exports }),
@@ -128,6 +134,12 @@ async function main(): Promise<void> {
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, planning),
+    draftRecipeImport: new DraftRecipeImport({
+      source: new WebRecipeSource(),
+      extractor: new LlmRecipeExtractor(config.llm),
+      writer: recipeWriter,
+    }),
+    createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter }),
     acceptProposal: new AcceptProposal({ ...deps, calendar }, planning),
     agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...deps, calendar }, planning)),
     vetoProposal: new VetoProposal(deps),

@@ -881,3 +881,35 @@ select {
   text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent);
   text-underline-offset: 3px;
 }
+
+textarea {
+  font: inherit;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+  background: transparent;
+  color: var(--text);
+  resize: vertical;
+}
+.import-draft h3 {
+  margin: 4px 0 0;
+  font-size: 1rem;
+}
+.import-ingredients {
+  display: grid;
+  gap: 6px;
+}
+.import-ingredients li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.import-ingredients .tile-name {
+  flex: 1;
+}
+.import-steps {
+  margin: 0;
+  padding-left: 1.3rem;
+  display: grid;
+  gap: 6px;
+}

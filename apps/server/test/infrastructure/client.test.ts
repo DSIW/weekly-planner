@@ -140,3 +140,61 @@ describe("KitchenOwlClient", () => {
     });
   });
 });
+
+describe("KitchenOwlClient: items, tags and creating a recipe", () => {
+  it("lists the names of the household's items and tags", async () => {
+    const urls: string[] = [];
+    const f = (async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return new Response(
+        JSON.stringify([
+          { id: 1, name: "Zwiebel", icon: "onion" },
+          { id: 2, name: "Milch" },
+        ]),
+      );
+    }) as typeof fetch;
+    const client = new KitchenOwlClient(cfg, f);
+    expect(await client.listItemNames()).toEqual(["Zwiebel", "Milch"]);
+    expect(await client.listTagNames()).toEqual(["Zwiebel", "Milch"]);
+    expect(urls).toEqual(["https://ko.test/api/household/2/item", "https://ko.test/api/household/2/tag"]);
+    await expect(new KitchenOwlClient(cfg, json({ no: "list" })).listItemNames()).rejects.toBeInstanceOf(
+      KitchenOwlError,
+    );
+    await expect(new KitchenOwlClient(cfg, json([{ id: 1 }])).listTagNames()).rejects.toBeInstanceOf(KitchenOwlError);
+  });
+
+  const recipe = {
+    name: "Pasta",
+    description: "1. Kochen",
+    yields: 2,
+    items: [{ name: "Zwiebel", description: "1", optional: false }],
+    tags: ["🍝 Pasta"],
+  };
+
+  it("creates a private recipe with the service token and gives back its id", async () => {
+    let seen: { url: string; method?: string | undefined; auth: string | null; body: unknown } | undefined;
+    const f = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen = {
+        url: String(url),
+        method: init?.method,
+        auth: new Headers(init?.headers).get("Authorization"),
+        body: JSON.parse(String(init?.body)),
+      };
+      return new Response(JSON.stringify({ id: 173, name: "Pasta", items: [] }));
+    }) as typeof fetch;
+    expect(await new KitchenOwlClient(cfg, f).createRecipe(recipe)).toBe(173);
+    expect(seen).toEqual({
+      url: "https://ko.test/api/household/2/recipe",
+      method: "POST",
+      auth: "Bearer tok",
+      body: { ...recipe, visibility: 0 },
+    });
+  });
+
+  it("raises an error with the status when KitchenOwl refuses, and for an answer without an id", async () => {
+    await expect(new KitchenOwlClient(cfg, json({}, 400)).createRecipe(recipe)).rejects.toMatchObject({ status: 400 });
+    await expect(new KitchenOwlClient(cfg, json({ name: "x" })).createRecipe(recipe)).rejects.toBeInstanceOf(
+      KitchenOwlError,
+    );
+  });
+});

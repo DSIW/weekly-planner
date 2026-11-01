@@ -220,6 +220,8 @@ beforeEach(async () => {
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, defaultPlanningConfig),
     acceptProposal: new AcceptProposal({ ...deps, calendar }, defaultPlanningConfig),
     agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...deps, calendar }, defaultPlanningConfig)),
+    draftRecipeImport: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+    createImportedRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),

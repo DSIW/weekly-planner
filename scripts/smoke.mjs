@@ -50,6 +50,8 @@ const recipes = [
 
 // What reached the fake KitchenOwl's write endpoints, and how it should behave on the next request.
 const written = { planner: [], list: [] };
+// What the import sent to KitchenOwl (recipes) and to the language model.
+const imported = { recipes: [], llm: [] };
 // What the fake planner holds right now (a recipe taken off it in KitchenOwl is removed from here).
 const plannerHolds = [];
 const behaviour = { plannerStatus: 200, listHangs: false };
@@ -75,7 +77,7 @@ const kitchenowl = http.createServer((req, res) => {
       return members[name] ? send(200, { ...members[name], username: name }) : send(401, {});
     }
     if (req.url === "/api/household/2") return send(200, { member: [{ id: 2 }, { id: 3 }] });
-    if (req.url === "/api/household/2/recipe") return send(200, recipes);
+    if (req.method === "GET" && req.url === "/api/household/2/recipe") return send(200, recipes);
     if (req.method === "POST" && req.url === "/api/household/2/planner/recipe") {
       if (behaviour.plannerStatus !== 200) return send(behaviour.plannerStatus, {});
       const entry = JSON.parse(body);
@@ -85,6 +87,35 @@ const kitchenowl = http.createServer((req, res) => {
       return send(200, {});
     }
     if (req.method === "GET" && req.url === "/api/household/2/planner") return send(200, plannerHolds);
+    if (req.method === "GET" && req.url === "/api/household/2/item")
+      return send(200, [{ name: "Zwiebel" }, { name: "Linsen" }]);
+    if (req.method === "GET" && req.url === "/api/household/2/tag")
+      return send(200, [{ name: "🍲 Suppe" }, { name: "🌱 Vegan" }]);
+    if (req.method === "POST" && req.url === "/api/household/2/recipe") {
+      imported.recipes.push(JSON.parse(body));
+      return send(200, { id: 900 + imported.recipes.length, name: "x" });
+    }
+    // A language model behind an OpenAI-compatible API, answering with a fixed recipe.
+    if (req.method === "POST" && req.url === "/llm/chat/completions") {
+      imported.llm.push({ auth: req.headers.authorization, body: JSON.parse(body) });
+      const recipe = {
+        name: "Linsensuppe",
+        subtitle: "Wärmt von innen",
+        steps: ["Linsen waschen.", "Kochen."],
+        ingredients: [
+          { name: "linsen", amount: "200 g", optional: false },
+          { name: "Petersilie <b>frisch</b> http://evil.example", amount: "1 Bund", optional: false },
+        ],
+        mealType: "main",
+        base: "other",
+        diet: "vegan",
+        tags: ["🍲 Suppe", "🍕 Pizza"],
+        totalMinutes: 40,
+        yields: 4,
+        visibility: 1,
+      };
+      return send(200, { choices: [{ message: { content: JSON.stringify(recipe) } }] });
+    }
     if (req.url === "/assets/fonts/Items.ttf") {
       res.setHeader("content-type", "font/ttf");
       res.statusCode = 200;
@@ -121,6 +152,9 @@ async function startServer(kitchenowlPort) {
       KITCHENOWL_URL: `http://127.0.0.1:${kitchenowlPort}`,
       KITCHENOWL_TOKEN: "service-token",
       KITCHENOWL_HOUSEHOLD_ID: "2",
+      LLM_API_KEY: "llm-key",
+      LLM_MODEL: "smoke/model",
+      LLM_BASE_URL: `http://127.0.0.1:${kitchenowlPort}/llm`,
       SESSION_SECRET: "smoke-test-secret-smoke-test-secret",
       COOKIE_SECURE: "false",
       NODE_NO_WARNINGS: "1",
@@ -660,6 +694,50 @@ try {
     assert.equal((await call("POST", "/push/subscription", phone)).status, 204);
     assert.equal((await call("DELETE", "/push/subscription", { endpoint: phone.endpoint })).status, 204);
     assert.equal((await call("POST", "/push/subscription", { endpoint: "nope" })).status, 400);
+  });
+
+  await step("a pasted recipe becomes a checked draft, and a recipe in KitchenOwl only once confirmed", async () => {
+    const cookie = [...jars.get("ac")].map(([k, v]) => `${k}=${v}`).join("; ");
+    const call = (path, body) =>
+      realFetch(`${origin()}/plan/api${path}`, {
+        method: "POST",
+        headers: { cookie, "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const res = await call("/import/draft", {
+      text: "Linsensuppe: 200 g Linsen, 1 Bund Petersilie. Linsen waschen, kochen.",
+    });
+    assert.equal(res.status, 200);
+    const { draft } = await res.json();
+    assert.deepEqual(
+      draft.ingredients.map((i) => [i.name, i.isNewItem]),
+      [
+        ["Linsen", false],
+        ["Petersilie frisch", true],
+      ],
+      "an ingredient takes the household's name, markup and links are gone",
+    );
+    assert.deepEqual(draft.tags, ["🍲 Suppe"], "a tag the household does not have is dropped");
+    assert.equal(draft.visibility, undefined, "whatever else the model said is dropped");
+    assert.equal(imported.recipes.length, 0, "nothing is created before the member confirms");
+    assert.equal(imported.llm[0].auth, "Bearer llm-key");
+    assert.ok(
+      !JSON.stringify(imported.llm[0].body.messages[0]).includes("Wärmt"),
+      "the source is not in the instructions",
+    );
+
+    const created = await call("/import/create", { draft });
+    assert.equal(created.status, 201);
+    assert.equal((await created.json()).recipeId, 901);
+    assert.equal(imported.recipes.length, 1);
+    assert.deepEqual(imported.recipes[0].tags, ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 Suppe"]);
+    assert.equal(imported.recipes[0].description, "_Wärmt von innen_\n\n1. Linsen waschen.\n2. Kochen.");
+    assert.equal(imported.recipes[0].visibility, 0);
+
+    const own = await call("/import/draft", { address: "http://127.0.0.1/admin" });
+    assert.equal(own.status, 422);
+    assert.deepEqual(await own.json(), { error: "address_not_public" });
+    assert.equal(imported.llm.length, 1, "a refused address never reaches the model");
   });
 
   await step("signing out ends the session", async () => {

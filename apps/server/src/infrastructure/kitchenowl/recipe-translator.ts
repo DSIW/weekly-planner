@@ -2,7 +2,7 @@ import { recipeId, type Base, type CatalogEntry, type Diet, type MealType, type 
 import type { RawRecipe } from "./schemas.js";
 
 /** Tags are compared without emoji variation selectors, case and surrounding space. */
-const canon = (s: string): string => s.replace(/️/g, "").trim().toLowerCase();
+export const canon = (s: string): string => s.replace(/️/g, "").trim().toLowerCase();
 
 const MEAL_TAGS: Record<string, MealType> = {
   "🍽️ Hauptgericht": "main",
@@ -32,6 +32,20 @@ const TAG = {
   wants: "⭐ Ausprobieren",
 };
 
+/** The tags a created recipe gets for what the rules read: the inverse of `deriveRecipe`. */
+export function tagsForDraft(draft: { mealType: MealType; base: Base; diet: Diet }): string[] {
+  const named = <T>(table: Record<string, T>, value: T): string[] =>
+    Object.entries(table)
+      .filter(([, v]) => v === value)
+      .map(([k]) => k);
+  return [
+    ...named(MEAL_TAGS, draft.mealType),
+    ...named(BASE_TAGS, draft.base),
+    { vegan: TAG.vegan, vegetarian: TAG.vegetarian, fish: TAG.fish, meat: TAG.meat }[draft.diet],
+    TAG.isNew,
+  ];
+}
+
 /** Tags that only steer the rules (meal type, proven, new, wants to try); a card does not show them. */
 const hiddenTags = new Set([...Object.keys(MEAL_TAGS), TAG.proven, TAG.isNew, TAG.wants].map(canon));
 
@@ -39,6 +53,12 @@ const lookup = <T>(table: Record<string, T>): Map<string, T> =>
   new Map(Object.entries(table).map(([k, v]) => [canon(k), v]));
 const mealByTag = lookup(MEAL_TAGS);
 const baseByTag = lookup(BASE_TAGS);
+
+/** Tags a draft may carry freely: those that do not stand for a meal type, a base, a diet or a state. */
+export function freeTags(all: readonly string[]): string[] {
+  const reserved = new Set([...Object.keys(MEAL_TAGS), ...Object.keys(BASE_TAGS), ...Object.values(TAG)].map(canon));
+  return all.filter((t) => !reserved.has(canon(t)));
+}
 
 /**
  * Anti-corruption layer: KitchenOwl's tags and times are translated into the domain's own vocabulary here and

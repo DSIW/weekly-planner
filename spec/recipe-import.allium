@@ -1,0 +1,129 @@
+-- allium: 3
+-- recipe-import.allium
+
+-- Scope: Turning a recipe from a web page or pasted text into a recipe in
+--   KitchenOwl, in the household's own format: ingredients named like the
+--   items KitchenOwl already knows, steps as a numbered list, and the tags
+--   the planning rules read (meal type, base, diet, new).
+-- Includes: reading a source, drafting with a language model, checking the
+--   draft against the household's vocabulary, the review by a member, and
+--   creating the recipe.
+-- Excludes:
+--   - Planning (weekly-planning.allium reads the recipe afterwards)
+--   - Photos and screenshots as a source
+--   - Bulk import of an existing collection (Notion, KptnCook)
+-- Dependencies: none
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity Member {
+    name: String
+}
+
+-- The items KitchenOwl already knows. A draft names its ingredients like
+-- these, so nothing is created twice and the icons match.
+external entity KnownItem {
+    name: String
+}
+
+external entity KnownTag {
+    name: String
+}
+
+------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+value DraftIngredient {
+    name: String
+    amount: String                -- as written: "2 Stück", "1 Prise"; may be empty
+    optional: Boolean
+    -- True when no known item has this name: KitchenOwl will create it.
+    is_new_item: not exists KnownItem{name: name}
+}
+
+-- What the language model made of the source, after the checks below. It is
+-- only ever shown to a member; nothing is created from it unreviewed.
+value RecipeDraft {
+    name: String
+    subtitle: String?
+    steps: List<String>
+    ingredients: List<DraftIngredient>
+    meal_type: main | side | dessert | baking | breakfast | snack | drink | prep
+    base: pasta | rice | potatoes | grains | bread | other
+    diet: vegan | vegetarian | fish | meat
+    tags: Set<KnownTag>           -- only tags KitchenOwl already has
+    total_minutes: Integer?
+    yields: Integer?
+    source: String?
+}
+
+------------------------------------------------------------
+-- Configuration
+------------------------------------------------------------
+
+config {
+    max_source_characters: Integer = 12000
+    max_steps: Integer = 40
+    max_ingredients: Integer = 60
+    max_fetch_redirects: Integer = 3
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- The source is read, never obeyed: a page or text can only be material for
+-- the draft. The model has no tools and no access to household data; its
+-- answer must fit the draft's shape, and what does not fit is dropped or
+-- refused before anyone sees it.
+rule ReadRecipe {
+    when: ReadRecipe(member, source)
+    requires: source.is_web_link implies source.address_is_public
+    requires: source.text.length > 0
+    ensures: DraftChecked(draft_from(source.text))
+}
+
+-- A draft is accepted for review only when it is a recipe at all.
+rule CheckDraft {
+    when: DraftChecked(draft)
+    requires: draft.name != ""
+    requires: draft.steps.count >= 1 and draft.steps.count <= config.max_steps
+    requires: draft.ingredients.count >= 1 and draft.ingredients.count <= config.max_ingredients
+    -- Each ingredient named like a known item is that item; any other is new.
+    -- Text carries no links or markup; tags outside the household's own are
+    -- dropped.
+    ensures: DraftShown(draft)
+}
+
+-- Nothing is created without a member having seen the draft and said yes.
+rule CreateImportedRecipe {
+    when: CreateImportedRecipe(member, draft)
+    -- The draft is checked again: what a phone sends is not trusted either.
+    requires: draft.name != ""
+    requires: draft.steps.count >= 1
+    requires: draft.ingredients.count >= 1
+    ensures: KitchenOwlRecipeCreated(draft)
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor HouseholdMember {
+    identified_by: Member where true
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface RecipeImport {
+    facing viewer: HouseholdMember
+
+    provides:
+        ReadRecipe(viewer, source)
+        CreateImportedRecipe(viewer, draft)
+}

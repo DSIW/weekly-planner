@@ -314,3 +314,57 @@ export const correctMeal = (id: string, baseName: BaseName, recipeId: number | n
   command<{ entry: MealEntry }>(`/meal-log/${id}/correct`, { base: baseName, recipeId });
 export const addMeal = (date: string, baseName: BaseName, recipeId: number | null) =>
   command<{ entry: MealEntry }>("/meal-log", { date, base: baseName, recipeId });
+
+export interface DraftIngredient {
+  name: string;
+  amount: string;
+  optional: boolean;
+  /** No known item has this name: KitchenOwl creates it. */
+  isNewItem: boolean;
+}
+
+/** A recipe read from a link or a text, for a member to review before it is created. */
+export interface RecipeDraft {
+  name: string;
+  subtitle?: string;
+  steps: string[];
+  ingredients: DraftIngredient[];
+  mealType: string;
+  base: string;
+  diet: string;
+  tags: string[];
+  totalMinutes?: number;
+  yields?: number;
+  source?: string;
+}
+
+/** The import was refused; `reason` is the server's word for why. */
+export class ImportFailed extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+  }
+}
+
+async function importCall<T>(path: string, body: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ImportFailed("unavailable");
+  }
+  if (res.ok) return (await res.json()) as T;
+  throw new ImportFailed(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "unavailable");
+}
+
+/** Reads a web link or a pasted text into a draft recipe. Can take a minute. */
+export const draftImport = async (source: { address: string } | { text: string }): Promise<RecipeDraft> =>
+  (await importCall<{ draft: RecipeDraft }>("/import/draft", source)).draft;
+
+/** Creates the recipe a member confirmed in KitchenOwl. */
+export const createImport = (draft: RecipeDraft) =>
+  importCall<{ recipeId: number; draft: RecipeDraft }>("/import/create", { draft });

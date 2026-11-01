@@ -118,6 +118,14 @@ Feedback round on S5 (2026-11-01): planning is three steps (days, dishes, shoppi
 - Install and sign in on the second phone; repeat the earlier checklists that need two members on both phones.
 - Findings from the week are written down and sorted into fixes and new slices.
 
+### S8: Import a recipe
+
+*Asked for on 2026-11-01: importing should be easy, and KitchenOwl's own import is not good enough.*
+
+A link or pasted text becomes a reviewed recipe in the household's own format: ingredients named like the items KitchenOwl already has, steps as a numbered list, and the tags the planning rules read. Spec: `spec/recipe-import.allium`. Decided: D37 (a language model through an OpenAI-compatible API, OpenRouter with the credit the household has; layered protection against prompt injection; review before anything is written).
+
+Status S8 (built 2026-11-01, not released): domain checks (`reviewDraft`), use cases, the safe page reader, the model client, the KitchenOwl writer (verified against staging: items and tags by name, the recipe is created private), routes and tests. The screen is next. **Needs `LLM_API_KEY` and `LLM_MODEL` on the server; not tried with a real model yet.**
+
 ### S7: Distil and compare
 
 *The Allium experiment's result.*

@@ -37,6 +37,12 @@ export const plannerListSchema = z.array(
   }),
 );
 
+/** Items and tags of the household: only their names matter for matching a draft. */
+export const nameListSchema = z.array(z.object({ name: z.string() }));
+
+/** A created recipe: the id is all the planner needs back. */
+export const createdRecipeSchema = z.object({ id: z.number().int() });
+
 export const authResponseSchema = z.object({ access_token: z.string().min(1) });
 
 export const userSchema = z.object({ id: z.number().int(), name: z.string(), username: z.string() });

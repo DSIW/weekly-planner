@@ -2,6 +2,8 @@ import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import type {
   AcceptProposal,
+  CreateImportedRecipe,
+  DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
   ConfirmCooked,
@@ -67,6 +69,8 @@ interface AppOptions {
   readonly closeSession: Pick<CloseSession, "execute">;
   readonly listEligibleRecipes: Pick<ListEligibleRecipes, "execute">;
   readonly proposeRecipe: Pick<ProposeRecipe, "execute">;
+  readonly draftRecipeImport: Pick<DraftRecipeImport, "execute">;
+  readonly createImportedRecipe: Pick<CreateImportedRecipe, "execute">;
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
   readonly agreeInPerson: Pick<AgreeInPerson, "execute">;
   readonly vetoProposal: Pick<VetoProposal, "execute">;
@@ -206,7 +210,26 @@ const proposalBody = z.object({ date: z.string(), recipeId: z.number().int() });
 const swapBody = z.object({ a: z.string(), b: z.string() });
 const moveBody = z.object({ from: z.string(), to: z.string() });
 
+const importDraftBody = z.object({ address: z.string().max(2000).optional(), text: z.string().max(60_000).optional() });
+const importCreateBody = z.object({ draft: z.record(z.string(), z.unknown()) });
+
+/** Drafts a member may ask for per hour: each one costs money at the language model, so a loop cannot run it dry. */
+const DRAFTS_PER_HOUR = 20;
+
 const COMMAND_REJECTIONS: Record<string, number> = {
+  need_one_source: 400,
+  invalid_address: 400,
+  address_not_public: 422,
+  unreachable: 502,
+  not_a_page: 422,
+  too_large: 422,
+  empty: 422,
+  not_configured: 503,
+  extraction_failed: 502,
+  not_a_recipe: 422,
+  too_many_steps: 422,
+  too_many_ingredients: 422,
+  kitchenowl_unavailable: 502,
   session_already_open: 409,
   session_already_closed: 409,
   unknown_session: 404,
@@ -326,6 +349,35 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.get(`${api}/me`, async (req, reply) => {
     const member = memberOf(req);
     return member ? { member } : reply.code(401).send({ error: "not_signed_in" });
+  });
+
+  const drafts = new Map<string, number[]>();
+  app.post(`${api}/import/draft`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = importDraftBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const now = (options.now ?? Date.now)();
+    const recent = (drafts.get(member.id) ?? []).filter((t) => now - t < 3_600_000);
+    if (recent.length >= DRAFTS_PER_HOUR) return reply.code(429).send({ error: "rate_limited" });
+    drafts.set(member.id, [...recent, now]);
+    const result = await options.draftRecipeImport.execute({
+      member: memberId(member.id),
+      ...(body.data.address === undefined ? {} : { address: body.data.address }),
+      ...(body.data.text === undefined ? {} : { text: body.data.text }),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { draft: result.value };
+  });
+
+  app.post(`${api}/import/create`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = importCreateBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.createImportedRecipe.execute({ member: memberId(member.id), draft: body.data.draft });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return reply.code(201).send({ recipeId: result.value.recipeId, draft: result.value.draft });
   });
 
   app.get(`${api}/links`, async (req, reply) => {

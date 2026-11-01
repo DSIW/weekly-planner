@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { isVegetarian, needsTime } from "@weekly-planner/domain";
-import { deriveRecipe, toCatalogEntry } from "../../src/infrastructure/kitchenowl/recipe-translator.js";
+import {
+  deriveRecipe,
+  freeTags,
+  tagsForDraft,
+  toCatalogEntry,
+} from "../../src/infrastructure/kitchenowl/recipe-translator.js";
 import { rawRecipeListSchema, type RawRecipe } from "../../src/infrastructure/kitchenowl/schemas.js";
 
 const raw = (tags: string[], over: Partial<RawRecipe> = {}): RawRecipe => ({
@@ -196,5 +201,49 @@ describe("ingredients", () => {
 
   it("are empty for a recipe without items", () => {
     expect(deriveRecipe(raw(tags)).recipe?.ingredients).toEqual([]);
+  });
+});
+
+describe("tags of a created recipe", () => {
+  const combos = [
+    { mealType: "main", base: "pasta", diet: "vegan" },
+    { mealType: "prep", base: "other", diet: "meat" },
+    { mealType: "side", base: "rice", diet: "fish" },
+    { mealType: "dessert", base: "bread", diet: "vegetarian" },
+    { mealType: "baking", base: "grains", diet: "vegetarian" },
+    { mealType: "breakfast", base: "potatoes", diet: "vegan" },
+    { mealType: "snack", base: "other", diet: "vegan" },
+    { mealType: "drink", base: "other", diet: "vegan" },
+  ] as const;
+
+  it.each(combos)("read back as the same meal type, base and diet, and as new: %j", (c) => {
+    const { recipe, problems } = deriveRecipe(raw([...tagsForDraft(c), "🍲 Suppe"]));
+    expect(problems).toEqual([]);
+    expect(recipe).toMatchObject({ ...c, isProven: false });
+    // Base and diet show on a card; the meal type and "new" only steer the rules.
+    expect(recipe?.tags).toContain("🍲 Suppe");
+    expect(recipe?.tags).not.toContain("🆕 Neu");
+  });
+
+  it("gives no base tag for a base that is none, exactly one meal type and one diet tag", () => {
+    const tags = tagsForDraft({ mealType: "main", base: "other", diet: "meat" });
+    expect(tags).toEqual(["🍽️ Hauptgericht", "🥩 Fleisch", "🆕 Neu"]);
+  });
+});
+
+describe("freeTags", () => {
+  it("leaves out the tags that stand for a meal type, a base, a diet or a state, however they are spelled", () => {
+    const all = [
+      "🍽️ Hauptgericht",
+      "🍽 Hauptgericht",
+      "🍝 Pasta",
+      "🥬 Vegetarisch",
+      "✅ Erprobt",
+      "🆕 Neu",
+      "⭐ Ausprobieren",
+      "🍲 Suppe",
+      "⏱️ Einfach",
+    ];
+    expect(freeTags(all)).toEqual(["🍲 Suppe", "⏱️ Einfach"]);
   });
 });

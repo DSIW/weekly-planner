@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { SignIn } from "@weekly-planner/application";
 import { memberId } from "@weekly-planner/domain";
 import { beforeEach, describe, expect, it } from "vitest";
+import type { CreateImportedRecipe, DraftRecipeImport } from "@weekly-planner/application";
 import { buildApp } from "../../src/interface/http/app.js";
 import { decodeSession, encodeSession } from "../../src/interface/http/session-cookie.js";
 
@@ -27,6 +28,8 @@ const noSessions = {
   proposeRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   acceptProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   agreeInPerson: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  draftRecipeImport: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  createImportedRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   vetoProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   withdrawProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   refreshRecipes: { execute: async () => {} },
@@ -77,6 +80,8 @@ const app = (
     basePath?: string;
     signIn?: Pick<SignIn, "execute">;
     links?: { kitchenowl: string | null; householdId: number };
+    draftRecipeImport?: Pick<DraftRecipeImport, "execute">;
+    createImportedRecipe?: Pick<CreateImportedRecipe, "execute">;
   } = {},
 ) =>
   buildApp({
@@ -304,5 +309,98 @@ describe("links to KitchenOwl", () => {
   it("is for signed-in members only", async () => {
     const res = await (await app()).inject({ method: "GET", url: "/plan/api/links" });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("recipe import", () => {
+  const draft = { name: "Pasta", steps: ["Kochen."], ingredients: [], source: "https://example.org/r" };
+  const asked: unknown[] = [];
+  const draftImport: Pick<DraftRecipeImport, "execute"> = {
+    execute: async (cmd) => {
+      asked.push(cmd);
+      return cmd.text === "no recipe" ? { ok: false, reason: "not_a_recipe" } : { ok: true, value: draft as never };
+    },
+  };
+  const post = async (url: string, payload: unknown, over: Parameters<typeof app>[0] = {}, signedIn = true) => {
+    const a = await app({ draftRecipeImport: draftImport, ...over });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: `/plan/api${url}`, payload: payload as object, cookies });
+  };
+
+  it("drafts a recipe from a link or a text, for the signed-in member only", async () => {
+    asked.length = 0;
+    const res = await post("/import/draft", { address: "https://example.org/r" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ draft });
+    expect(asked).toEqual([{ member: "2", address: "https://example.org/r" }]);
+    expect((await post("/import/draft", { text: "Pasta" })).statusCode).toBe(200);
+    expect(asked[1]).toEqual({ member: "2", text: "Pasta" });
+    expect((await post("/import/draft", { text: "Pasta" }, {}, false)).statusCode).toBe(401);
+  });
+
+  it("refuses a malformed request without asking the model", async () => {
+    asked.length = 0;
+    for (const bad of [{ text: 5 }, { address: "x".repeat(2001) }, { text: "x".repeat(60_001) }, []])
+      expect((await post("/import/draft", bad)).statusCode, JSON.stringify(bad).slice(0, 30)).toBe(400);
+    expect(asked).toEqual([]);
+  });
+
+  it.each([
+    ["need_one_source", 400],
+    ["invalid_address", 400],
+    ["address_not_public", 422],
+    ["unreachable", 502],
+    ["not_a_page", 422],
+    ["too_large", 422],
+    ["empty", 422],
+    ["not_configured", 503],
+    ["extraction_failed", 502],
+    ["not_a_recipe", 422],
+    ["too_many_steps", 422],
+    ["too_many_ingredients", 422],
+    ["kitchenowl_unavailable", 502],
+  ])("answers %s with %i", async (reason, status) => {
+    const res = await post(
+      "/import/draft",
+      { text: "x" },
+      { draftRecipeImport: { execute: async () => ({ ok: false, reason }) } },
+    );
+    expect(res.statusCode).toBe(status);
+    expect(res.json()).toEqual({ error: reason });
+  });
+
+  it("lets a member ask for a limited number of drafts an hour, then lets them again", async () => {
+    const a = await app({ draftRecipeImport: draftImport });
+    const cookies = { session: sessionCookie(await login(a))!.value };
+    const ask = () => a.inject({ method: "POST", url: "/plan/api/import/draft", payload: { text: "x" }, cookies });
+    for (let i = 0; i < 20; i++) expect((await ask()).statusCode).toBe(200);
+    expect((await ask()).statusCode).toBe(429);
+    expect((await ask()).json()).toEqual({ error: "rate_limited" });
+    clock += 3_600_001;
+    expect((await ask()).statusCode).toBe(200);
+  });
+
+  it("creates the recipe a member confirmed, and nothing for a bad request or without sign-in", async () => {
+    const seen: unknown[] = [];
+    const createImportedRecipe: Pick<CreateImportedRecipe, "execute"> = {
+      execute: async (cmd) => {
+        seen.push(cmd);
+        return { ok: true, value: { recipeId: 173, draft: draft as never } };
+      },
+    };
+    const res = await post("/import/create", { draft }, { createImportedRecipe });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toEqual({ recipeId: 173, draft });
+    expect(seen).toEqual([{ member: "2", draft }]);
+    expect((await post("/import/create", { draft: "x" }, { createImportedRecipe })).statusCode).toBe(400);
+    expect((await post("/import/create", {}, { createImportedRecipe })).statusCode).toBe(400);
+    expect((await post("/import/create", { draft }, { createImportedRecipe }, false)).statusCode).toBe(401);
+    expect(seen).toHaveLength(1);
+    const refused = await post(
+      "/import/create",
+      { draft },
+      { createImportedRecipe: { execute: async () => ({ ok: false, reason: "not_a_recipe" }) } },
+    );
+    expect(refused.statusCode).toBe(422);
   });
 });
