@@ -33,6 +33,13 @@ describe("loadServerConfig", () => {
     });
   });
 
+  it("fills the shopping list with id 2 unless SHOPPING_LIST_ID says otherwise", () => {
+    expect(loadServerConfig(base).shoppingListId).toBe(2);
+    expect(loadServerConfig({ ...base, SHOPPING_LIST_ID: "3" }).shoppingListId).toBe(3);
+    expect(() => loadServerConfig({ ...base, SHOPPING_LIST_ID: "REWE" })).toThrow(/SHOPPING_LIST_ID/);
+    expect(() => loadServerConfig({ ...base, SHOPPING_LIST_ID: "0" })).toThrow(/SHOPPING_LIST_ID/);
+  });
+
   it("requires a session secret of at least 32 characters", () => {
     expect(() => loadServerConfig({ ...base, SESSION_SECRET: "short" })).toThrow(/SESSION_SECRET/);
     expect(() => loadServerConfig({ ...base, SESSION_SECRET: undefined })).toThrow(/SESSION_SECRET/);

@@ -54,6 +54,33 @@ export class KitchenOwlClient {
     return parsed.data;
   }
 
+  private async post(path: string, body: unknown): Promise<void> {
+    const res = await this.request(path, {
+      method: "POST",
+      token: this.config.kitchenowlToken,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new KitchenOwlError(`KitchenOwl POST ${path} failed with HTTP ${res.status}`, res.status);
+  }
+
+  /** Puts a recipe on the household planner. `cookingDate` is a Unix time in milliseconds. */
+  async addPlannerRecipe(recipeId: number, cookingDate: number, yields: number): Promise<void> {
+    await this.post(`/household/${this.config.householdId}/planner/recipe`, {
+      recipe_id: recipeId,
+      cooking_date: cookingDate,
+      yields,
+    });
+  }
+
+  /** Adds items to a shopping list; KitchenOwl merges the description into an item that is already on the list. */
+  async addShoppingListRecipeItems(
+    listId: number,
+    items: readonly { id?: number; name: string; description: string; optional: boolean }[],
+  ): Promise<void> {
+    await this.post(`/shoppinglist/${listId}/recipeitems`, { items });
+  }
+
   /** A file KitchenOwl stores (a recipe photo), read with the service token; null when it is gone. */
   async fetchPhoto(file: string): Promise<{ contentType: string; data: Uint8Array } | null> {
     const res = await this.request(`/upload/${encodeURIComponent(file)}`, { token: this.config.kitchenowlToken });

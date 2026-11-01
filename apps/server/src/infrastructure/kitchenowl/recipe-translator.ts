@@ -89,6 +89,12 @@ export function deriveRecipe(raw: RawRecipe): DerivedRecipe {
           isProven: proven,
           wantsToTry: has(TAG.wants),
           yields: raw.yields && raw.yields > 0 ? raw.yields : 2,
+          ingredients: raw.items.map((i) => ({
+            id: i.id,
+            name: i.name,
+            description: i.description,
+            optional: i.optional,
+          })),
         }
       : null;
   return { recipe, problems };

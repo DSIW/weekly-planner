@@ -40,6 +40,14 @@ const MIGRATIONS: readonly string[] = [
   drop index one_dinner_per_date;
   create unique index one_dinner_per_date on plan_day (date) where blocks_date = 1;
   `,
+  // 4: how far the export of a finalized plan to KitchenOwl has come (S4a). One row per session, the whole export as
+  // JSON: it is only ever loaded and saved whole, and a step is recorded as sending before its request goes out (D23).
+  `
+  create table finalize_export (
+    session_id text primary key references planning_session (id) on delete cascade,
+    export_json text not null
+  );
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

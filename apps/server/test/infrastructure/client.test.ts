@@ -29,6 +29,14 @@ describe("KitchenOwlClient", () => {
     await expect(new KitchenOwlClient(cfg, json({}, 500)).listRecipes()).rejects.toBeInstanceOf(KitchenOwlError);
   });
 
+  it("treats a recipe line that does not say it is optional as needed", async () => {
+    const recipes = await new KitchenOwlClient(
+      cfg,
+      json([{ id: 5, name: "A", items: [{ id: 1, name: "Salz", description: "1 TL" }] }]),
+    ).listRecipes();
+    expect(recipes[0]?.items[0]).toMatchObject({ optional: false });
+  });
+
   it("rejects an unexpected response shape", async () => {
     await expect(new KitchenOwlClient(cfg, json({ not: "a list" })).listRecipes()).rejects.toThrow(
       /unexpected recipe list/,

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   memberId,
+  newExport,
   planDate,
   proposalId,
   recipeId,
@@ -17,6 +18,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { migrate } from "../../src/infrastructure/sqlite/migrations.js";
 import { openDatabase, type Database } from "../../src/infrastructure/sqlite/database.js";
 import { SqliteSessionRepository } from "../../src/infrastructure/sqlite/sqlite-session-repository.js";
+import { SqliteExportRepository } from "../../src/infrastructure/sqlite/sqlite-export-repository.js";
 import { SqliteDinnerCalendar } from "../../src/infrastructure/sqlite/sqlite-dinner-calendar.js";
 import { SqliteUnitOfWork } from "../../src/infrastructure/sqlite/sqlite-unit-of-work.js";
 
@@ -161,7 +163,7 @@ describe("migrations", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     expect(fresh(path).db.prepare("pragma user_version").get()).toEqual(version);
-    expect(version).toEqual({ user_version: 3 });
+    expect(version).toEqual({ user_version: 4 });
   });
 });
 
@@ -197,6 +199,57 @@ describe("migration 3 on a database that already holds sessions", () => {
         "insert into plan_day (session_id, date, status, blocks_date) values ('fin', '2026-11-04', 'planned', 1)",
       ),
     ).toThrow(/UNIQUE/);
+  });
+});
+
+describe("migration 4 and the export repository", () => {
+  const exported = newExport(
+    sessionId("s1"),
+    [{ date: MON, recipeId: recipeId(7), recipeName: "Pasta", recipeYields: 2, portions: 2 }],
+    [{ name: "Reis", description: "1 kg", needsReview: false, recipes: ["Pasta"] }],
+  );
+
+  it("keeps nothing for an unknown session and saves and replaces the export whole", async () => {
+    const { db, sessions } = fresh();
+    const exports = new SqliteExportRepository(db);
+    expect(await exports.get(sessionId("s1"))).toBeNull();
+    await sessions.save(aSession("s1"));
+    await exports.save(exported);
+    expect(await exports.get(sessionId("s1"))).toEqual(exported);
+    const sending = {
+      ...exported,
+      list: { ...exported.list, status: "sending" as const },
+      failure: "unconfirmed" as const,
+    };
+    await exports.save(sending);
+    expect(await exports.get(sessionId("s1"))).toEqual(sending);
+    expect(db.prepare("select count(*) as n from finalize_export").get()).toEqual({ n: 1 });
+  });
+
+  it("refuses an export for a session that does not exist, and goes with the session", async () => {
+    const { db, sessions } = fresh();
+    const exports = new SqliteExportRepository(db);
+    await expect(exports.save(exported)).rejects.toThrow(/FOREIGN KEY/);
+    await sessions.save(aSession("s1"));
+    await exports.save(exported);
+    db.exec("delete from planning_session where id = 's1'");
+    expect(await exports.get(sessionId("s1"))).toBeNull();
+  });
+
+  it("is added to a database from v0.1.8 (version 3) without touching its sessions", async () => {
+    const path = join(mkdtempSync(join(tmpdir(), "planner-")), "planner.sqlite");
+    const raw = new DatabaseSync(path);
+    for (let i = 0; i < 3; i++) raw.exec("select 1");
+    raw.close();
+    const first = fresh(path);
+    await first.sessions.save(aSession("keep"));
+    first.db.exec("drop table finalize_export; pragma user_version = 3");
+    first.db.close();
+    open.splice(open.indexOf(first.db), 1);
+    const again = fresh(path);
+    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 4 });
+    expect((await again.sessions.get(sessionId("keep")))?.id).toBe("keep");
+    await new SqliteExportRepository(again.db).save({ ...exported, sessionId: sessionId("keep") });
   });
 });
 

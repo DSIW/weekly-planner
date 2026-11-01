@@ -17,7 +17,8 @@ const rawRecipeSchema = z.object({
         id: z.number().int(),
         name: z.string(),
         description: z.string().default(""),
-        optional: z.boolean().default(true),
+        // A line that does not say it is optional is needed.
+        optional: z.boolean().default(false),
       }),
     )
     .default([]),

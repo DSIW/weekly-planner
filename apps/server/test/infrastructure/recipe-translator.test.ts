@@ -92,3 +92,26 @@ describe("toCatalogEntry", () => {
     });
   });
 });
+
+describe("ingredients", () => {
+  const tags = ["🍽️ Hauptgericht", "🥬 Vegetarisch", "✅ Erprobt"];
+
+  it("are carried over with their amounts, ids and optional flag", () => {
+    const { recipe } = deriveRecipe(
+      raw(tags, {
+        items: [
+          { id: 5, name: "Zwiebel", description: "2 Stück", optional: false },
+          { id: 6, name: "Petersilie", description: "", optional: true },
+        ],
+      }),
+    );
+    expect(recipe?.ingredients).toEqual([
+      { id: 5, name: "Zwiebel", description: "2 Stück", optional: false },
+      { id: 6, name: "Petersilie", description: "", optional: true },
+    ]);
+  });
+
+  it("are empty for a recipe without items", () => {
+    expect(deriveRecipe(raw(tags)).recipe?.ingredients).toEqual([]);
+  });
+});

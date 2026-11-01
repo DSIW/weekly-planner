@@ -7,6 +7,7 @@ const kitchenowlSchema = z.object({
 });
 
 const serverSchema = kitchenowlSchema.extend({
+  SHOPPING_LIST_ID: z.coerce.number().int().positive().default(2),
   SESSION_SECRET: z.string().min(32),
   PORT: z.coerce.number().int().positive().default(3000),
   BASE_PATH: z
@@ -27,6 +28,8 @@ type Config = {
 };
 
 type ServerConfig = Config & {
+  /** The KitchenOwl shopping list that finalizing fills. */
+  shoppingListId: number;
   sessionSecret: string;
   port: number;
   /** URL prefix the app is served under, without a trailing slash; empty for the root. */
@@ -66,6 +69,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
   const d = parse(serverSchema, env);
   return {
     ...kitchenowl(d),
+    shoppingListId: d.SHOPPING_LIST_ID,
     sessionSecret: d.SESSION_SECRET,
     port: d.PORT,
     basePath: d.BASE_PATH,
