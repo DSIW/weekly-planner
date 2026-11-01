@@ -9,6 +9,7 @@ export * from "./use-cases/suggest-recipes.js";
 export * from "./use-cases/deck.js";
 export * from "./use-cases/meal-log.js";
 export * from "./use-cases/jobs.js";
+export * from "./use-cases/release.js";
 export * from "./ports/household-directory.js";
 export * from "./use-cases/sign-in.js";
 export * from "./ports/push.js";

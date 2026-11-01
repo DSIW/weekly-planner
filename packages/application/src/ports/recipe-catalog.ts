@@ -15,4 +15,6 @@ export interface RecipeCatalog {
   refresh(): Promise<void>;
   /** The recipe's picture, or null when it has none or is unknown. */
   photo(id: RecipeId): Promise<RecipePhoto | null>;
+  /** The source's icon font for ingredients (a file, like a picture); null when it has none. */
+  itemIcons(): Promise<RecipePhoto | null>;
 }

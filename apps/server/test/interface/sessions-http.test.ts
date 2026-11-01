@@ -19,6 +19,7 @@ import {
   GetDeck,
   GetExport,
   GetFinalizePreview,
+  GetItemIcons,
   GetRecipePhoto,
   MarkLeftoverDay,
   MovePlannedDay,
@@ -77,7 +78,14 @@ const aRecipe = (id: number, name: string, over: Partial<Recipe> = {}): Recipe =
 const pasta = aRecipe(1, "Pasta", {
   tags: ["🍝 Pasta", "🥬 Vegetarisch"],
   ingredients: [
-    { id: 11, name: "Zwiebel", description: "2 Stück, gehackt", optional: false, category: "🥬 Obst & Gemüse" },
+    {
+      id: 11,
+      name: "Zwiebel",
+      description: "2 Stück, gehackt",
+      optional: false,
+      category: "🥬 Obst & Gemüse",
+      icon: "onion",
+    },
     { name: "Mehl", description: "400 g", optional: false, category: "Backen" },
   ],
 });
@@ -85,7 +93,7 @@ const risotto = aRecipe(2, "Risotto");
 const curry = aRecipe(3, "Curry", {
   yields: 4,
   ingredients: [
-    { id: 11, name: "Zwiebel", description: "2 Stück", optional: false, category: "🥬 Obst & Gemüse" },
+    { id: 11, name: "Zwiebel", description: "2 Stück", optional: false, category: "🥬 Obst & Gemüse", icon: "onion" },
     { name: "Salz", description: "etwas", optional: false },
   ],
 });
@@ -98,7 +106,11 @@ const recipes = [pasta, risotto, curry, tiramisu, braten, biga, kuerbis, ohneZei
 
 let refreshes: number;
 let catalogDown: boolean;
+let iconFont: { contentType: string; data: Uint8Array } | null;
 const catalog: RecipeCatalog = {
+  async itemIcons() {
+    return iconFont;
+  },
   async listAll() {
     if (catalogDown) throw new Error("KitchenOwl is down");
     return recipes.map((recipe): CatalogEntry => ({ kind: "ready", recipe }));
@@ -199,7 +211,7 @@ beforeEach(async () => {
     unsubscribeFromPush: new UnsubscribeFromPush(new SqlitePushSubscriptions(db)),
     pushPublicKey: "public-key-of-the-server",
     startSession: new StartSession({ ...deps, ids, clock, calendar }, defaultPlanningConfig),
-    listTakenDates: new ListTakenDates({ calendar, clock }),
+    listTakenDates: new ListTakenDates({ calendar, clock, release: { execute: async () => 0 } }),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions: deps.sessions, catalog }, defaultPlanningConfig),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, defaultPlanningConfig),
@@ -210,6 +222,7 @@ beforeEach(async () => {
     getDeck: new GetDeck({ sessions: deps.sessions, experience, suggest }),
     passSuggestion: new PassSuggestion({ ...deps, catalog }),
     getRecipePhoto: new GetRecipePhoto(catalog),
+    getItemIcons: new GetItemIcons(catalog),
     markLeftoverDay: new MarkLeftoverDay(deps),
     reopenDay: new ReopenDay(deps),
     swapPlannedDays: new SwapPlannedDays(deps, defaultPlanningConfig),
@@ -643,6 +656,18 @@ describe("the ranked deck over HTTP", () => {
     expect((await call("GET", `/sessions/${session.id}/deck`, max)).statusCode).toBe(404);
   });
 
+  it("passes on KitchenOwl's icon font to signed-in members, cacheable, and 404 when there is none", async () => {
+    expect((await call("GET", "/item-icons")).statusCode).toBe(401);
+    iconFont = null;
+    expect((await call("GET", "/item-icons", max)).statusCode).toBe(404);
+    iconFont = { contentType: "font/ttf", data: new Uint8Array([0, 1, 0, 0]) };
+    const res = await call("GET", "/item-icons", max);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("font/ttf");
+    expect(res.headers["cache-control"]).toContain("max-age");
+    expect([...res.rawPayload]).toEqual([0, 1, 0, 0]);
+  });
+
   it("serves a recipe's photo with its type, cacheable by the browser, and 404 without one", async () => {
     const res = await call("GET", "/recipes/1/photo", max);
     expect(res.statusCode).toBe(200);
@@ -839,9 +864,16 @@ describe("finalizing over HTTP", () => {
         { date: TUE, recipeName: "Curry" },
       ],
       items: [
-        { name: "Zwiebel", icon: "🥬", description: "3 Stück", needsReview: false, recipes: ["Pasta", "Curry"] },
-        { name: "Mehl", icon: null, description: "400 g", needsReview: false, recipes: ["Pasta"] },
-        { name: "Salz", icon: null, description: "etwas", needsReview: true, recipes: ["Curry"] },
+        {
+          name: "Zwiebel",
+          icon: "onion",
+          staple: false,
+          description: "3 Stück",
+          needsReview: false,
+          recipes: ["Pasta", "Curry"],
+        },
+        { name: "Mehl", icon: null, staple: false, description: "400 g", needsReview: false, recipes: ["Pasta"] },
+        { name: "Salz", icon: null, staple: true, description: "etwas", needsReview: true, recipes: ["Curry"] },
       ],
     });
     expect(sent.entries).toEqual([]);
@@ -943,21 +975,28 @@ describe("finalizing over HTTP", () => {
     expect((await call("GET", "/sessions/current", max)).json().session.status).toBe("open");
   });
 
-  it("gives each line the leading emoji of its category, in the preview and in the export", async () => {
+  it("gives each line KitchenOwl's icon key and marks salt, pepper, oil and water as staples", async () => {
     const original = pasta.ingredients;
     (pasta as { ingredients?: Recipe["ingredients"] }).ingredients = [
-      { name: "Eis", description: "1 Packung", optional: false, category: "❄️ Tiefkühl" },
-      { name: "Brötchen", description: "4 Stück", optional: false, category: "🧑‍🍳 Bäckerei" },
-      { name: "Kuchen", description: "1 Stück", optional: false, category: "Backen 🍰" },
-      { name: "Senf", description: "etwas", optional: false, category: "  🌭 Würzen" },
+      { name: "Butter", description: "30 g", optional: false, icon: "butter" },
+      { name: "Schwarzer Pfeffer", description: "1 Prise", optional: false },
+      { name: "Olivenöl", description: "2 EL", optional: false, icon: "olive_oil" },
+      { name: "Pfefferminze", description: "1 Bund", optional: false },
     ];
     try {
       const id = await planned();
-      const icons = (items: { name: string; icon: string | null }[]) =>
-        Object.fromEntries(items.map((i) => [i.name, i.icon]));
-      const expected = { Eis: "❄️", Brötchen: "🧑‍🍳", Kuchen: null, Senf: "🌭", Zwiebel: "🥬", Salz: null };
-      expect(icons((await preview(max, id)).json().items)).toEqual(expected);
-      expect(icons((await finalize(ac, id)).json().session.export.list.items)).toEqual(expected);
+      const view = (items: { name: string; icon: string | null; staple: boolean }[]) =>
+        Object.fromEntries(items.map((i) => [i.name, [i.icon, i.staple]]));
+      const expected = {
+        Butter: ["butter", false],
+        "Schwarzer Pfeffer": [null, true],
+        Olivenöl: ["olive_oil", true],
+        Pfefferminze: [null, false],
+        Zwiebel: ["onion", false],
+        Salz: [null, true],
+      };
+      expect(view((await preview(max, id)).json().items)).toEqual(expected);
+      expect(view((await finalize(ac, id)).json().session.export.list.items)).toEqual(expected);
     } finally {
       (pasta as { ingredients?: Recipe["ingredients"] }).ingredients = original;
     }
@@ -1248,7 +1287,9 @@ describe("dates that already hold a dinner, over HTTP", () => {
 
   it("lists the dates of a plan that is still counted, and nothing once that plan is discarded", async () => {
     const id = await takenBy();
-    expect((await call("GET", "/planned-dates", ac)).json()).toEqual({ dates: [FUTURE] });
+    expect((await call("GET", "/planned-dates", ac)).json()).toEqual({
+      dates: [{ date: FUTURE, recipeName: "Pasta" }],
+    });
     await call("POST", `/sessions/${id}/close`, max);
     expect((await call("GET", "/planned-dates", ac)).json()).toEqual({ dates: [] });
   });

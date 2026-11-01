@@ -53,6 +53,7 @@ export type PlanningEvent =
     }
   | { readonly type: "DayMarkedLeftovers"; readonly sessionId: SessionId; readonly date: PlanDate }
   | { readonly type: "DayReopened"; readonly sessionId: SessionId; readonly date: PlanDate }
+  | { readonly type: "DinnerReleased"; readonly sessionId: SessionId; readonly date: PlanDate }
   | { readonly type: "DaysSwapped"; readonly sessionId: SessionId; readonly dates: readonly [PlanDate, PlanDate] }
   | { readonly type: "DayMoved"; readonly sessionId: SessionId; readonly from: PlanDate; readonly to: PlanDate }
   | { readonly type: "PlanFinalized"; readonly sessionId: SessionId; readonly dinners: readonly FinalizedDinner[] }

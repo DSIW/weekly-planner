@@ -25,6 +25,7 @@ import type {
   Notifier,
   PlannerEntry,
   PlannerGateway,
+  PlannerView,
   RecipeCatalog,
   RecipeExperienceRepository,
   SessionRepository,
@@ -121,6 +122,10 @@ export class InMemoryCatalog implements RecipeCatalog {
   async photo(id: RecipeId) {
     return this.photos.get(id) ?? null;
   }
+  itemFont: { contentType: string; data: Uint8Array } | null = null;
+  async itemIcons() {
+    return this.itemFont;
+  }
   async listAll() {
     return this.entries;
   }
@@ -135,17 +140,29 @@ export class SessionsDinnerCalendar implements DinnerCalendar {
   constructor(private readonly sessions: InMemorySessions) {}
   async isDateTaken(date: PlanDate, except: SessionId) {
     return [...this.sessions.byId.values()].some(
-      (s) => s.id !== except && s.status !== "closed" && s.days.some((d) => d.date === date && d.status === "planned"),
+      (s) =>
+        s.id !== except &&
+        s.status !== "closed" &&
+        s.days.some((d) => d.date === date && d.status === "planned" && !d.removedInPlanner),
     );
   }
   async takenDatesFrom(from: PlanDate) {
-    return [
-      ...new Set(
-        [...this.sessions.byId.values()]
-          .filter((s) => s.status !== "closed")
-          .flatMap((s) => s.days.filter((d) => d.status === "planned" && d.date >= from).map((d) => d.date)),
-      ),
-    ].sort();
+    return [...this.sessions.byId.values()]
+      .filter((s) => s.status !== "closed")
+      .flatMap((s) =>
+        s.days
+          .filter((d) => d.status === "planned" && !d.removedInPlanner && d.date >= from)
+          .map((d) => ({ date: d.date, recipeName: d.recipe?.name ?? "" })),
+      )
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+}
+
+/** What KitchenOwl's planner holds, set by the test; null stands for "KitchenOwl did not answer". */
+export class FakePlannerView implements PlannerView {
+  dates: Set<PlanDate> | null = null;
+  async plannedDatesFrom(from: PlanDate) {
+    return this.dates ? new Set([...this.dates].filter((d) => d >= from)) : null;
   }
 }
 

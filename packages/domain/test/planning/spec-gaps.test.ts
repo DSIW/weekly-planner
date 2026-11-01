@@ -20,6 +20,8 @@ import {
   type FinalizeExport,
   invariantViolations,
   isNewRecipe,
+  isStaple,
+  releaseRemovedDinner,
   leaveOut,
   needsPlanningAhead,
   suggestRecipes,
@@ -742,5 +744,89 @@ describe("witness S5: taken dates at start and the finalized mark (mutation gaps
     const finalized = must(finalizePlan(plan(aSession([MON, TUE]), MON, recipe), { member: AC }, config)).state;
     const { wasFinalized: _ignored, ...unmarked } = finalized;
     expect(dinnersDueForLogging(unmarked, TUE, new Set())).toEqual([{ date: MON, recipe }]);
+  });
+});
+
+describe("shopping list staples and icons", () => {
+  it("takes salt, pepper, oil and water as at home, by whole words", () => {
+    for (const name of [
+      "Salz",
+      "salz",
+      "Schwarzer Pfeffer",
+      "Salz und Pfeffer",
+      "Olivenöl",
+      "Öl",
+      "Wasser",
+      "Pfeffer, schwarz",
+    ])
+      expect(isStaple(name), name).toBe(true);
+    for (const name of ["Pfefferminze", "Kokosöl", "Zwiebel", "Meersalzflocken", "Mehl", "Wassermelone", ""])
+      expect(isStaple(name), name).toBe(false);
+  });
+
+  it("keeps the first icon an ingredient came with", () => {
+    const line = (icon?: string): Ingredient => ({
+      name: "Butter",
+      description: "10 g",
+      optional: false,
+      ...(icon ? { icon } : {}),
+    });
+    const [item] = consolidateIngredients(
+      [
+        { recipeName: "A", yields: 2, ingredients: [line()] },
+        { recipeName: "B", yields: 2, ingredients: [line("butter")] },
+        { recipeName: "C", yields: 2, ingredients: [line("margarine")] },
+      ],
+      2,
+    );
+    expect(item?.icon).toBe("butter");
+    expect(consolidateIngredients([{ recipeName: "A", yields: 2, ingredients: [line()] }], 2)[0]).not.toHaveProperty(
+      "icon",
+    );
+  });
+});
+
+describe("rule ReleaseRemovedDinner", () => {
+  const finalized = () => {
+    const recipe = aRecipe();
+    return must(finalizePlan(plan(aSession([MON, TUE]), MON, recipe), { member: AC }, config)).state;
+  };
+
+  it("frees the date of a finalized dinner that reached the planner and left it again", () => {
+    const out = must(releaseRemovedDinner(finalized(), { date: MON, wasExported: true }));
+    expect(dayOf(out.state, MON)).toMatchObject({ status: "planned", removedInPlanner: true });
+    expect(out.events).toEqual([{ type: "DinnerReleased", sessionId: out.state.id, date: MON }]);
+  });
+
+  it("refuses unless the session is finalized, the day is planned, not yet released and was exported", () => {
+    const open = plan(aSession([MON, TUE]), MON, aRecipe());
+    expect(releaseRemovedDinner(open, { date: MON, wasExported: true })).toEqual({
+      ok: false,
+      reason: "session_not_finalized",
+    });
+    expect(releaseRemovedDinner(finalized(), { date: TUE, wasExported: true })).toEqual({
+      ok: false,
+      reason: "day_not_planned",
+    });
+    expect(releaseRemovedDinner(finalized(), { date: SAT, wasExported: true })).toEqual({
+      ok: false,
+      reason: "day_not_planned",
+    });
+    expect(releaseRemovedDinner(finalized(), { date: MON, wasExported: false })).toEqual({
+      ok: false,
+      reason: "not_exported",
+    });
+    const released = must(releaseRemovedDinner(finalized(), { date: MON, wasExported: true })).state;
+    expect(releaseRemovedDinner(released, { date: MON, wasExported: true })).toEqual({
+      ok: false,
+      reason: "already_released",
+    });
+  });
+
+  it("asks nothing about a released dinner the day after", () => {
+    const before = finalized();
+    const released = must(releaseRemovedDinner(before, { date: MON, wasExported: true })).state;
+    expect(dinnersDueForLogging(before, TUE, new Set())).toEqual([{ date: MON, recipe: dayOf(before, MON).recipe }]);
+    expect(dinnersDueForLogging(released, TUE, new Set())).toEqual([]);
   });
 });

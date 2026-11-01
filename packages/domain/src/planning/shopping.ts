@@ -71,6 +71,8 @@ export interface ListItem {
   readonly name: string;
   /** The source's category of the ingredient, when it names one. */
   readonly category?: string;
+  /** The source's icon key of the ingredient, when it has one. */
+  readonly icon?: string;
   /** All amounts of this ingredient, one per unit: "800 g, 2 EL". Empty when no recipe gave an amount. */
   readonly description: string;
   /** At least one amount could not be read, or looks like a note: a person should check the line. */
@@ -106,6 +108,7 @@ export function consolidateIngredients(inputs: readonly ConsolidationInput[], po
   interface Group {
     id?: number;
     category?: string;
+    icon?: string;
     name: string;
     sums: Map<string, number>;
     notes: string[];
@@ -127,6 +130,7 @@ export function consolidateIngredients(inputs: readonly ConsolidationInput[], po
         groups.set(key, g);
       }
       if (g.category === undefined && ingredient.category) g.category = ingredient.category;
+      if (g.icon === undefined && ingredient.icon) g.icon = ingredient.icon;
       if (!g.recipes.includes(input.recipeName)) g.recipes.push(input.recipeName);
       const amount = scaleDescription(ingredient.description, factor);
       if (amount.needsReview) g.review = true;
@@ -142,6 +146,7 @@ export function consolidateIngredients(inputs: readonly ConsolidationInput[], po
     ...(g.id !== undefined ? { id: g.id } : {}),
     name: g.name,
     ...(g.category !== undefined ? { category: g.category } : {}),
+    ...(g.icon !== undefined ? { icon: g.icon } : {}),
     description: [...[...g.sums].map(([key, total]) => render(key, total)), ...g.notes].join(", "),
     needsReview: g.review,
     recipes: g.recipes,
@@ -153,3 +158,23 @@ export function leaveOut(items: readonly ListItem[], names: readonly string[]): 
   const skipped = new Set(names.map((n) => n.trim().toLowerCase()));
   return items.filter((i) => !skipped.has(i.name.toLowerCase()));
 }
+
+/** What every kitchen has: the shopping list starts with these marked as in stock. Compared by whole words. */
+const STAPLES = new Set([
+  "salz",
+  "pfeffer",
+  "öl",
+  "olivenöl",
+  "rapsöl",
+  "sonnenblumenöl",
+  "pflanzenöl",
+  "speiseöl",
+  "wasser",
+]);
+
+/** Salt, pepper, oil and water: assumed to be at home, so the list leaves them out unless a member keeps them. */
+export const isStaple = (name: string): boolean =>
+  name
+    .toLowerCase()
+    .split(/[^\p{L}]+/u)
+    .some((word) => STAPLES.has(word));

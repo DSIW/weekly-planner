@@ -1,9 +1,9 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { markLeftovers, moveDay, reopenDay, swapDays } from "../src/api";
 import { dropFor } from "../src/plan-moves";
-import { api, renderApp, server } from "./helpers";
+import { api, dayRows, findDayRows, renderApp, server } from "./helpers";
 
 const ME = `GET ${api}/me`;
 const CURRENT = `GET ${api}/sessions/current`;
@@ -48,9 +48,35 @@ describe("shaping the plan on the board", () => {
       [LEFTOVERS]: { status: 200, body: { session: board(days) } },
     });
     renderApp();
-    const row = (await screen.findAllByRole("listitem"))[0]!;
+    const row = (await findDayRows())[0]!;
     await userEvent.click(row.querySelector("button.small")!);
     expect(calls.some((c) => c.key === LEFTOVERS)).toBe(true);
+  });
+
+  it("shows the new state and frees the buttons as soon as the request is answered, not after the reload", async () => {
+    const afterLeftovers = days.map((d) => (d.date === "2026-11-02" ? { ...d, status: "leftovers" } : d));
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: board(days) } },
+      [LEFTOVERS]: { status: 200, body: { session: board(afterLeftovers) } },
+    });
+    const answer = globalThis.fetch;
+    let slow = false;
+    // Whatever is read again after the click takes a long while, as the card deck does.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (slow && !init?.method) await new Promise((resolve) => setTimeout(resolve, 3000));
+        return answer(url, init);
+      }),
+    );
+    renderApp();
+    const row = (await findDayRows())[0]!;
+    slow = true;
+    await userEvent.click(row.querySelector("button.small")!);
+    await waitFor(() => expect(dayRows()[0]).toHaveTextContent("Reste"));
+    expect(within(dayRows()[0]!).getByRole("button", { name: "Doch kochen" })).toBeEnabled();
+    expect(calls.filter((c) => c.key === CURRENT)).toHaveLength(1); // the reload is still on its way
   });
 
   it("reopens an agreed day", async () => {
@@ -71,7 +97,7 @@ describe("shaping the plan on the board", () => {
       [`POST ${api}/sessions/s1/days/2026-11-07/reopen`]: { status: 200, body: { session: board(days) } },
     });
     renderApp();
-    const rows = await screen.findAllByRole("listitem");
+    const rows = await findDayRows();
     expect(rows[0]).not.toHaveTextContent(/Doch kochen|Neu wählen/); // an open day offers "Reste"
     expect(rows[1]).toHaveTextContent("Neu wählen");
     expect(rows[2]).toHaveTextContent("Doch kochen");
@@ -94,7 +120,7 @@ describe("shaping the plan on the board", () => {
       [LEFTOVERS]: { status: 409, body: { error: "proposal_already_pending" } },
     });
     renderApp();
-    await userEvent.click((await screen.findAllByRole("listitem"))[0]!.querySelector("button.small")!);
+    await userEvent.click((await findDayRows())[0]!.querySelector("button.small")!);
     expect(await screen.findByRole("alert")).toHaveTextContent("wartet schon ein Vorschlag");
   });
 

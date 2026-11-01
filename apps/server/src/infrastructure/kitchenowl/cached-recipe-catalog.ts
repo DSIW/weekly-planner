@@ -12,7 +12,7 @@ export class CachedRecipeCatalog implements RecipeCatalog {
   private loading: Promise<readonly CatalogEntry[]> | null = null;
 
   constructor(
-    private readonly source: Pick<RecipeCatalog, "listAll" | "photo">,
+    private readonly source: Pick<RecipeCatalog, "listAll" | "photo" | "itemIcons">,
     private readonly lifetimeMs: number,
     private readonly now: () => number = Date.now,
   ) {}
@@ -44,6 +44,10 @@ export class CachedRecipeCatalog implements RecipeCatalog {
   /** Pictures are not kept here: the browser caches them, and the source remembers where each one lives. */
   photo(id: RecipeId): Promise<RecipePhoto | null> {
     return this.source.photo(id);
+  }
+
+  itemIcons(): Promise<RecipePhoto | null> {
+    return this.source.itemIcons();
   }
 
   private load(): Promise<readonly CatalogEntry[]> {

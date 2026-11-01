@@ -8,7 +8,7 @@ export class KitchenOwlRecipeCatalog implements RecipeCatalog {
   /** Photo file per recipe, from the last time the list was read. */
   private photoFiles: Map<RecipeId, string> | null = null;
 
-  constructor(private readonly client: Pick<KitchenOwlClient, "listRecipes" | "fetchPhoto">) {}
+  constructor(private readonly client: Pick<KitchenOwlClient, "listRecipes" | "fetchPhoto" | "fetchItemIcons">) {}
 
   async listAll(): Promise<readonly CatalogEntry[]> {
     const raw = await this.client.listRecipes();
@@ -22,6 +22,10 @@ export class KitchenOwlRecipeCatalog implements RecipeCatalog {
   async find(id: RecipeId): Promise<Recipe | null> {
     const entry = (await this.listAll()).find((e) => (e.kind === "ready" ? e.recipe.id : e.recipeId) === id);
     return entry?.kind === "ready" ? entry.recipe : null;
+  }
+
+  itemIcons(): Promise<RecipePhoto | null> {
+    return this.client.fetchItemIcons();
   }
 
   async photo(id: RecipeId): Promise<RecipePhoto | null> {

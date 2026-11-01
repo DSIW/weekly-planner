@@ -418,7 +418,7 @@ describe("one dinner per date across sessions (DinnerCalendar)", () => {
 
     it("lists the dates that hold a dinner from today on", async () => {
       const { h } = await finalizedOn(WED);
-      expect(await h.listTakenDates.execute()).toEqual([WED]);
+      expect(await h.listTakenDates.execute()).toEqual([{ date: WED, recipeName: r1.name }]);
       h.clock.date = planDate("2026-11-05");
       expect(await h.listTakenDates.execute()).toEqual([]);
     });

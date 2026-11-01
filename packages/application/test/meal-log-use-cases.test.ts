@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { planDate, type MealLogEntry, type PlanningSession, type Result } from "@weekly-planner/domain";
+import { mealLogEntryId, planDate, type MealLogEntry, type PlanningSession, type Result } from "@weekly-planner/domain";
 import { household } from "./household.js";
 import { AC, ME, aRecipe } from "./support/in-memory.js";
 
@@ -174,8 +174,12 @@ describe("witness S5: ListMealLog window edge and tie order (mutation gaps)", ()
   it("orders entries of the same day by their id", async () => {
     const h = household([fresh, other]);
     h.clock.date = THU;
-    ok(await h.addLoggedMeal.execute({ member: ME, date: WED, base: "rice", recipeId: null }));
-    ok(await h.addLoggedMeal.execute({ member: ME, date: WED, base: "pasta", recipeId: null }));
+    // Two entries on one day cannot be added any more, but older data may hold them.
+    for (const [id, base] of [
+      ["id2", "rice"],
+      ["id1", "pasta"],
+    ] as const)
+      await h.mealLog.save({ id: mealLogEntryId(id), date: WED, base, recipe: null, source: "added", confirmed: true });
     const ids = (await h.listMealLog.execute({ days: 7 })).map((e) => e.id);
     expect(ids).toHaveLength(2);
     expect(ids).toEqual([...ids].sort());

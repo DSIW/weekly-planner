@@ -14,6 +14,29 @@ const raw = (tags: string[], over: Partial<RawRecipe> = {}): RawRecipe => ({
   ...over,
 });
 
+describe("a mise en place", () => {
+  it("is a preparation, never a dinner: tagged with a main dish it needs attention, alone it is not a main dish", () => {
+    const both = deriveRecipe(raw(["🍽️ Hauptgericht", "🔪 Mise en place", "🥬 Vegetarisch", "✅ Erprobt"]));
+    expect(both.recipe).toBeNull();
+    expect(both.problems[0]).toMatch(/main dish also tagged prep/);
+    const alone = deriveRecipe(raw(["🔪 Mise en place", "🥬 Vegetarisch", "✅ Erprobt"]));
+    expect(alone.recipe).toMatchObject({ mealType: "prep" });
+    expect(alone.recipe?.tags).toEqual(["🥬 Vegetarisch"]); // the preparation tag itself is not shown
+  });
+
+  it("carries the icon key of an ingredient", () => {
+    const { recipe } = deriveRecipe(
+      raw(["🍽️ Hauptgericht", "🥬 Vegetarisch", "✅ Erprobt"], {
+        items: [
+          { id: 1, name: "Butter", description: "", optional: false, icon: "butter" },
+          { id: 2, name: "Salz", description: "", optional: false, icon: null },
+        ],
+      }),
+    );
+    expect(recipe?.ingredients?.map((i) => i.icon)).toEqual(["butter", undefined]);
+  });
+});
+
 describe("deriveRecipe", () => {
   it("maps a complete recipe", () => {
     const { recipe, problems } = deriveRecipe(raw(["🍽️ Hauptgericht", "🍝 Pasta", "🥬 Vegetarisch", "✅ Erprobt"]));

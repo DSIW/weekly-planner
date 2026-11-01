@@ -64,6 +64,8 @@ interface PlanDay {
   date: string;
   status: "open" | "planned" | "leftovers";
   recipe?: RecipeView;
+  /** The dinner was taken off KitchenOwl's planner again: its date is free. */
+  removedInPlanner?: boolean;
 }
 
 export interface Proposal {
@@ -79,8 +81,10 @@ export type StepStatus = "pending" | "sending" | "done";
 /** One line of the consolidated shopping list. */
 export interface ListLine {
   name: string;
-  /** The emoji of the item's category in KitchenOwl, when it has one. */
+  /** KitchenOwl's icon key of the item ("butter"), when it has one. */
   icon?: string | null;
+  /** Salt, pepper, oil, water: assumed to be at home, so the list starts with them left off. */
+  staple?: boolean;
   /** Amount and unit, summed over the recipes; empty when no recipe gave one. */
   description: string;
   /** An amount could not be read: someone should look at this line in KitchenOwl. */
@@ -187,11 +191,17 @@ export async function fetchFinalizePreview(
   return (await res.json()) as { dinners: { date: string; recipeName: string }[]; items: ListLine[] };
 }
 
+/** A date that already holds a planned dinner, with the dinner. */
+export interface TakenDate {
+  date: string;
+  recipeName: string;
+}
+
 /** The dates from today on that already hold a planned dinner, in a plan that is still counted. */
-export async function fetchPlannedDates(): Promise<string[]> {
+export async function fetchPlannedDates(): Promise<TakenDate[]> {
   const res = await fetch(`${base}/planned-dates`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return ((await res.json()) as { dates: string[] }).dates;
+  return ((await res.json()) as { dates: TakenDate[] }).dates;
 }
 
 export const startSession = (dates: string[]) => sessionCommand("/sessions", { dates });
@@ -228,6 +238,9 @@ export async function fetchDeck(sessionId: string): Promise<{ date: string; card
 /** Hides a dish for the rest of this session, for both members. */
 export const passRecipe = (sessionId: string, recipeId: number) =>
   sessionCommand(`/sessions/${sessionId}/passes`, { recipeId });
+
+/** KitchenOwl's icon font for ingredients, passed on by the server. */
+export const itemIconsUrl = `${base}/item-icons`;
 
 /** Where a recipe's picture is served; recipes without one answer 404. */
 export const photoUrl = (recipeId: number) => `${base}/recipes/${recipeId}/photo`;

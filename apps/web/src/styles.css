@@ -133,14 +133,6 @@ button.secondary {
   display: grid;
   gap: 8px;
 }
-.days li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--outline);
-  border-radius: 14px;
-}
 fieldset.chips {
   border: 0;
   margin: 0;
@@ -160,17 +152,6 @@ fieldset.chips {
   gap: 8px;
   max-height: 50dvh;
   overflow-y: auto;
-}
-.recipe {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  text-align: left;
-  background: transparent;
-  color: var(--text);
-  border: 1px solid var(--outline);
-  border-radius: 14px;
-  font-weight: 500;
 }
 .proposal {
   margin: 0;
@@ -360,18 +341,6 @@ fieldset.switch {
   min-width: 0;
 }
 
-.days li > span:nth-of-type(2) {
-  flex: 1;
-  text-align: right;
-}
-.days li.over {
-  border-color: var(--primary);
-}
-.days li.dragging {
-  position: relative;
-  z-index: 1;
-  opacity: 0.85;
-}
 .handle {
   touch-action: none;
   background: none;
@@ -433,10 +402,6 @@ button.small {
 }
 .tile.off .tile-name {
   text-decoration: line-through;
-}
-.tile-icon {
-  font-size: 1.8rem;
-  line-height: 1.2;
 }
 .tile-name {
   font-weight: 600;
@@ -500,50 +465,370 @@ li.review {
   color: var(--text);
   border: 1px solid var(--outline);
 }
-.waiting {
+.deck-card .badges {
+  min-height: 1.9rem;
+}
+
+/* --- Steps of the planning ------------------------------------------------------------------------------------ */
+.steps {
+  width: min(420px, 100%);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.steps li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: center;
+}
+.step-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--outline);
+  font-weight: 700;
+}
+.steps li.now {
+  color: var(--text);
+  font-weight: 600;
+}
+.steps li.now .step-mark {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.steps li.done .step-mark {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* --- Days of the plan ----------------------------------------------------------------------------------------- */
+.days {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
   gap: 8px;
 }
-.waiting li {
+.day {
   display: grid;
-  grid-template-columns: 56px 1fr auto;
+  grid-template-columns: auto 52px 1fr;
   align-items: center;
   gap: 10px;
+  padding: 10px 12px 10px 4px;
+  border: 1px solid var(--outline);
+  border-radius: 16px;
+  background: var(--surface);
 }
-.thumb {
-  width: 56px;
-  height: 42px;
-  object-fit: cover;
-  border-radius: 8px;
-  background: var(--background);
+.day[data-state="planned"] {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--outline));
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface));
 }
-.waiting-text {
+.day[data-state="waiting"] {
+  border-style: dashed;
+  border-color: var(--primary);
+}
+.day[data-state="leftovers"] {
+  background: color-mix(in srgb, var(--muted) 10%, var(--surface));
+}
+.day.next {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+.day.over {
+  border-color: var(--primary);
+}
+.day.dragging {
+  position: relative;
+  z-index: 1;
+  opacity: 0.85;
+}
+.handle-space {
+  width: 8px;
+}
+.day-badge {
   display: grid;
+  justify-items: center;
+  line-height: 1.15;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.day-badge b {
+  font-size: 1.05rem;
+  color: var(--text);
+}
+.day-body {
   min-width: 0;
 }
-.waiting-text strong {
+.day-plain {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 42px;
+}
+.day-tag {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.handle {
+  touch-action: none;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 1.3rem;
+  padding: 0 4px;
+  cursor: grab;
+}
+button.small {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  flex: none;
+}
+
+/* --- One recipe as a row, wherever one is shown --------------------------------------------------------------- */
+.recipe-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.recipe-line-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.recipe-line-text strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.deck-card .badges {
-  min-height: 1.9rem;
+.thumb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 42px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 22%, var(--surface)), var(--surface));
+  font-size: 1.4rem;
 }
-.actions.three {
-  grid-template-columns: repeat(3, 1fr);
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.thumb.base-thumb {
+  font-size: 1.6rem;
+}
+.recipes {
+  display: grid;
+  gap: 8px;
+  max-height: 50dvh;
+  overflow-y: auto;
+}
+.recipe {
+  display: block;
+  padding: 8px 10px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  font-weight: 500;
+  text-align: left;
+}
+.recipe:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+/* --- Search ---------------------------------------------------------------------------------------------------- */
+.search {
+  position: relative;
+  display: block;
+}
+.search svg {
+  position: absolute;
+  top: 50%;
+  left: 14px;
+  translate: 0 -50%;
+  color: var(--muted);
+  pointer-events: none;
+}
+.search input {
+  width: 100%;
+  padding-left: 42px;
+}
+
+/* --- Tabs and base tiles ---------------------------------------------------------------------------------------- */
+fieldset.switch {
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: var(--surface);
+}
+.switch button {
+  border: 0;
+  padding: 9px 12px;
 }
 .chooser {
   display: grid;
+  gap: 12px;
+}
+.chooser .switch {
+  width: 100%;
+}
+.base-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
+.base-tile {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 12px 6px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  font-size: 0.9rem;
+}
+.base-tile span {
+  font-size: 1.7rem;
+  line-height: 1.1;
+}
+.base-tile:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+/* --- Days to choose when starting a plan ------------------------------------------------------------------------ */
+fieldset.day-chips {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.day-chip {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  text-align: center;
+}
+.day-chip small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-weight: 500;
+}
+.day-chip:disabled {
+  background: color-mix(in srgb, var(--muted) 12%, var(--surface));
+}
+
+/* --- Shopping list ----------------------------------------------------------------------------------------------- */
+.dinner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dinner .recipe-line {
+  flex: 1;
+}
+.item-icon {
+  font-family: "KitchenOwlItems", system-ui, sans-serif;
+  font-size: 2rem;
+  line-height: 1.2;
+  color: var(--primary);
+}
+.item-icon.letter {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+  font-family: system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* --- Meal log ----------------------------------------------------------------------------------------------------- */
+.actions.meal {
+  grid-template-columns: 1fr 1fr;
+}
+.actions.meal > :first-child {
+  grid-column: 1 / -1;
+}
 .history summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  list-style: none;
   cursor: pointer;
   font-weight: 600;
+  font-size: 1.05rem;
+}
+.history summary::-webkit-details-marker {
+  display: none;
+}
+.history summary::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  rotate: 45deg;
+  transition: rotate 0.15s;
+}
+.history[open] summary::after {
+  rotate: 225deg;
 }
 .history[open] {
   display: grid;
+  gap: 14px;
+}
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
   gap: 10px;
+}
+.history-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.history-list .recipe-line {
+  flex: 1;
+}
+select {
+  font: inherit;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+  background: transparent;
+  color: var(--text);
 }

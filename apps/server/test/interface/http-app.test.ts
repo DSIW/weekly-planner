@@ -32,6 +32,7 @@ const noSessions = {
   getDeck: { execute: async () => null },
   passSuggestion: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   getRecipePhoto: { execute: async () => null },
+  getItemIcons: { execute: async () => null },
   getExport: { execute: async () => null },
   getFinalizePreview: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   finalizePlan: { execute: async () => ({ ok: false as const, reason: "unused" }) },

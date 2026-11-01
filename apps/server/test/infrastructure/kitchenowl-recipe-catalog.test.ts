@@ -18,6 +18,9 @@ function catalog(recipes = [raw(1, "one.jpg"), raw(2, null)]) {
       state.lists++;
       return recipes as never;
     },
+    async fetchItemIcons() {
+      return null;
+    },
     async fetchPhoto(file: string) {
       state.fetched.push(file);
       return file === "gone.jpg" ? null : { contentType: "image/jpeg", data: new Uint8Array([9]) };
@@ -51,6 +54,9 @@ describe("KitchenOwlRecipeCatalog photo files after a re-read", () => {
     const c = new KitchenOwlRecipeCatalog({
       async listRecipes() {
         return recipes as never;
+      },
+      async fetchItemIcons() {
+        return null;
       },
       async fetchPhoto(file: string) {
         fetched.push(file);

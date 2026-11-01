@@ -12,6 +12,8 @@ const MEAL_TAGS: Record<string, MealType> = {
   "🥞 Frühstück": "breakfast",
   "🍿 Snack": "snack",
   "🍸 Getränk": "drink",
+  // A preparation (garlic confit, a stock) is not a dish: it never competes with the dinners.
+  "🔪 Mise en place": "prep",
 };
 const BASE_TAGS: Record<string, Base> = {
   "🍝 Pasta": "pasta",
@@ -99,6 +101,7 @@ export function deriveRecipe(raw: RawRecipe): DerivedRecipe {
             description: i.description,
             optional: i.optional,
             ...(i.category?.name ? { category: i.category.name } : {}),
+            ...(i.icon ? { icon: i.icon } : {}),
           })),
         }
       : null;

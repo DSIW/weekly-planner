@@ -6,6 +6,7 @@ import {
   ListMealLog,
   ListRecipes,
   ListTakenDates,
+  ReleaseRemovedDinners,
   LogPlannedMeals,
   MarkNotCooked,
   CloseSession,
@@ -15,6 +16,7 @@ import {
   GetDeck,
   GetExport,
   GetFinalizePreview,
+  GetItemIcons,
   GetRecipePhoto,
   PassSuggestion,
   ListEligibleRecipes,
@@ -43,6 +45,7 @@ import { CachedRecipeCatalog } from "../infrastructure/kitchenowl/cached-recipe-
 import { KitchenOwlClient } from "../infrastructure/kitchenowl/client.js";
 import { KitchenOwlHouseholdDirectory } from "../infrastructure/kitchenowl/kitchenowl-household-directory.js";
 import { KitchenOwlPlannerGateway } from "../infrastructure/kitchenowl/kitchenowl-planner-gateway.js";
+import { KitchenOwlPlannerView } from "../infrastructure/kitchenowl/kitchenowl-planner-view.js";
 import { KitchenOwlRecipeCatalog } from "../infrastructure/kitchenowl/kitchenowl-recipe-catalog.js";
 import { loadOrCreateVapidKeys } from "../infrastructure/push/vapid-keys.js";
 import { WebPushNotifier } from "../infrastructure/push/web-push-notifier.js";
@@ -107,11 +110,19 @@ async function main(): Promise<void> {
     { sessions, catalog, mealLog, experience, clock, randomness: new SystemRandomness() },
     planning,
   );
+  const release = new ReleaseRemovedDinners({
+    sessions,
+    exports,
+    planner: new KitchenOwlPlannerView(client),
+    events: hub,
+    uow: deps.uow,
+    clock,
+  });
   const app = await buildApp({
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
     getCurrentSession: new GetCurrentSession({ sessions, exports }),
     startSession: new StartSession({ ...deps, ids, clock, calendar }, planning),
-    listTakenDates: new ListTakenDates({ calendar, clock }),
+    listTakenDates: new ListTakenDates({ calendar, clock, release }),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, planning),
@@ -126,6 +137,7 @@ async function main(): Promise<void> {
     swapPlannedDays: new SwapPlannedDays(deps, planning),
     movePlannedDay: new MovePlannedDay({ ...deps, calendar }, planning),
     getRecipePhoto: new GetRecipePhoto(catalog),
+    getItemIcons: new GetItemIcons(catalog),
     getExport: new GetExport(exports),
     getFinalizePreview: new GetFinalizePreview({ sessions, catalog }, planning),
     finalizePlan: new FinalizePlan({ ...deps, catalog, exports, exporter }, planning),
@@ -155,6 +167,7 @@ async function main(): Promise<void> {
     { name: "remind-to-finalize", everyMs: REMINDER_CHECK_MS, run: () => remind.execute() },
     { name: "log-planned-meals", everyMs: MEAL_LOG_CHECK_MS, run: () => logMeals.execute() },
     { name: "retry-refused-exports", everyMs: EXPORT_RETRY_MS, run: () => retryRefused.execute() },
+    { name: "release-removed-dinners", everyMs: MEAL_LOG_CHECK_MS, run: () => release.execute() },
   ]);
   const stop = async () => {
     stopJobs();

@@ -1,7 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, renderApp, server } from "./helpers";
+import { api, dayRows, findDayRows, renderApp, server } from "./helpers";
 
 const ME = `GET ${api}/me`;
 const CURRENT = `GET ${api}/sessions/current`;
@@ -55,12 +55,13 @@ describe("dates that already hold a dinner", () => {
     server({
       ...signedIn,
       [CURRENT]: { status: 200, body: { session: null } },
-      [PLANNED]: { status: 200, body: { dates: ["2026-11-03"] } },
+      [PLANNED]: { status: 200, body: { dates: [{ date: "2026-11-03", recipeName: "Pasta" }] } },
     });
     renderApp();
     const taken = await screen.findByRole("button", { name: /3\.11\./ });
     await waitFor(() => expect(taken).toBeDisabled());
-    expect(taken).toHaveAttribute("title", "Hier ist schon ein Essen geplant");
+    expect(taken).toHaveAttribute("title", "Hier ist schon ein Essen geplant: Pasta");
+    expect(taken).toHaveTextContent("Pasta");
     expect(screen.getByRole("button", { name: /2\.11\./ })).toBeEnabled();
     expect(screen.getByRole("button", { name: /4\.11\./ })).toBeEnabled();
   });
@@ -117,7 +118,7 @@ describe("starting a session", () => {
     await userEvent.click(screen.getByRole("button", { name: "Planung starten" }));
     expect(await screen.findByRole("heading", { name: "Planung" })).toBeInTheDocument();
     expect(calls.find((c) => c.key === START)?.body).toEqual({ dates: ["2026-11-02", "2026-11-03"] });
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(dayRows()).toHaveLength(2);
   });
 
   it("explains that a planning is already running and shows it", async () => {
@@ -135,7 +136,7 @@ describe("starting a session", () => {
     await userEvent.click(screen.getByRole("button", { name: /^Di.*3\.11\./ }));
     await userEvent.click(screen.getByRole("button", { name: "Planung starten" }));
     expect(await screen.findByRole("heading", { name: "Planung" })).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(dayRows()).toHaveLength(2);
   });
 });
 
@@ -143,9 +144,9 @@ describe("the shared board", () => {
   it("shows the open session with its days", async () => {
     server({ ...signedIn, [CURRENT]: { status: 200, body: { session: open(["2026-11-02", "2026-11-03"]) } } });
     renderApp();
-    const days = await screen.findAllByRole("listitem");
-    expect(days[0]).toHaveTextContent(/Mo.*2\.11\..*offen/);
-    expect(days[1]).toHaveTextContent(/Di.*3\.11\..*offen/);
+    const days = await findDayRows();
+    expect(days[0]).toHaveTextContent(/Mo.*2\.11\..*Als Nächstes dran/);
+    expect(days[1]).toHaveTextContent(/Di.*3\.11\..*noch offen/);
   });
 
   it("discards the session and offers a new one", async () => {

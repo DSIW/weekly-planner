@@ -163,7 +163,7 @@ describe("migrations", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     expect(fresh(path).db.prepare("pragma user_version").get()).toEqual(version);
-    expect(version).toEqual({ user_version: 6 });
+    expect(version).toEqual({ user_version: 7 });
   });
 });
 
@@ -244,12 +244,12 @@ describe("migration 4 and the export repository", () => {
     const first = fresh(path);
     await first.sessions.save(aSession("keep"));
     first.db.exec(
-      "drop table finalize_export; drop table push_subscription; drop table setting; alter table planning_session drop column was_finalized; drop table meal_log_entry; drop table logged_plan_date; drop table recipe_experience; pragma user_version = 3",
+      "drop table finalize_export; drop table push_subscription; drop table setting; alter table planning_session drop column was_finalized; drop table meal_log_entry; drop table logged_plan_date; drop table recipe_experience; alter table plan_day drop column removed_in_planner; pragma user_version = 3",
     );
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     const again = fresh(path);
-    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 6 });
+    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 7 });
     expect((await again.sessions.get(sessionId("keep")))?.id).toBe("keep");
     await new SqliteExportRepository(again.db).save({ ...exported, sessionId: sessionId("keep") });
   });
@@ -265,12 +265,12 @@ describe("migration 6 on a database that already holds sessions", () => {
     await first.sessions.save({ ...aSession("finalized", [MON, TUE]), status: "finalized" });
     await first.sessions.save({ ...aSession("discarded", [MON, TUE]), status: "closed" });
     first.db.exec(
-      "alter table planning_session drop column was_finalized; drop table meal_log_entry; drop table logged_plan_date; drop table recipe_experience; pragma user_version = 5",
+      "alter table planning_session drop column was_finalized; drop table meal_log_entry; drop table logged_plan_date; drop table recipe_experience; alter table plan_day drop column removed_in_planner; pragma user_version = 5",
     );
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     const again = fresh(path);
-    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 6 });
+    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 7 });
     const was = async (id: string) => (await again.sessions.get(sessionId(id)))?.wasFinalized;
     expect(await was("exported")).toBe(true);
     expect(await was("finalized")).toBe(true);
@@ -347,9 +347,27 @@ describe("SqliteDinnerCalendar and one dinner per date", () => {
     await sessions.save({ ...planned(planned(aSession("s1", [THU, MON]), THU), MON), status: "finalized" });
     await sessions.save(planned(aSession("s2", [WED, TUE]), WED));
     await sessions.save({ ...planned(aSession("s3", [FRI, planDate("2026-11-07")]), FRI), status: "closed" });
-    expect(await calendar.takenDatesFrom(MON)).toEqual([MON, WED, THU]);
-    expect(await calendar.takenDatesFrom(TUE)).toEqual([WED, THU]);
+    expect((await calendar.takenDatesFrom(MON)).map((t) => t.date)).toEqual([MON, WED, THU]);
+    expect((await calendar.takenDatesFrom(TUE)).map((t) => t.date)).toEqual([WED, THU]);
     expect(await calendar.takenDatesFrom(FRI)).toEqual([]);
+  });
+
+  it("names the dinner of each taken date, and lets go of a dinner taken off KitchenOwl's planner", async () => {
+    const { db, sessions } = fresh();
+    const calendar = new SqliteDinnerCalendar(db);
+    const done = { ...planned(aSession("s1"), MON), status: "finalized" as const };
+    await sessions.save(done);
+    expect((await calendar.takenDatesFrom(MON)).map((t) => t.recipeName)).toEqual([done.days[0]?.recipe?.name]);
+    const released = {
+      ...done,
+      days: done.days.map((d) => (d.date === MON ? { ...d, removedInPlanner: true } : d)),
+    };
+    await sessions.save(released);
+    expect((await sessions.get(sessionId("s1")))?.days[0]).toMatchObject({ date: MON, removedInPlanner: true });
+    expect((await sessions.get(sessionId("s1")))?.days[1]).not.toHaveProperty("removedInPlanner");
+    expect(await calendar.isDateTaken(MON, sessionId("s2"))).toBe(false);
+    expect(await calendar.takenDatesFrom(MON)).toEqual([]);
+    await expect(sessions.save(planned(aSession("s2"), MON))).resolves.toBeUndefined();
   });
 
   it("refuses a second planned dinner on one date even if a caller forgot to ask", async () => {

@@ -106,7 +106,7 @@ export class CorrectLoggedMeal {
   }
 }
 
-/** rule AddLoggedMeal */
+/** rule AddLoggedMeal: one meal per day, so naming a meal for a day replaces what was logged for it. */
 export class AddLoggedMeal {
   constructor(private readonly deps: MealLogDeps & { catalog: RecipeCatalog; ids: IdGenerator; clock: Clock }) {}
   async execute(cmd: {
@@ -124,6 +124,8 @@ export class AddLoggedMeal {
         deps.clock.today(),
       );
       if (!outcome.ok) return outcome;
+      for (const old of await deps.mealLog.listSince(cmd.date))
+        if (old.date === cmd.date) await deps.mealLog.remove(old.id);
       await deps.mealLog.save(outcome.value.state);
       await registerCookings(deps, outcome.value.events);
       return outcome;
@@ -151,7 +153,7 @@ export class ListRecipes {
   async execute(): Promise<readonly Recipe[]> {
     const entries = await this.catalog.listAll();
     return entries
-      .flatMap((e) => (e.kind === "ready" ? [e.recipe] : []))
+      .flatMap((e) => (e.kind === "ready" && e.recipe.mealType !== "prep" ? [e.recipe] : []))
       .sort((a, b) => a.name.localeCompare(b.name, "de"));
   }
 }

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 import { App } from "../src/App";
 
@@ -30,3 +30,10 @@ export const renderApp = () =>
   );
 
 export const api = `${import.meta.env.BASE_URL}api`;
+
+/** The rows of the plan, one per day. */
+export const dayRows = () => within(screen.getByRole("list", { name: "Tage der Planung" })).getAllByRole("listitem");
+export const findDayRows = async () => {
+  await screen.findByRole("list", { name: "Tage der Planung" });
+  return dayRows();
+};

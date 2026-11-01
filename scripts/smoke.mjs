@@ -50,6 +50,8 @@ const recipes = [
 
 // What reached the fake KitchenOwl's write endpoints, and how it should behave on the next request.
 const written = { planner: [], list: [] };
+// What the fake planner holds right now (a recipe taken off it in KitchenOwl is removed from here).
+const plannerHolds = [];
 const behaviour = { plannerStatus: 200, listHangs: false };
 
 /** Just enough of KitchenOwl: sign-in with the password "pw", who is who, the household and its recipes. */
@@ -76,8 +78,17 @@ const kitchenowl = http.createServer((req, res) => {
     if (req.url === "/api/household/2/recipe") return send(200, recipes);
     if (req.method === "POST" && req.url === "/api/household/2/planner/recipe") {
       if (behaviour.plannerStatus !== 200) return send(behaviour.plannerStatus, {});
-      written.planner.push(JSON.parse(body));
+      const entry = JSON.parse(body);
+      written.planner.push(entry);
+      // KitchenOwl stores the day as midnight UTC.
+      plannerHolds.push({ cooking_date: Math.floor(entry.cooking_date / 86_400_000) * 86_400_000 });
       return send(200, {});
+    }
+    if (req.method === "GET" && req.url === "/api/household/2/planner") return send(200, plannerHolds);
+    if (req.url === "/assets/fonts/Items.ttf") {
+      res.setHeader("content-type", "font/ttf");
+      res.statusCode = 200;
+      return res.end(Buffer.from([0, 1, 0, 0]));
     }
     if (req.method === "POST" && req.url === "/api/shoppinglist/2/recipeitems") {
       written.list.push(JSON.parse(body));
@@ -565,7 +576,7 @@ try {
       const refused = await as("ac", () => web.startSession([P1, P2]).catch((e) => e));
       assert.equal(refused.reason, "date_already_taken");
       assert.deepEqual(
-        (await as("ac", () => web.fetchPlannedDates())).filter((d) => d === P1 || d === P2),
+        (await as("ac", () => web.fetchPlannedDates())).filter((d) => d.date === P1 || d.date === P2),
         [],
         "past days are no longer listed",
       );
@@ -594,6 +605,44 @@ try {
       assert.ok(
         !(await as("ac", () => web.fetchMealLog(14))).some((e) => e.date === b.date && e.source === "from_plan"),
       );
+    },
+  );
+
+  await step(
+    "a dinner taken off KitchenOwl's planner frees its date again, and the icon font is passed on",
+    async () => {
+      const [M, T] = ["2026-12-07", "2026-12-08"];
+      const plan = await as("dsiw", () => web.startSession([M, T]));
+      for (let i = 0; i < 2; i++) {
+        const eligible = await as("dsiw", () => web.fetchEligibleRecipes(plan.id));
+        const recipe = eligible.recipes.find((r) => !r.planAhead);
+        const proposed = await as("dsiw", () => web.proposeRecipe(plan.id, eligible.date, recipe.id));
+        await as("ac", () => web.acceptProposal(plan.id, proposed.proposals.find((p) => p.status === "pending").id));
+      }
+      plannerHolds.length = 0;
+      await as("dsiw", () => web.finalizePlan(plan.id));
+      const held = (await as("ac", () => web.fetchPlannedDates())).filter((t) => t.date === M || t.date === T);
+      assert.deepEqual(
+        held.map((t) => t.date),
+        [M, T],
+      );
+      assert.ok(
+        held.every((t) => t.recipeName.length > 0),
+        "the form can say which dinner holds a date",
+      );
+      plannerHolds.length = 0; // someone removed both dinners in KitchenOwl
+      assert.deepEqual(
+        (await as("ac", () => web.fetchPlannedDates())).filter((t) => t.date === M || t.date === T),
+        [],
+      );
+      const again = await as("ac", () => web.startSession([M, T]));
+      assert.equal(again.status, "open");
+      await as("ac", () => web.closeSession(again.id));
+
+      const font = await as("ac", () => fetch("/plan/api/item-icons"));
+      assert.equal(font.status, 200);
+      assert.deepEqual([...new Uint8Array(await font.arrayBuffer())], [0, 1, 0, 0]);
+      assert.equal((await as("nobody", () => fetch("/plan/api/item-icons"))).status, 401);
     },
   );
 

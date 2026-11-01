@@ -48,7 +48,9 @@ export function dinnersDueForLogging(
 ): DueDinner[] {
   if (session.status === "open" || (session.status === "closed" && !session.wasFinalized)) return [];
   return plannedDays(session).flatMap((d) =>
-    d.recipe && d.date < today && !alreadyLogged.has(d.date) ? [{ date: d.date, recipe: d.recipe }] : [],
+    d.recipe && !d.removedInPlanner && d.date < today && !alreadyLogged.has(d.date)
+      ? [{ date: d.date, recipe: d.recipe }]
+      : [],
   );
 }
 

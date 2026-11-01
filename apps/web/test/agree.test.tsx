@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { api, renderApp, server } from "./helpers";
+import { api, dayRows, findDayRows, renderApp, server } from "./helpers";
 
 const ME = `GET ${api}/me`;
 const CURRENT = `GET ${api}/sessions/current`;
@@ -123,8 +123,9 @@ describe("choosing a dinner for the next open day", () => {
     renderApp();
     await showList();
     await userEvent.click(await screen.findByRole("button", { name: /Pasta/ }));
-    const waiting = await screen.findByRole("list", { name: "Wartet auf Antwort" });
+    const waiting = (await screen.findByRole("button", { name: "Zurückziehen" })).closest("li")!;
     expect(waiting).toHaveTextContent("Pasta");
+    expect(waiting).toHaveTextContent("wartet auf Antwort");
     expect(within(waiting).getByRole("button", { name: "Zurückziehen" })).toBeInTheDocument();
     expect(calls.find((c) => c.key === PROPOSE)?.body).toEqual({ date: "2026-11-02", recipeId: 1 });
     expect(screen.queryByRole("button", { name: "Passt" })).not.toBeInTheDocument();
@@ -150,8 +151,8 @@ describe("choosing a dinner for the next open day", () => {
       [DECK]: deckOf("2026-11-03", card(curry)),
     });
     renderApp();
-    const row = (await screen.findByRole("list", { name: "Wartet auf Antwort" })).querySelector("li")!;
-    expect(row.querySelector("img.thumb")).toHaveAttribute("src", `${api}/recipes/1/photo`);
+    const row = (await findDayRows())[0]!;
+    expect(row.querySelector(".thumb img")).toHaveAttribute("src", `${api}/recipes/1/photo`);
     expect(row).toHaveTextContent("Pasta");
     expect(row).toHaveTextContent(/2\.11\./);
     expect(screen.queryByRole("article", { name: "Pasta" })).not.toBeInTheDocument();
@@ -166,7 +167,8 @@ describe("choosing a dinner for the next open day", () => {
     renderApp();
     const deckCard = await screen.findByRole("article", { name: "Curry" });
     expect(screen.getByRole("heading", { name: /Abendessen am .*3\.11\./ })).toBeInTheDocument();
-    expect(screen.getByRole("list", { name: "Wartet auf Antwort" })).toHaveTextContent("Pasta");
+    expect(dayRows()[0]).toHaveTextContent("Pasta");
+    expect(dayRows()[0]).toHaveTextContent("wartet auf Antwort");
     expect(deckCard).toBeInTheDocument();
     expect(calls.some((c) => c.key === DECK)).toBe(true);
   });
@@ -180,7 +182,8 @@ describe("choosing a dinner for the next open day", () => {
     renderApp();
     expect(await screen.findByRole("article", { name: "Pasta" })).toBeInTheDocument();
     expect(await screen.findByRole("article", { name: "Curry" })).toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "Wartet auf Antwort" })).not.toBeInTheDocument();
+    expect(dayRows()[0]).toHaveTextContent("wartet auf deine Antwort");
+    expect(screen.queryByRole("button", { name: "Zurückziehen" })).not.toBeInTheDocument();
   });
 
   it("lets the proposer take the proposal back without waiting for the answer", async () => {
@@ -330,7 +333,7 @@ describe("deciding on the other member's proposal", () => {
     expect(await screen.findByRole("heading", { name: /Vorschlag für .*2\.11\./ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Passt" }));
     expect(await screen.findByRole("heading", { name: /Abendessen am .*3\.11\./ })).toBeInTheDocument();
-    const days = screen.getAllByRole("listitem");
+    const days = dayRows();
     expect(days[0]).toHaveTextContent(/2\.11\..*Pasta/);
     expect(calls.some((c) => c.key === ACCEPT)).toBe(true);
   });
@@ -364,7 +367,7 @@ describe("deciding on the other member's proposal", () => {
       [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal("pending", "2")] }) } },
     });
     renderApp();
-    const el = await screen.findByRole("heading", { name: "Wartet auf Antwort" });
+    const el = (await findDayRows())[0]!;
     fireEvent(el, new MouseEvent("pointerdown", { clientX: 200, bubbles: true }));
     fireEvent(el, new MouseEvent("pointermove", { clientX: 400, bubbles: true }));
     fireEvent(el, new MouseEvent("pointerup", { clientX: 400, bubbles: true }));
@@ -449,7 +452,8 @@ describe("when every open day has a proposal waiting", () => {
   it("shows your proposal in the waiting list, offers no deck, and does not claim every day is planned", async () => {
     const calls = server({ ...as(max), [CURRENT]: lastDayWaits("2") });
     renderApp();
-    expect(await screen.findByRole("list", { name: "Wartet auf Antwort" })).toHaveTextContent("Pasta");
+    expect((await findDayRows())[0]).toHaveTextContent("Pasta");
+    expect(screen.getByRole("button", { name: "Zurückziehen" })).toBeInTheDocument();
     expect(screen.queryByText("Alle Tage sind geplant.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Karten" })).not.toBeInTheDocument();
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -462,7 +466,7 @@ describe("when every open day has a proposal waiting", () => {
     expect(await screen.findByRole("article", { name: "Pasta" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Passt" })).toBeInTheDocument();
     expect(screen.queryByText("Alle Tage sind geplant.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("list", { name: "Wartet auf Antwort" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zurückziehen" })).not.toBeInTheDocument();
   });
 });
 
@@ -520,7 +524,7 @@ describe("when every day is planned", () => {
     });
     renderApp();
     expect(await screen.findByText("Alle Tage sind geplant.")).toBeInTheDocument();
-    expect(within(screen.getAllByRole("listitem")[1]!).getByText("Curry")).toBeInTheDocument();
+    expect(within(dayRows()[1]!).getByText("Curry")).toBeInTheDocument();
   });
 });
 

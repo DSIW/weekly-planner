@@ -1,4 +1,11 @@
-import { rawRecipeListSchema, type RawRecipe, authResponseSchema, householdSchema, userSchema } from "./schemas.js";
+import {
+  rawRecipeListSchema,
+  type RawRecipe,
+  authResponseSchema,
+  householdSchema,
+  plannerListSchema,
+  userSchema,
+} from "./schemas.js";
 
 /** What the client needs to talk to KitchenOwl. The composition root fills it from the environment. */
 interface KitchenOwlSettings {
@@ -90,6 +97,32 @@ export class KitchenOwlClient {
       contentType: res.headers.get("content-type") ?? "application/octet-stream",
       data: new Uint8Array(await res.arrayBuffer()),
     };
+  }
+
+  /**
+   * KitchenOwl's icon font for ingredients, a static file of its web app. The planner passes it on instead of keeping a
+   * copy: the icons stay the ones the household's own KitchenOwl shows. Null when the instance does not serve it.
+   */
+  async fetchItemIcons(): Promise<{ contentType: string; data: Uint8Array } | null> {
+    const res = await this.fetchImpl(`${this.config.kitchenowlUrl}/assets/fonts/Items.ttf`, {
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) return null;
+    return { contentType: "font/ttf", data: new Uint8Array(await res.arrayBuffer()) };
+  }
+
+  /** The dates (UTC calendar day of the entry) from `from` on that have a dinner on the household planner. */
+  async plannedDatesFrom(from: string): Promise<Set<string>> {
+    const body = await this.get(`/household/${this.config.householdId}/planner`);
+    const parsed = plannerListSchema.safeParse(body);
+    if (!parsed.success) throw new KitchenOwlError("unexpected planner list shape");
+    return new Set(
+      parsed.data
+        .flatMap((e) =>
+          typeof e.cooking_date === "number" ? [new Date(e.cooking_date).toISOString().slice(0, 10)] : [],
+        )
+        .filter((date) => date >= from),
+    );
   }
 
   /** Signs a person in with their own KitchenOwl account. Returns their access token, or null for wrong credentials. */

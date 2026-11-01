@@ -10,12 +10,24 @@ import type {
 
 export type DomainEvent = PlanningEvent | MealLogEvent;
 
+/** A date that holds a planned dinner, with the dinner's name for the form that shows it. */
+export interface TakenDate {
+  readonly date: PlanDate;
+  readonly recipeName: string;
+}
+
+/** Port: what KitchenOwl's planner holds right now. */
+export interface PlannerView {
+  /** The dates from `from` on with an entry on the planner; null when KitchenOwl did not answer. */
+  plannedDatesFrom(from: PlanDate): Promise<ReadonlySet<PlanDate> | null>;
+}
+
 /** Port: one dinner per date reaches across sessions, so the aggregate asks this. */
 export interface DinnerCalendar {
   /** True when a session other than `exceptSession` has a planned dinner on `date`. */
   isDateTaken(date: PlanDate, exceptSession: SessionId): Promise<boolean>;
-  /** The dates from `from` on that a session already planned a dinner for, in date order. */
-  takenDatesFrom(from: PlanDate): Promise<readonly PlanDate[]>;
+  /** The dates from `from` on that a session already planned a dinner for, in date order, with the dinner. */
+  takenDatesFrom(from: PlanDate): Promise<readonly TakenDate[]>;
 }
 
 /** Port: told after a change has been committed. */

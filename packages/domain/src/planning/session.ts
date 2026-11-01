@@ -15,6 +15,8 @@ export interface PlanDay {
   readonly date: PlanDate;
   readonly status: DayStatus;
   readonly recipe?: Recipe;
+  /** The dinner was sent to KitchenOwl's planner and taken off there again: the date is free and nothing is asked about it. */
+  readonly removedInPlanner?: boolean;
 }
 
 /** `decidedBy` is present once the proposal is accepted or vetoed. */
@@ -392,4 +394,21 @@ export function remindToFinalize(
   const due = reminderDueAt(s, config);
   if (s.status !== "open" || s.reminderSent || !due || isBefore(now, due)) return done(s);
   return done({ ...s, reminderSent: true }, { type: "FinalizeReminderDue", sessionId: s.id });
+}
+
+/**
+ * rule ReleaseRemovedDinner: a dinner of a finalized plan that reached KitchenOwl's planner (`wasExported`) and is no
+ * longer there stops holding its date. A dinner that never arrived there is still to be sent, so it keeps the date.
+ */
+export function releaseRemovedDinner(s: PlanningSession, cmd: { date: PlanDate; wasExported: boolean }): Done {
+  if (s.status !== "finalized") return reject("session_not_finalized");
+  const day = dayOn(s, cmd.date);
+  if (day?.status !== "planned") return reject("day_not_planned");
+  if (day.removedInPlanner) return reject("already_released");
+  if (!cmd.wasExported) return reject("not_exported");
+  return done(withDay(s, cmd.date, { ...day, removedInPlanner: true }), {
+    type: "DinnerReleased",
+    sessionId: s.id,
+    date: cmd.date,
+  });
 }

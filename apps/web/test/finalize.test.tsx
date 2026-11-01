@@ -1,6 +1,8 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ITEM_ICON_CODEPOINTS } from "../src/item-icon-codepoints";
+import { resetItemFont } from "../src/ItemIcon";
 import { api, renderApp, server } from "./helpers";
 
 const ME = `GET ${api}/me`;
@@ -9,6 +11,9 @@ const PREVIEW = `GET ${api}/sessions/s1/finalize-preview`;
 const FINALIZE = `POST ${api}/sessions/s1/finalize`;
 const RETRY = `POST ${api}/sessions/s1/export/retry`;
 const CLOSE = `POST ${api}/sessions/s1/close`;
+/** The shopping list is the third step: it is reached from the plan with "Weiter". */
+const toShoppingList = async () =>
+  userEvent.click(await screen.findByRole("button", { name: "Weiter zur Einkaufsliste" }));
 const signedIn = { [ME]: { status: 200, body: { member: { id: "2", name: "Max" } } } };
 
 const pasta = {
@@ -61,6 +66,7 @@ class FakeEventSource {
 }
 beforeEach(() => {
   vi.stubGlobal("EventSource", FakeEventSource);
+  resetItemFont();
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(2026, 10, 1, 12));
 });
@@ -77,6 +83,7 @@ describe("the finalize panel", () => {
       [PREVIEW]: { status: 200, body: preview },
     });
     renderApp();
+    await toShoppingList();
     const list = await screen.findByRole("list", { name: "Einkaufsliste" });
     const [onion, salt] = within(list).getAllByRole("listitem");
     expect(onion).toHaveTextContent("Zwiebel3 Stück");
@@ -88,7 +95,41 @@ describe("the finalize panel", () => {
     expect(screen.getByRole("button", { name: "Einkaufsliste füllen" })).toBeEnabled();
   });
 
-  it("shows the ingredients as a grid of tiles with the category icon, name and amount", async () => {
+  it("shows the ingredients as a grid of tiles with an icon, name and amount; the first letter stands in without the font", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [PREVIEW]: {
+        status: 200,
+        body: { ...preview, items: [{ ...preview.items[0], icon: "onion", staple: false }, preview.items[1]] },
+      },
+    });
+    renderApp();
+    await toShoppingList();
+    const list = await screen.findByRole("list", { name: "Einkaufsliste" });
+    const [onion, salt] = within(list).getAllByRole("listitem");
+    expect(onion).toHaveTextContent("ZZwiebel3 Stück");
+    expect(salt).toHaveTextContent("SSalz");
+    expect(within(onion!).getByRole("checkbox", { name: /Zwiebel/ })).toBeChecked();
+  });
+
+  it("draws the icon from KitchenOwl's own icon font by the item's key", async () => {
+    const loaded: string[] = [];
+    vi.stubGlobal(
+      "FontFace",
+      class {
+        constructor(
+          readonly family: string,
+          source: string,
+        ) {
+          loaded.push(`${family} ${source}`);
+        }
+        load() {
+          return Promise.resolve(this);
+        }
+      },
+    );
+    Object.defineProperty(document, "fonts", { value: { add: vi.fn() }, configurable: true });
     server({
       ...signedIn,
       [CURRENT]: { status: 200, body: { session: session() } },
@@ -96,16 +137,77 @@ describe("the finalize panel", () => {
         status: 200,
         body: {
           ...preview,
-          items: [{ ...preview.items[0], icon: "🥬" }, preview.items[1]],
+          items: [
+            { ...preview.items[0], icon: "onion" },
+            { ...preview.items[1], icon: "no_such_icon" },
+          ],
         },
       },
     });
     renderApp();
+    await toShoppingList();
     const list = await screen.findByRole("list", { name: "Einkaufsliste" });
-    const [onion, salt] = within(list).getAllByRole("listitem");
-    expect(onion).toHaveTextContent("🥬Zwiebel3 Stück");
-    expect(salt).toHaveTextContent("🛒Salz"); // no category emoji: the cart stands in
-    expect(within(onion!).getByRole("checkbox", { name: /Zwiebel/ })).toBeChecked();
+    await waitFor(() => expect(list.querySelector('[data-icon="onion"]')).not.toBeNull());
+    expect(list.querySelector('[data-icon="onion"]')?.textContent).toBe(
+      String.fromCodePoint(ITEM_ICON_CODEPOINTS.onion!),
+    );
+    expect(loaded).toEqual([`KitchenOwlItems url(${api}/item-icons)`]);
+    expect(within(list).getAllByRole("listitem")[1]).toHaveTextContent("SSalz"); // an unknown key falls back
+    Reflect.deleteProperty(document, "fonts");
+  });
+
+  it("starts with salt, pepper, oil and water left off the list, and a tap puts one back", async () => {
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [PREVIEW]: {
+        status: 200,
+        body: { ...preview, items: [preview.items[0], { ...preview.items[1], staple: true }] },
+      },
+      [FINALIZE]: { status: 200, body: { session: finalized(exportOf({ complete: true })) } },
+    });
+    renderApp();
+    await toShoppingList();
+    expect(await screen.findByRole("checkbox", { name: /Salz/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Zwiebel/ })).toBeChecked();
+    expect(screen.getByText(/Salz, Pfeffer, Öl und Wasser sind schon abgewählt/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Einkaufsliste füllen" }));
+    expect(calls.find((c) => c.key === FINALIZE)?.body).toEqual({ skip: ["Salz"] });
+  });
+
+  it("puts a staple back on the list when its tile is tapped", async () => {
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [PREVIEW]: {
+        status: 200,
+        body: { ...preview, items: [preview.items[0], { ...preview.items[1], staple: true }] },
+      },
+      [FINALIZE]: { status: 200, body: { session: finalized(exportOf({ complete: true })) } },
+    });
+    renderApp();
+    await toShoppingList();
+    await userEvent.click(await screen.findByRole("checkbox", { name: /Salz/ }));
+    expect(screen.getByRole("checkbox", { name: /Salz/ })).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Einkaufsliste füllen" }));
+    expect(calls.find((c) => c.key === FINALIZE)?.body).toBeUndefined();
+  });
+
+  it("goes back to the dishes, and shows the agreed dishes with their pictures above the list", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [PREVIEW]: { status: 200, body: preview },
+    });
+    renderApp();
+    await toShoppingList();
+    const dishes = await screen.findByRole("list", { name: "Gerichte" });
+    expect(dishes).toHaveTextContent("Mo");
+    expect(dishes).toHaveTextContent("Pasta");
+    expect(dishes.querySelector(".thumb img")).toHaveAttribute("src", `${api}/recipes/1/photo`);
+    await userEvent.click(screen.getByRole("button", { name: "Zurück zu den Gerichten" }));
+    expect(await screen.findByRole("heading", { name: "Planung" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Weiter zur Einkaufsliste" })).toBeEnabled();
   });
 
   it("sends only what is not in stock: a deselected ingredient stays off the list", async () => {
@@ -116,6 +218,7 @@ describe("the finalize panel", () => {
       [FINALIZE]: { status: 200, body: { session: finalized(exportOf({ complete: true })) } },
     });
     renderApp();
+    await toShoppingList();
     await userEvent.click(await screen.findByRole("checkbox", { name: /Zwiebel/ }));
     expect(screen.getByRole("checkbox", { name: /Zwiebel/ })).not.toBeChecked();
     await userEvent.click(screen.getByRole("button", { name: "Einkaufsliste füllen" }));
@@ -130,6 +233,7 @@ describe("the finalize panel", () => {
       [FINALIZE]: { status: 200, body: { session: finalized(exportOf({ complete: true })) } },
     });
     renderApp();
+    await toShoppingList();
     const onion = await screen.findByRole("checkbox", { name: /Zwiebel/ });
     await userEvent.click(onion);
     await userEvent.click(onion);
@@ -145,6 +249,7 @@ describe("the finalize panel", () => {
       [PREVIEW]: { status: 200, body: preview },
     });
     renderApp();
+    await toShoppingList();
     await screen.findByText(/Eine Menge konnte nicht gelesen werden/);
     await userEvent.click(screen.getByRole("checkbox", { name: /Salz/ }));
     expect(screen.queryByText(/Eine Menge konnte nicht gelesen werden/)).not.toBeInTheDocument();
@@ -160,6 +265,8 @@ describe("the finalize panel", () => {
     server({ ...signedIn, [CURRENT]: { status: 200, body: { session: empty } } });
     renderApp();
     await screen.findByRole("heading", { name: "Planung" });
+    expect(screen.getByRole("button", { name: "Weiter zur Einkaufsliste" })).toBeDisabled();
+    expect(screen.getByText("Mindestens ein Tag braucht ein Gericht.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Einkaufsliste füllen" })).not.toBeInTheDocument();
   });
 
@@ -171,6 +278,8 @@ describe("the finalize panel", () => {
     });
     renderApp();
     await screen.findByRole("heading", { name: /Vorschlag für/ });
+    expect(screen.getByRole("button", { name: "Weiter zur Einkaufsliste" })).toBeDisabled();
+    expect(screen.getByText("Erst müssen alle Vorschläge beantwortet oder zurückgezogen sein.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Einkaufsliste füllen" })).not.toBeInTheDocument();
   });
 
@@ -197,6 +306,7 @@ describe("the finalize panel", () => {
       },
     });
     renderApp();
+    await toShoppingList();
     await userEvent.click(await screen.findByRole("button", { name: "Einkaufsliste füllen" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Fertig: 1 Tag im Planer und 2 Einträge auf der Einkaufsliste.",
@@ -217,9 +327,59 @@ describe("the finalize panel", () => {
       },
     });
     renderApp();
+    await toShoppingList();
     await userEvent.click(await screen.findByRole("button", { name: "Einkaufsliste füllen" }));
     expect(await screen.findByRole("heading", { name: "Eintragen in KitchenOwl" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Erneut versuchen" })).toBeInTheDocument();
+  });
+});
+
+describe("the steps of planning", () => {
+  const now = () => screen.getByRole("list", { name: "Schritte der Planung" }).querySelector('[aria-current="step"]');
+
+  it("name where the household is: days, then dishes, then the shopping list, and the list again once finalized", async () => {
+    let current: unknown = null;
+    server({
+      ...signedIn,
+      [CURRENT]: () => ({ status: 200, body: { session: current } }),
+      [PREVIEW]: { status: 200, body: preview },
+    });
+    const view = renderApp();
+    await screen.findByRole("button", { name: "Planung starten" });
+    expect(now()).toHaveTextContent("Tage");
+    view.unmount();
+
+    current = session();
+    const second = renderApp();
+    await toShoppingList().catch(() => undefined);
+    await screen.findByRole("button", { name: "Einkaufsliste füllen" });
+    expect(now()).toHaveTextContent("Einkaufsliste");
+    await userEvent.click(screen.getByRole("button", { name: "Zurück zu den Gerichten" }));
+    expect(now()).toHaveTextContent("Gerichte");
+    second.unmount();
+
+    current = finalized(exportOf({ failure: "refused" }));
+    renderApp();
+    await screen.findByRole("heading", { name: "Eintragen in KitchenOwl" });
+    expect(now()).toHaveTextContent("Einkaufsliste");
+  });
+
+  it("shows the dishes step, not the list, while a vote is open", async () => {
+    let current: unknown = session();
+    server({
+      ...signedIn,
+      [CURRENT]: () => ({ status: 200, body: { session: current } }),
+      [PREVIEW]: { status: 200, body: preview },
+    });
+    const view = renderApp();
+    await toShoppingList();
+    await screen.findByRole("button", { name: "Einkaufsliste füllen" });
+    view.unmount();
+    current = session({ proposals: [proposal("pending")] });
+    renderApp();
+    await screen.findByRole("heading", { name: /Vorschlag für/ });
+    expect(now()).toHaveTextContent("Gerichte");
+    expect(screen.queryByRole("button", { name: "Einkaufsliste füllen" })).not.toBeInTheDocument();
   });
 });
 
@@ -241,7 +401,7 @@ describe("the reminder on the board", () => {
   it("is not there before the reminder went out", async () => {
     server(withReminder({ reminderSent: false }));
     renderApp();
-    await screen.findByRole("button", { name: "Einkaufsliste füllen" });
+    await screen.findByRole("button", { name: "Weiter zur Einkaufsliste" });
     expect(screen.queryByText(/Erinnerung/)).not.toBeInTheDocument();
   });
 
@@ -359,6 +519,7 @@ describe("failed finalize actions are visible", () => {
       [PREVIEW]: { status: 500, body: {} },
     });
     renderApp();
+    await toShoppingList();
     expect(await screen.findByRole("alert")).toHaveTextContent("Einkaufsliste konnte nicht geladen werden");
   });
 
@@ -370,6 +531,7 @@ describe("failed finalize actions are visible", () => {
       [FINALIZE]: { status: 502, body: { error: "unavailable" } },
     });
     renderApp();
+    await toShoppingList();
     await userEvent.click(await screen.findByRole("button", { name: "Einkaufsliste füllen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
   });
@@ -382,6 +544,7 @@ describe("failed finalize actions are visible", () => {
       [FINALIZE]: { status: 409, body: { error: "nothing_planned" } },
     });
     renderApp();
+    await toShoppingList();
     await userEvent.click(await screen.findByRole("button", { name: "Einkaufsliste füllen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("noch kein Tag geplant");
   });

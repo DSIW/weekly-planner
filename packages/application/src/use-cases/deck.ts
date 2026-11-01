@@ -36,6 +36,15 @@ export class GetDeck {
   }
 }
 
+/** The source's own icon font for ingredients, so the shopping list shows the icons KitchenOwl shows. */
+export class GetItemIcons {
+  constructor(private readonly catalog: Pick<RecipeCatalog, "itemIcons">) {}
+
+  execute(): Promise<RecipePhoto | null> {
+    return this.catalog.itemIcons();
+  }
+}
+
 /** A recipe's picture, for the deck cards. */
 export class GetRecipePhoto {
   constructor(private readonly catalog: Pick<RecipeCatalog, "photo">) {}

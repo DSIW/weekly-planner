@@ -62,12 +62,20 @@ export class SqliteSessionRepository implements SessionRepository {
         );
       this.db.prepare("delete from plan_day where session_id = ?").run(s.id);
       const insertDay = this.db.prepare(
-        "insert into plan_day (session_id, date, status, recipe_json, blocks_date) values (?, ?, ?, ?, ?)",
+        "insert into plan_day (session_id, date, status, recipe_json, blocks_date, removed_in_planner) values (?, ?, ?, ?, ?, ?)",
       );
       for (const day of s.days) {
         // A discarded session no longer holds its dates.
-        const blocks = day.status === "planned" && s.status !== "closed" ? 1 : 0;
-        insertDay.run(s.id, day.date, day.status, day.recipe ? JSON.stringify(day.recipe) : null, blocks);
+        // A dinner taken off KitchenOwl's planner again lets go of its date too.
+        const blocks = day.status === "planned" && s.status !== "closed" && !day.removedInPlanner ? 1 : 0;
+        insertDay.run(
+          s.id,
+          day.date,
+          day.status,
+          day.recipe ? JSON.stringify(day.recipe) : null,
+          blocks,
+          day.removedInPlanner ? 1 : 0,
+        );
       }
       if (own) this.db.exec("commit");
     } catch (error) {
@@ -82,10 +90,14 @@ export class SqliteSessionRepository implements SessionRepository {
   private load(row: Row): PlanningSession {
     const id = row.id as string;
     const days = this.db
-      .prepare("select date, status, recipe_json from plan_day where session_id = ? order by date")
+      .prepare("select date, status, recipe_json, removed_in_planner from plan_day where session_id = ? order by date")
       .all(id)
       .map((d): PlanDay => {
-        const base = { date: planDate(d.date as string), status: d.status as PlanDay["status"] };
+        const base = {
+          date: planDate(d.date as string),
+          status: d.status as PlanDay["status"],
+          ...(d.removed_in_planner === 1 ? { removedInPlanner: true } : {}),
+        };
         return d.recipe_json === null ? base : { ...base, recipe: JSON.parse(d.recipe_json as string) as Recipe };
       });
     return {

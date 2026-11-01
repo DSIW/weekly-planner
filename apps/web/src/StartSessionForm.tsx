@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { TakenDate } from "./api";
 import { dayLabel, upcomingDates } from "./dates";
 
 const MIN = 2;
@@ -8,8 +9,8 @@ interface Props {
   onStart: (dates: string[]) => void;
   pending: boolean;
   error: string | null;
-  /** Dates that already hold a planned dinner: they are shown but cannot be picked. */
-  takenDates?: string[];
+  /** Dates that already hold a planned dinner: they are shown with that dinner but cannot be picked. */
+  takenDates?: TakenDate[];
   /** Today's date; the form offers the following days. Injected for tests. */
   today?: Date;
 }
@@ -24,22 +25,27 @@ export function StartSessionForm({ onStart, pending, error, takenDates = [], tod
       <p className="muted">
         Wähle {MIN} oder {MAX} Tage, für die ihr das Abendessen festlegen wollt.
       </p>
-      <fieldset className="chips">
+      <fieldset className="day-chips">
         <legend className="sr-only">Tage</legend>
-        {upcomingDates(7, today).map((date) => (
-          <button
-            key={date}
-            type="button"
-            className="chip"
-            aria-pressed={picked.includes(date)}
-            disabled={takenDates.includes(date)}
-            title={takenDates.includes(date) ? "Hier ist schon ein Essen geplant" : undefined}
-            onClick={() => toggle(date)}
-          >
-            {dayLabel(date)}
-          </button>
-        ))}
+        {upcomingDates(7, today).map((date) => {
+          const taken = takenDates.find((t) => t.date === date);
+          return (
+            <button
+              key={date}
+              type="button"
+              className="chip day-chip"
+              aria-pressed={picked.includes(date)}
+              disabled={taken !== undefined}
+              title={taken ? `Hier ist schon ein Essen geplant: ${taken.recipeName}` : undefined}
+              onClick={() => toggle(date)}
+            >
+              <span>{dayLabel(date)}</span>
+              {taken && <small>{taken.recipeName || "schon geplant"}</small>}
+            </button>
+          );
+        })}
       </fieldset>
+      {takenDates.length > 0 && <p className="muted">Grau hinterlegte Tage haben schon ein geplantes Essen.</p>}
       {error && (
         <p role="alert" className="error">
           {error}

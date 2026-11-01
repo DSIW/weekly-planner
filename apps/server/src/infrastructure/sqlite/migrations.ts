@@ -88,6 +88,10 @@ const MIGRATIONS: readonly string[] = [
     first_cooked text not null
   );
   `,
+  // 7: a dinner of a finalized plan that was taken off KitchenOwl's planner again lets go of its date.
+  `
+  alter table plan_day add column removed_in_planner integer not null default 0;
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

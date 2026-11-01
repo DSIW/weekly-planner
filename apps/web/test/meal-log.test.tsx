@@ -210,8 +210,10 @@ describe("the history", () => {
     renderApp();
     const list = await screen.findByRole("list", { name: "Verlauf" });
     const [first, second] = within(list).getAllByRole("listitem");
-    expect(first).toHaveTextContent(/31\.10\.: Pasta\s*offen/);
-    expect(second).toHaveTextContent(/30\.10\.: Reis \(ohne Rezept\)\s*gekocht/);
+    expect(first).toHaveTextContent(/31\.10\.\s*Pasta\s*offen/);
+    expect(first?.querySelector(".thumb img")).toHaveAttribute("src", `${api}/recipes/1/photo`);
+    expect(second).toHaveTextContent(/30\.10\.\s*🍚\s*Reis \(ohne Rezept\)\s*gekocht/);
+    expect(second).toHaveTextContent("🍚"); // a base-only meal has the base's emoji where a recipe has its picture
   });
 
   it("says so when nothing was eaten yet, and when the history cannot be loaded", async () => {
@@ -256,6 +258,39 @@ describe("adding a meal", () => {
       expect(calls.find((c) => c.key === ADD)?.body).toEqual({ date: "2026-10-30", base: "rice", recipeId: 2 }),
     );
     await waitFor(() => expect(screen.queryByLabelText("Tag")).not.toBeInTheDocument()); // closed after adding
+  });
+
+  it("offers the recipes with their thumbnails, and a search that says what it is", async () => {
+    server({ ...base, [LOG]: logOf(), [RECIPES]: recipes });
+    renderApp();
+    await open();
+    const search = await screen.findByPlaceholderText("Rezept suchen …");
+    expect(search).toHaveAttribute("type", "search");
+    expect(screen.getByLabelText("Rezept suchen")).toBe(search);
+    const pastaRow = await screen.findByRole("button", { name: /Pasta/ });
+    expect(pastaRow.querySelector(".thumb img")).toHaveAttribute("src", `${api}/recipes/1/photo`);
+  });
+
+  it("offers the bases with the emoji of KitchenOwl's base tags", async () => {
+    server({ ...base, [LOG]: logOf(), [RECIPES]: recipes });
+    renderApp();
+    await open();
+    await userEvent.click(screen.getByRole("button", { name: "Nur Basis" }));
+    const emoji = ["🍝", "🍚", "🥔", "🌾", "🥖", "🍽️"];
+    const names = ["Pasta", "Reis", "Kartoffeln", "Getreide", "Brot", "Sonstiges"];
+    names.forEach((name, i) => {
+      const tile = screen.getByRole("button", { name });
+      expect(tile).toHaveTextContent(`${emoji[i]}${name}`);
+    });
+  });
+
+  it("says that a meal replaces what is logged for that day", async () => {
+    server({ ...base, [LOG]: logOf(entry({ id: "a", date: "2026-10-31" })), [RECIPES]: recipes });
+    renderApp();
+    await open();
+    expect(screen.queryByText(/wird ersetzt/)).not.toBeInTheDocument(); // today: nothing logged yet
+    await userEvent.selectOptions(screen.getByLabelText("Tag"), "2026-10-31");
+    expect(screen.getByText("Was für diesen Tag eingetragen ist, wird ersetzt.")).toBeInTheDocument();
   });
 
   it("adds a meal by its base only", async () => {

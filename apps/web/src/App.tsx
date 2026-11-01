@@ -39,9 +39,9 @@ import { Notifications } from "./Notifications";
 import { PlanBoard } from "./PlanBoard";
 import type { Drop } from "./plan-moves";
 import { ProposalCard } from "./ProposalCard";
-import { WaitingProposals } from "./WaitingProposals";
 import { RecipePicker } from "./RecipePicker";
 import { StartSessionForm } from "./StartSessionForm";
+import { Stepper } from "./Stepper";
 import { SwipeDeck } from "./SwipeDeck";
 
 const SESSION_MESSAGES: Record<SessionError, string> = {
@@ -73,21 +73,39 @@ const SESSION_MESSAGES: Record<SessionError, string> = {
 const canFinalize = (s: PlanSession): boolean =>
   s.days.some((d) => d.status === "planned") && !s.proposals.some((p) => p.status === "pending");
 
+/** Why the shopping list cannot be reached yet, or null when it can. */
+const blockedReason = (s: PlanSession): string | null =>
+  s.proposals.some((p) => p.status === "pending")
+    ? "Erst müssen alle Vorschläge beantwortet oder zurückgezogen sein."
+    : s.days.some((d) => d.status === "planned")
+      ? null
+      : "Mindestens ein Tag braucht ein Gericht.";
+
 /** What a member is told when an action failed; the server's reason when they can act on it. */
 const messageFor = (error: unknown): string | null =>
   error === null ? null : SESSION_MESSAGES[error instanceof SessionFailed ? error.reason : "unavailable"];
 
 /**
- * Proposing and deciding. Proposals of the other member wait for an answer from you; your own wait in a short list
- * below the deck. The deck goes on with the next day that has no proposal yet, so nobody waits for an answer.
+ * Deciding and proposing. Proposals of the other member wait for an answer from you as cards; the deck goes on with
+ * the next day that has no proposal yet, so nobody waits for an answer. Your own waiting proposals are rows of the
+ * plan above.
  */
-function Proposing({ session, meId, refetch }: { session: PlanSession; meId: string; refetch: () => void }) {
+function Proposing({
+  session,
+  meId,
+  refetch,
+  apply,
+}: {
+  session: PlanSession;
+  meId: string;
+  refetch: () => void;
+  apply: (s: PlanSession) => void;
+}) {
   const [view, setView] = useState<"deck" | "list">("deck");
-  const waiting = session.proposals.filter((p) => p.status === "pending");
-  const theirs = waiting.filter((p) => p.proposedBy !== meId);
-  const mine = waiting.filter((p) => p.proposedBy === meId);
-  const free = session.days.find((d) => d.status === "open" && !waiting.some((p) => p.date === d.date));
-  const open = free !== undefined;
+  const theirs = session.proposals.filter((p) => p.status === "pending" && p.proposedBy !== meId);
+  const open = session.days.some(
+    (d) => d.status === "open" && !session.proposals.some((p) => p.status === "pending" && p.date === d.date),
+  );
   const deck = useQuery({
     queryKey: ["session", "deck", session.id],
     queryFn: () => fetchDeck(session.id),
@@ -98,14 +116,14 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
     queryFn: () => fetchEligibleRecipes(session.id),
     enabled: open && view === "list",
   });
+  const settle = { onSuccess: apply, onSettled: refetch };
   const propose = useMutation({
     mutationFn: (v: { date: string; recipeId: number }) => proposeRecipe(session.id, v.date, v.recipeId),
-    onSettled: refetch,
+    ...settle,
   });
-  const pass = useMutation({ mutationFn: (recipeId: number) => passRecipe(session.id, recipeId), onSettled: refetch });
-  const accept = useMutation({ mutationFn: (id: string) => acceptProposal(session.id, id), onSettled: refetch });
-  const veto = useMutation({ mutationFn: (id: string) => vetoProposal(session.id, id), onSettled: refetch });
-  const withdraw = useMutation({ mutationFn: (id: string) => withdrawProposal(session.id, id), onSettled: refetch });
+  const pass = useMutation({ mutationFn: (recipeId: number) => passRecipe(session.id, recipeId), ...settle });
+  const accept = useMutation({ mutationFn: (id: string) => acceptProposal(session.id, id), ...settle });
+  const veto = useMutation({ mutationFn: (id: string) => vetoProposal(session.id, id), ...settle });
   const refresh = useMutation({ mutationFn: refreshRecipes, onSettled: refetch });
 
   const decide = theirs.map((proposal) => (
@@ -118,20 +136,13 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
       error={messageFor(accept.error ?? veto.error)}
     />
   ));
-  const waitingList = mine.length > 0 && (
-    <WaitingProposals
-      proposals={mine}
-      onWithdraw={(p) => withdraw.mutate(p.id)}
-      pending={withdraw.isPending}
-      error={messageFor(withdraw.error)}
-    />
-  );
   if (!open) {
     return (
       <>
         {decide}
-        {waiting.length === 0 && <p className="muted">Alle Tage sind geplant.</p>}
-        {waitingList}
+        {theirs.length === 0 && !session.proposals.some((p) => p.status === "pending") && (
+          <p className="muted">Alle Tage sind geplant.</p>
+        )}
       </>
     );
   }
@@ -161,11 +172,11 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
             cards={deck.data.cards}
             onPropose={(c) => propose.mutate({ date: deck.data.date, recipeId: c.id })}
             onPass={(c) => pass.mutate(c.id)}
-            pending={propose.isPending || pass.isPending}
+            // The cards of the old day stay until the new ones are in, so nothing can be swiped meanwhile.
+            pending={propose.isPending || pass.isPending || deck.isFetching}
             error={messageFor(propose.error ?? pass.error)}
           />
         )}
-        {waitingList}
       </>
     );
   }
@@ -181,12 +192,11 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
           recipes={eligible.data.recipes}
           onPick={(r) => propose.mutate({ date: eligible.data.date, recipeId: r.id })}
           onRefresh={() => refresh.mutate()}
-          pending={propose.isPending}
+          pending={propose.isPending || eligible.isFetching}
           refreshing={refresh.isPending}
           error={messageFor(propose.error ?? refresh.error)}
         />
       )}
-      {waitingList}
     </>
   );
 }
@@ -197,8 +207,16 @@ const doneMessage = (e: ExportView): string => {
   return `Fertig: ${e.days.length} ${e.days.length === 1 ? "Tag" : "Tage"} im Planer und ${lines} ${lines === 1 ? "Eintrag" : "Einträge"} auf der Einkaufsliste.`;
 };
 
-/** Finalize: the consolidated list as it will be sent, once at least one day is agreed and no vote runs. */
-function Finalizing({ session, onDone }: { session: PlanSession; onDone: (message: string) => void }) {
+/** Step 3: the consolidated list as it will be sent, once at least one day is agreed and no vote runs. */
+function Finalizing({
+  session,
+  onDone,
+  onBack,
+}: {
+  session: PlanSession;
+  onDone: (message: string) => void;
+  onBack: () => void;
+}) {
   const client = useQueryClient();
   const preview = useQuery({
     queryKey: ["session", "finalize-preview", session.id],
@@ -209,15 +227,21 @@ function Finalizing({ session, onDone }: { session: PlanSession; onDone: (messag
     onSuccess: (done) => {
       if (done.export?.complete) onDone(doneMessage(done.export));
     },
-    onSettled: () => client.invalidateQueries({ queryKey: ["session"] }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: ["session"] });
+    },
   });
+  const dinners = session.days.flatMap((d) =>
+    d.status === "planned" && d.recipe ? [{ date: d.date, recipe: d.recipe }] : [],
+  );
   return (
     <FinalizePanel
-      dinners={preview.data?.dinners}
+      dinners={dinners}
       items={preview.data?.items}
       loading={preview.isPending}
       loadFailed={preview.isError}
       onFinalize={(skip) => finalize.mutate(skip)}
+      onBack={onBack}
       pending={finalize.isPending}
       error={messageFor(finalize.error)}
     />
@@ -232,7 +256,9 @@ function Exporting({ session, onDone }: { session: PlanSession; onDone: (message
     onSuccess: (done) => {
       if (done.complete) onDone(doneMessage(done));
     },
-    onSettled: () => client.invalidateQueries({ queryKey: ["session"] }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: ["session"] });
+    },
   });
   if (!session.export) return null;
   return (
@@ -245,23 +271,48 @@ function Exporting({ session, onDone }: { session: PlanSession; onDone: (message
   );
 }
 
-/** The shared plan: whatever either member does shows up for both, live. */
+/**
+ * The shared plan as three steps: pick the days, agree on the dishes, fill the shopping list. Whatever either member
+ * does shows up for both, live.
+ */
 function Planning({ meId }: { meId: string }) {
   const client = useQueryClient();
+  // Refetching goes on in the background: a button is free again as soon as its own request has been answered.
   const refetch = useCallback(() => {
     void client.invalidateQueries({ queryKey: ["meal-log"] });
-    return client.invalidateQueries({ queryKey: ["session"] });
+    void client.invalidateQueries({ queryKey: ["session"] });
   }, [client]);
   useEffect(() => listenForChanges(refetch), [refetch]);
   const [exported, setExported] = useState<string | null>(null);
+  const [step, setStep] = useState<"dishes" | "list">("dishes");
   const current = useQuery({ queryKey: ["session"], queryFn: fetchCurrentSession });
   const taken = useQuery({
     queryKey: ["session", "planned-dates"],
     queryFn: fetchPlannedDates,
     enabled: current.data === null,
   });
-  const start = useMutation({ mutationFn: startSession, onSettled: refetch });
+  // An answer to a command is the new state of the plan: it shows at once, the refetch only confirms it.
+  const apply = useCallback(
+    (s: PlanSession) => {
+      if (s.status === "open") client.setQueryData(["session"], s);
+    },
+    [client],
+  );
+  const start = useMutation({
+    mutationFn: startSession,
+    onSuccess: (s) => {
+      setStep("dishes");
+      apply(s);
+    },
+    onSettled: refetch,
+  });
   const close = useMutation({ mutationFn: closeSession, onSettled: refetch });
+  const withdraw = useMutation({
+    mutationFn: ({ sessionId, proposalId }: { sessionId: string; proposalId: string }) =>
+      withdrawProposal(sessionId, proposalId),
+    onSuccess: apply,
+    onSettled: refetch,
+  });
   const shape = useMutation({
     mutationFn: (
       change: { sessionId: string } & ({ kind: "leftovers"; date: string } | { kind: "reopen"; date: string } | Drop),
@@ -273,6 +324,7 @@ function Planning({ meId }: { meId: string }) {
           : change.kind === "swap"
             ? swapDays(change.sessionId, change.a, change.b)
             : moveDay(change.sessionId, change.from, change.to),
+    onSuccess: apply,
     onSettled: refetch,
   });
 
@@ -280,31 +332,44 @@ function Planning({ meId }: { meId: string }) {
   if (current.isError) return <p className="error">Die Planung konnte nicht geladen werden.</p>;
   const session = current.data;
   if (session) {
+    const open = session.status === "open";
+    // The shopping list needs an agreed day and no vote running; if that stops being true the list step ends.
+    const onList = open && step === "list" && canFinalize(session);
     return (
       <>
-        <PlanBoard
-          session={session}
-          onClose={() => close.mutate(session.id)}
-          onLeftovers={(date) => shape.mutate({ sessionId: session.id, kind: "leftovers", date })}
-          onReopen={(date) => shape.mutate({ sessionId: session.id, kind: "reopen", date })}
-          onDrop={(drop) => shape.mutate({ sessionId: session.id, ...drop })}
-          pending={close.isPending || shape.isPending}
-          error={close.isError ? SESSION_MESSAGES.unavailable : messageFor(shape.error)}
-        />
+        <Stepper current={open && !onList ? 2 : 3} />
         {session.status === "open" && session.reminderSent && session.days.some((d) => d.status === "planned") && (
           <p role="status" className="banner">
             Erinnerung: Ihr habt Tage geplant, aber die Einkaufsliste ist noch nicht gefüllt. Schließt die Planung ab.
           </p>
         )}
-        {session.status === "open" && canFinalize(session) && <Finalizing session={session} onDone={setExported} />}
-        {session.status === "open" && <Proposing session={session} meId={meId} refetch={refetch} />}
-        {session.status === "finalized" && <Exporting session={session} onDone={setExported} />}
+        {onList ? (
+          <Finalizing session={session} onDone={setExported} onBack={() => setStep("dishes")} />
+        ) : (
+          <>
+            <PlanBoard
+              session={session}
+              meId={meId}
+              onClose={() => close.mutate(session.id)}
+              onLeftovers={(date) => shape.mutate({ sessionId: session.id, kind: "leftovers", date })}
+              onReopen={(date) => shape.mutate({ sessionId: session.id, kind: "reopen", date })}
+              onDrop={(drop) => shape.mutate({ sessionId: session.id, ...drop })}
+              onWithdraw={(proposalId) => withdraw.mutate({ sessionId: session.id, proposalId })}
+              {...(open ? { onNext: () => setStep("list"), nextBlocked: blockedReason(session) } : {})}
+              pending={close.isPending || shape.isPending || withdraw.isPending}
+              error={close.isError ? SESSION_MESSAGES.unavailable : messageFor(shape.error ?? withdraw.error)}
+            />
+            {open && <Proposing session={session} meId={meId} refetch={refetch} apply={apply} />}
+            {session.status === "finalized" && <Exporting session={session} onDone={setExported} />}
+          </>
+        )}
       </>
     );
   }
   const error = messageFor(start.error ?? null);
   return (
     <>
+      <Stepper current={1} />
       {exported && (
         <p role="status" className="success">
           {exported}

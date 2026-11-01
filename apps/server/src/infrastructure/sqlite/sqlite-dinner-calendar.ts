@@ -1,4 +1,4 @@
-import type { DinnerCalendar } from "@weekly-planner/application";
+import type { DinnerCalendar, TakenDate } from "@weekly-planner/application";
 import { planDate, type PlanDate, type SessionId } from "@weekly-planner/domain";
 import type { Database } from "./database.js";
 
@@ -13,10 +13,13 @@ export class SqliteDinnerCalendar implements DinnerCalendar {
     return row !== undefined;
   }
 
-  async takenDatesFrom(from: PlanDate): Promise<readonly PlanDate[]> {
+  async takenDatesFrom(from: PlanDate): Promise<readonly TakenDate[]> {
     return this.db
-      .prepare("select distinct date from plan_day where blocks_date = 1 and date >= ? order by date")
+      .prepare("select date, recipe_json from plan_day where blocks_date = 1 and date >= ? order by date")
       .all(from)
-      .map((r) => planDate(r.date as string));
+      .map((r) => ({
+        date: planDate(r.date as string),
+        recipeName: r.recipe_json ? (JSON.parse(r.recipe_json as string) as { name: string }).name : "",
+      }));
   }
 }

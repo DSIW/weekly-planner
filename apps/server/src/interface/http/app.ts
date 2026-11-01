@@ -16,6 +16,7 @@ import type {
   GetDeck,
   GetExport,
   GetFinalizePreview,
+  GetItemIcons,
   GetRecipePhoto,
   MarkLeftoverDay,
   MovePlannedDay,
@@ -40,6 +41,7 @@ import {
   memberId,
   needsPlanningAhead,
   exportComplete,
+  isStaple,
   needsTime,
   planDate,
   proposalId,
@@ -74,6 +76,7 @@ interface AppOptions {
   readonly swapPlannedDays: Pick<SwapPlannedDays, "execute">;
   readonly movePlannedDay: Pick<MovePlannedDay, "execute">;
   readonly getRecipePhoto: Pick<GetRecipePhoto, "execute">;
+  readonly getItemIcons: Pick<GetItemIcons, "execute">;
   readonly getExport: Pick<GetExport, "execute">;
   readonly getFinalizePreview: Pick<GetFinalizePreview, "execute">;
   readonly finalizePlan: Pick<FinalizePlan, "execute">;
@@ -120,13 +123,12 @@ const recipeView = (r: Recipe, planAheadMinutes: number) => ({
   planAhead: needsPlanningAhead(r, { planAheadMinutes }),
 });
 
-/** A category is named like "🧈 Aufstriche & Vurst"; its leading emoji is the icon of every item in it. */
-const EMOJI = /^\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|\p{Emoji_Modifier})*/u;
-const iconOf = (category: string | undefined): string | null => category?.trim().match(EMOJI)?.[0] ?? null;
-
 const listLineView = (i: ListItem) => ({
   name: i.name,
-  icon: iconOf(i.category),
+  /** KitchenOwl's icon key of the item; the phones draw it with KitchenOwl's own icon font. */
+  icon: i.icon ?? null,
+  /** Salt, pepper, oil and water: the shopping list starts with these marked as at home. */
+  staple: isStaple(i.name),
   description: i.description,
   needsReview: i.needsReview,
   recipes: i.recipes,
@@ -154,6 +156,7 @@ const sessionView = (s: PlanningSession, ahead: number, exported?: FinalizeExpor
     date: d.date,
     status: d.status,
     ...(d.recipe ? { recipe: recipeView(d.recipe, ahead) } : {}),
+    ...(d.removedInPlanner ? { removedInPlanner: true } : {}),
   })),
   proposals: s.proposals.map((p) => ({
     id: p.id,
@@ -579,6 +582,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       .header("Cache-Control", "private, max-age=86400")
       .type(photo.contentType)
       .send(Buffer.from(photo.data));
+  });
+
+  app.get(`${api}/item-icons`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const font = await options.getItemIcons.execute().catch(() => null);
+    if (!font) return reply.code(404).send({ error: "not_found" });
+    return reply.header("Cache-Control", "private, max-age=86400").type(font.contentType).send(Buffer.from(font.data));
   });
 
   app.get(`${api}/recipes`, async (req, reply) => {

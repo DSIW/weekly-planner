@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { BASES, type BaseName, type RecipeView } from "./api";
-import { timeLabel } from "./recipe-time";
+import { RecipeLine } from "./RecipeLine";
+import { SearchField } from "./SearchField";
 
 export const BASE_LABELS: Record<BaseName, string> = {
   pasta: "Pasta",
@@ -9,6 +10,16 @@ export const BASE_LABELS: Record<BaseName, string> = {
   grains: "Getreide",
   bread: "Brot",
   other: "Sonstiges",
+};
+
+/** The emoji KitchenOwl's base tags carry. */
+export const BASE_EMOJI: Record<BaseName, string> = {
+  pasta: "🍝",
+  rice: "🍚",
+  potatoes: "🥔",
+  grains: "🌾",
+  bread: "🥖",
+  other: "🍽️",
 };
 
 interface Props {
@@ -20,7 +31,10 @@ interface Props {
   pending: boolean;
 }
 
-/** Names what was eaten: search a recipe, or give only the base when the meal is not in KitchenOwl. */
+/**
+ * Names what was eaten, one thing per day: search a recipe, or give only the base when the meal is not in KitchenOwl.
+ * The two ways are tabs; what is chosen replaces whatever was there for that day.
+ */
 export function MealChooser({ recipes, loading, loadFailed, onChoose, pending }: Props) {
   const [mode, setMode] = useState<"recipe" | "base">("recipe");
   const [query, setQuery] = useState("");
@@ -37,19 +51,20 @@ export function MealChooser({ recipes, loading, loadFailed, onChoose, pending }:
         </button>
       </fieldset>
       {mode === "base" ? (
-        <div className="chips">
-          {BASES.map((b) => (
-            <button key={b} type="button" className="chip" disabled={pending} onClick={() => onChoose(b, null)}>
-              {BASE_LABELS[b]}
-            </button>
-          ))}
-        </div>
+        <>
+          <p className="muted">Für ein Essen, das nicht in KitchenOwl steht: nur die Beilage zählt.</p>
+          <div className="base-grid">
+            {BASES.map((b) => (
+              <button key={b} type="button" className="base-tile" disabled={pending} onClick={() => onChoose(b, null)}>
+                <span aria-hidden="true">{BASE_EMOJI[b]}</span>
+                {BASE_LABELS[b]}
+              </button>
+            ))}
+          </div>
+        </>
       ) : (
         <>
-          <label>
-            Rezept suchen
-            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
-          </label>
+          <SearchField value={query} onChange={setQuery} />
           {loading && <p className="muted">Lädt …</p>}
           {loadFailed && (
             <p role="alert" className="error">
@@ -65,8 +80,7 @@ export function MealChooser({ recipes, loading, loadFailed, onChoose, pending }:
                 disabled={pending}
                 onClick={() => onChoose(r.base as BaseName, r)}
               >
-                <span>{r.name}</span>
-                <span className="muted">{timeLabel(r)}</span>
+                <RecipeLine recipe={r} />
               </button>
             ))}
             {recipes && shown.length === 0 && <p className="muted">Kein Rezept gefunden.</p>}

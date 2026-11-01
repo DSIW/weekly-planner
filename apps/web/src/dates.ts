@@ -27,3 +27,13 @@ export function dayLabel(planDate: string): string {
   const [y, m, d] = planDate.split("-").map(Number) as [number, number, number];
   return label.format(new Date(y, m - 1, d));
 }
+
+const weekday = new Intl.DateTimeFormat("de-DE", { weekday: "short" });
+const dayMonth = new Intl.DateTimeFormat("de-DE", { day: "numeric", month: "numeric" });
+
+/** "Mo" and "2.11." for `2026-11-02`: the two lines of a day's badge. */
+export function dayParts(planDate: string): { weekday: string; date: string } {
+  const [y, m, d] = planDate.split("-").map(Number) as [number, number, number];
+  const day = new Date(y, m - 1, d);
+  return { weekday: weekday.format(day).replace(/\.$/, ""), date: dayMonth.format(day) };
+}

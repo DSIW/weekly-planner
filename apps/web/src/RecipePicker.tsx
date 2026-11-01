@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { RecipeView } from "./api";
 import { dayLabel } from "./dates";
-import { timeLabel } from "./recipe-time";
+import { RecipeLine } from "./RecipeLine";
+import { SearchField } from "./SearchField";
 
 interface Props {
   date: string;
@@ -19,10 +20,7 @@ export function RecipePicker({ date, recipes, onPick, onRefresh, pending, refres
   return (
     <section className="card">
       <h2>Abendessen am {dayLabel(date)}</h2>
-      <label>
-        Rezept suchen
-        <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} />
-      </label>
+      <SearchField value={query} onChange={setQuery} />
       {error && (
         <p role="alert" className="error">
           {error}
@@ -31,8 +29,7 @@ export function RecipePicker({ date, recipes, onPick, onRefresh, pending, refres
       <div className="recipes">
         {shown.map((r) => (
           <button key={r.id} type="button" className="recipe" disabled={pending} onClick={() => onPick(r)}>
-            <span>{r.name}</span>
-            <span className="muted">{timeLabel(r)}</span>
+            <RecipeLine recipe={r} />
           </button>
         ))}
         {shown.length === 0 && <p className="muted">Kein Rezept gefunden.</p>}

@@ -2,8 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { addMeal, confirmMeal, correctMeal, fetchMealLog, fetchRecipes, notCooked, type MealEntry } from "./api";
 import { dayLabel, recentDates, todayPlanDate } from "./dates";
-import { BASE_LABELS, MealChooser } from "./MealChooser";
+import { BASE_EMOJI, BASE_LABELS, MealChooser } from "./MealChooser";
 import { RecipeCardBody } from "./RecipeCardBody";
+import { RecipeLine } from "./RecipeLine";
 
 const HISTORY_DAYS = 14;
 
@@ -81,7 +82,7 @@ export function MealLogPanel({ messageFor, today = todayPlanDate() }: Props) {
               </button>
             </>
           ) : (
-            <div className="actions three">
+            <div className="actions meal">
               <button type="button" disabled={busy} onClick={() => confirm.mutate(e.id)}>
                 Gekocht
               </button>
@@ -96,14 +97,29 @@ export function MealLogPanel({ messageFor, today = todayPlanDate() }: Props) {
         </section>
       ))}
       <details className="card history">
-        <summary>Verlauf und Mahlzeit nachtragen</summary>
+        <summary>
+          <span>Verlauf und Mahlzeit nachtragen</span>
+        </summary>
         {log.isError && <p className="error">Der Verlauf konnte nicht geladen werden.</p>}
         {log.data && entries.length === 0 && <p className="muted">Noch nichts eingetragen.</p>}
         {entries.length > 0 && (
-          <ul className="plain" aria-label="Verlauf">
+          <ul className="history-list" aria-label="Verlauf">
             {entries.map((e) => (
               <li key={e.id}>
-                {dayLabel(e.date)}: {mealName(e)} <span className="muted">{e.confirmed ? "gekocht" : "offen"}</span>
+                <span className="day-tag">{dayLabel(e.date)}</span>
+                {e.recipe ? (
+                  <RecipeLine recipe={e.recipe} detail={e.confirmed ? "gekocht" : "offen"} />
+                ) : (
+                  <span className="recipe-line">
+                    <span className="thumb base-thumb" aria-hidden="true">
+                      {BASE_EMOJI[e.base]}
+                    </span>
+                    <span className="recipe-line-text">
+                      <strong>{mealName(e)}</strong>
+                      <span className="muted">{e.confirmed ? "gekocht" : "offen"}</span>
+                    </span>
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -122,6 +138,9 @@ export function MealLogPanel({ messageFor, today = todayPlanDate() }: Props) {
                   ))}
               </select>
             </label>
+            {entries.some((e) => e.date === addDate) && (
+              <p className="muted">Was für diesen Tag eingetragen ist, wird ersetzt.</p>
+            )}
             {add.isError && (
               <p role="alert" className="error">
                 {messageFor(add.error)}

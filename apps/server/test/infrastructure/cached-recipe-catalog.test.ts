@@ -25,6 +25,9 @@ function source(entries: CatalogEntry[]) {
       if (state.failing) throw new Error("KitchenOwl is down");
       return state.entries;
     },
+    async itemIcons() {
+      return null;
+    },
     async find(id) {
       const e = state.entries.find((x) => x.kind === "ready" && x.recipe.id === id);
       return e?.kind === "ready" ? e.recipe : null;

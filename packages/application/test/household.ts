@@ -23,6 +23,7 @@ import {
   PassSuggestion,
   ProposeRecipe,
   RefreshRecipes,
+  ReleaseRemovedDinners,
   RemindToFinalize,
   RetryRefusedExports,
   ReopenDay,
@@ -44,6 +45,7 @@ import {
   RecordingNotifier,
   RecordingPublisher,
   SequenceIds,
+  FakePlannerView,
   SessionsDinnerCalendar,
   immediateUow,
 } from "./support/in-memory.js";
@@ -62,6 +64,7 @@ export function household(recipes: Recipe[] = []) {
   const clock = new FakeClock();
   const ids = new SequenceIds();
   const calendar = new SessionsDinnerCalendar(sessions);
+  const plannerView = new FakePlannerView();
   const randomKeys: string[] = [];
   const randomness = {
     random: (key?: string) => {
@@ -74,6 +77,14 @@ export function household(recipes: Recipe[] = []) {
   const session = { sessions, events, uow };
   const exporter = new ExportFinalizedPlan({ exports, planner, events, uow });
   const logDeps = { mealLog, experience, events, uow };
+  const releaseRemovedDinners = new ReleaseRemovedDinners({
+    sessions,
+    exports,
+    planner: plannerView,
+    events,
+    uow,
+    clock,
+  });
   return {
     sessions,
     mealLog,
@@ -94,7 +105,9 @@ export function household(recipes: Recipe[] = []) {
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, config),
     refreshRecipes: new RefreshRecipes(catalog),
     startSession: new StartSession({ ...session, ids, clock, calendar }, config),
-    listTakenDates: new ListTakenDates({ calendar, clock }),
+    plannerView,
+    releaseRemovedDinners,
+    listTakenDates: new ListTakenDates({ calendar, clock, release: releaseRemovedDinners }),
     proposeRecipe: new ProposeRecipe({ ...session, catalog, ids }, config),
     passSuggestion: new PassSuggestion({ ...session, catalog }),
     acceptProposal: new AcceptProposal({ ...session, calendar }, config),

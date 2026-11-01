@@ -1,6 +1,6 @@
 // The Recipe attributes the planning rules depend on (spec/weekly-planning.allium, external entity Recipe).
 
-export const MEAL_TYPES = ["main", "side", "dessert", "baking", "breakfast", "snack", "drink"] as const;
+export const MEAL_TYPES = ["main", "side", "dessert", "baking", "breakfast", "snack", "drink", "prep"] as const;
 export type MealType = (typeof MEAL_TYPES)[number];
 
 export const BASES = ["pasta", "rice", "potatoes", "grains", "bread", "other"] as const;
@@ -22,6 +22,8 @@ export interface Ingredient {
   readonly optional: boolean;
   /** The source's category of the item, as named there ("🧈 Aufstriche & Vurst"): a shopping list groups by it. */
   readonly category?: string;
+  /** The source's icon key of the item ("butter"); the phones draw it with the source's own icon set. */
+  readonly icon?: string;
 }
 
 export interface Recipe {

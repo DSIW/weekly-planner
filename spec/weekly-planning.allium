@@ -28,7 +28,8 @@ external entity Member {
 external entity Recipe {
     name: String
     total_time: Duration?
-    meal_type: main | side | dessert | baking | breakfast | snack | drink
+    -- prep is a mise en place: a preparation, never a dish for dinner.
+    meal_type: main | side | dessert | baking | breakfast | snack | drink | prep
     base: Base
     diet: vegan | vegetarian | fish | meat
     is_proven: Boolean          -- cooked before
@@ -114,6 +115,7 @@ entity PlanDay {
     status: open | planned | leftovers
     recipe: Recipe when status = planned
     logged: Boolean   -- the planned dinner already became a meal-log entry; stays true when the entry is removed again
+    removed_in_planner: Boolean   -- the dinner was sent to KitchenOwl's planner and taken off there again
 
     proposals: Proposal with day = this
 
@@ -121,7 +123,7 @@ entity PlanDay {
     pending_proposals: proposals where status = pending
 
     -- Derived
-    holds_date: status = planned and session.status in {open, finalized}   -- a discarded plan holds nothing
+    holds_date: status = planned and not removed_in_planner and session.status in {open, finalized}   -- a discarded plan holds nothing
     is_weekend: is_weekend(date)
 
     transitions status {
@@ -322,6 +324,7 @@ rule LogPlannedMeal {
     requires: day.status = planned
     requires: day.session.status = finalized or (day.session.status = closed and day.session.was_finalized)
     requires: not day.logged
+    requires: not day.removed_in_planner
     requires: not exists PlanDay{date: day.date, logged: true}
     ensures: day.logged = true
     ensures: MealLogEntry.created(
@@ -364,10 +367,13 @@ rule CorrectLoggedMeal {
             CookedRecipe.created(recipe: recipe, first_cooked: entry.date)
 }
 
+-- One meal per day: naming a meal for a day replaces what was logged for it.
 rule AddLoggedMeal {
     when: AddLoggedMeal(member, date, base, recipe?)
     requires: date <= now
     ensures:
+        for old in MealLogEntries where old.date = date:
+            not exists old
         MealLogEntry.created(date: date, base: base, recipe: recipe, source: added, confirmed: true)
         if recipe != null and not exists CookedRecipe{recipe: recipe}:
             CookedRecipe.created(recipe: recipe, first_cooked: date)
@@ -515,6 +521,18 @@ rule ExportStepUnanswered {
     ensures: step.session.export_failure = unconfirmed
 }
 
+-- Taking a dinner off KitchenOwl's planner frees its date again: the next plan
+-- may use it and nobody is asked whether it was cooked. Only a dinner that
+-- reached the planner counts; one still to be sent keeps its date.
+rule ReleaseRemovedDinner {
+    when: PlannerEntryRemoved(day)
+    requires: day.status = planned
+    requires: day.session.status = finalized
+    requires: not day.removed_in_planner
+    requires: exists ExportStep{session: day.session, kind: planner_entry, day: day, status: done}
+    ensures: day.removed_in_planner = true
+}
+
 rule ResendUnconfirmedStep {
     when: ResendUnconfirmedStep(member, step)
     requires: step.session.status = finalized
@@ -619,6 +637,17 @@ surface ExportAnswers {
         ExportStepAnswered(step)
         ExportStepRefused(step)
         ExportStepUnanswered(step)
+}
+
+-- The planner looks at KitchenOwl's planner now and then and tells when an
+-- entry it wrote has been taken off again.
+surface PlannerWatch {
+    facing kitchenowl: KitchenOwlService
+
+    context day: PlanDay where session.status = finalized and status = planned
+
+    provides:
+        PlannerEntryRemoved(day)
 }
 
 surface PlanningBoard {

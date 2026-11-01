@@ -29,18 +29,26 @@ import {
 } from "@weekly-planner/domain";
 import type { RecipeCatalog } from "../ports/recipe-catalog.js";
 import { OpenSessionConflict, type SessionRepository } from "../ports/repositories.js";
-import type { DinnerCalendar, IdGenerator, Clock } from "../ports/services.js";
+import type { DinnerCalendar, IdGenerator, Clock, TakenDate } from "../ports/services.js";
 import { changeSession, type CommandResult, type SessionDeps } from "./support.js";
 
 const unknownRecipe: CommandResult = { ok: false, reason: "unknown_recipe" };
 
-/** The dates from today on that already hold a planned dinner: the form for a new plan does not offer them. */
+/**
+ * The dates from today on that already hold a planned dinner, with the dinner: the form for a new plan does not offer
+ * them. A dinner that was taken off KitchenOwl's planner is let go first, so its date comes back.
+ */
 export class ListTakenDates {
   constructor(
-    private readonly deps: { calendar: Pick<DinnerCalendar, "takenDatesFrom">; clock: Pick<Clock, "today"> },
+    private readonly deps: {
+      calendar: Pick<DinnerCalendar, "takenDatesFrom">;
+      clock: Pick<Clock, "today">;
+      release: { execute(): Promise<number> };
+    },
   ) {}
 
-  execute(): Promise<readonly PlanDate[]> {
+  async execute(): Promise<readonly TakenDate[]> {
+    await this.deps.release.execute().catch(() => 0);
     return this.deps.calendar.takenDatesFrom(this.deps.clock.today());
   }
 }
