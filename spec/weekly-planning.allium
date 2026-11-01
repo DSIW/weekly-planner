@@ -555,6 +555,15 @@ invariant NoRecipeTwiceInSession {
 -- Actor Declarations
 ------------------------------------------------------------
 
+-- The KitchenOwl server the export writes to.
+external entity KitchenOwlInstance {
+    url: String
+}
+
+actor KitchenOwlService {
+    identified_by: KitchenOwlInstance where true
+}
+
 actor HouseholdMember {
     identified_by: Member where true
 }
@@ -562,6 +571,19 @@ actor HouseholdMember {
 ------------------------------------------------------------
 -- Surfaces
 ------------------------------------------------------------
+
+-- What happens to a step that was sent: KitchenOwl answers, refuses, or gives
+-- no usable answer. The planner learns it from the reply to its own request.
+surface ExportAnswers {
+    facing kitchenowl: KitchenOwlService
+
+    context step: ExportStep where status = sending
+
+    provides:
+        ExportStepAnswered(step)
+        ExportStepRefused(step)
+        ExportStepUnanswered(step)
+}
 
 surface PlanningBoard {
     facing viewer: HouseholdMember

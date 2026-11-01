@@ -340,8 +340,11 @@ describe("RetryRefusedExports", () => {
     const sent = ok(beginStep(stale, { kind: "planner", date: MON }, { resendUnconfirmed: false })).state;
     h.exports.bySession.set(id, ok(failStep(sent, { kind: "planner", date: MON }, "unconfirmed")).state);
     const get = h.exports.get.bind(h.exports);
-    let looked = false;
-    h.exports.get = async (sessionId) => (looked ? get(sessionId) : ((looked = true), stale));
+    const looks: unknown[] = [];
+    h.exports.get = async (sessionId) => {
+      looks.push(sessionId);
+      return looks.length === 1 ? stale : get(sessionId);
+    };
     await h.retryRefusedExports.execute();
     expect(h.planner.entries).toEqual([]);
     expect(h.exports.bySession.get(id)?.failure).toBe("unconfirmed");
