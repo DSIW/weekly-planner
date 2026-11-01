@@ -44,6 +44,17 @@ describe("KitchenOwlClient", () => {
     );
   });
 
+  it("counts a planner entry on the very date asked from", async () => {
+    const dates = await new KitchenOwlClient(
+      cfg,
+      json([
+        { cooking_date: Date.parse("2026-11-04T00:00:00Z") },
+        { cooking_date: Date.parse("2026-11-03T00:00:00Z") },
+      ]),
+    ).plannedDatesFrom("2026-11-04");
+    expect([...dates]).toEqual(["2026-11-04"]);
+  });
+
   it("fetches the icon font from the web app's assets, and gives null when it is not there", async () => {
     let url = "";
     const f = (async (u: string | URL | Request) => {
@@ -55,6 +66,23 @@ describe("KitchenOwlClient", () => {
     expect(font?.contentType).toBe("font/ttf");
     expect([...(font?.data ?? [])]).toEqual([0, 1, 0, 0]);
     expect(await new KitchenOwlClient(cfg, json({}, 404)).fetchItemIcons()).toBeNull();
+  });
+
+  it("reads the icon key of a recipe line, and takes a line without one", async () => {
+    const recipes = await new KitchenOwlClient(
+      cfg,
+      json([
+        {
+          id: 5,
+          name: "A",
+          items: [
+            { id: 1, name: "Butter", description: "", icon: "butter" },
+            { id: 2, name: "Salz", description: "", icon: null },
+          ],
+        },
+      ]),
+    ).listRecipes();
+    expect(recipes[0]?.items.map((i) => i.icon ?? null)).toEqual(["butter", null]);
   });
 
   it("treats a recipe line that does not say it is optional as needed", async () => {

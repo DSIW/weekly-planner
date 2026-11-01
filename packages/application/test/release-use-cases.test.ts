@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planDate, type PlanDate, type PlanningSession, type Result } from "@weekly-planner/domain";
+import { GetItemIcons } from "../src/index.js";
 import { household } from "./household.js";
 import { AC, ME, aRecipe } from "./support/in-memory.js";
 
@@ -75,6 +76,56 @@ describe("ReleaseRemovedDinners", () => {
       throw new Error("down");
     };
     expect(await h.listTakenDates.execute()).toHaveLength(1);
+  });
+});
+
+describe("ReleaseRemovedDinners, the edges", () => {
+  it("frees a dinner whose date is today", async () => {
+    const { h, id } = await exportedOnWed();
+    h.plannerView.dates = new Set();
+    h.clock.date = WED;
+    expect(await h.releaseRemovedDinners.execute()).toBe(1);
+    expect(day(h, id, WED).removedInPlanner).toBe(true);
+  });
+
+  it("keeps a date whose export step is for another day or not done", async () => {
+    const { h, id } = await exportedOnWed();
+    h.plannerView.dates = new Set();
+    const exported = h.exports.bySession.get(id)!;
+    h.exports.bySession.set(id, { ...exported, days: exported.days.map((d) => ({ ...d, date: MON })) });
+    expect(await h.releaseRemovedDinners.execute()).toBe(0);
+    h.exports.bySession.set(id, {
+      ...exported,
+      days: exported.days.map((d) => ({ ...d, status: "pending" as never })),
+    });
+    expect(await h.releaseRemovedDinners.execute()).toBe(0);
+    expect(day(h, id, WED).removedInPlanner).toBeUndefined();
+  });
+
+  it("counts every dinner released from one plan", async () => {
+    const r2 = aRecipe(2, { base: "rice" });
+    const h = household([r1, r2]);
+    h.clock.date = MON;
+    const s = ok(await h.startSession.execute({ member: AC, dates: [WED, SUN] }));
+    for (const [date, recipe] of [
+      [WED, r1],
+      [SUN, r2],
+    ] as const) {
+      const p = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date, recipeId: recipe.id }));
+      const last = p.proposals.find((x) => x.date === date)!;
+      ok(await h.acceptProposal.execute({ member: ME, sessionId: s.id, proposalId: last.id }));
+    }
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: s.id }));
+    h.plannerView.dates = new Set();
+    expect(await h.releaseRemovedDinners.execute()).toBe(2);
+  });
+});
+
+describe("GetItemIcons", () => {
+  it("hands on the catalog's icon font, or nothing", async () => {
+    const font = { contentType: "font/ttf", data: new Uint8Array([1]) };
+    expect(await new GetItemIcons({ itemIcons: async () => font }).execute()).toBe(font);
+    expect(await new GetItemIcons({ itemIcons: async () => null }).execute()).toBeNull();
   });
 });
 

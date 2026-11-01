@@ -668,6 +668,18 @@ describe("the ranked deck over HTTP", () => {
     expect([...res.rawPayload]).toEqual([0, 1, 0, 0]);
   });
 
+  it("answers 404, not an error, when KitchenOwl's icon font cannot be read", async () => {
+    const original = catalog.itemIcons;
+    catalog.itemIcons = async () => {
+      throw new Error("KitchenOwl is down");
+    };
+    try {
+      expect((await call("GET", "/item-icons", max)).statusCode).toBe(404);
+    } finally {
+      catalog.itemIcons = original;
+    }
+  });
+
   it("serves a recipe's photo with its type, cacheable by the browser, and 404 without one", async () => {
     const res = await call("GET", "/recipes/1/photo", max);
     expect(res.statusCode).toBe(200);
@@ -1291,6 +1303,20 @@ describe("dates that already hold a dinner, over HTTP", () => {
       dates: [{ date: FUTURE, recipeName: "Pasta" }],
     });
     await call("POST", `/sessions/${id}/close`, max);
+    expect((await call("GET", "/planned-dates", ac)).json()).toEqual({ dates: [] });
+  });
+
+  it("marks a dinner taken off KitchenOwl's planner on the session, and only that one", async () => {
+    await takenBy();
+    const sessions = new SqliteSessionRepository(db);
+    const saved = (await sessions.listAll())[0]!;
+    await sessions.save({
+      ...saved,
+      days: saved.days.map((d) => (d.date === FUTURE ? { ...d, removedInPlanner: true } : d)),
+    });
+    const days = (await call("GET", "/sessions/current", ac)).json().session.days;
+    expect(days.find((d: { date: string }) => d.date === FUTURE)).toMatchObject({ removedInPlanner: true });
+    expect(days.find((d: { date: string }) => d.date !== FUTURE)).not.toHaveProperty("removedInPlanner");
     expect((await call("GET", "/planned-dates", ac)).json()).toEqual({ dates: [] });
   });
 
