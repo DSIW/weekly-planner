@@ -720,3 +720,27 @@ describe("proposals for several days at once (phone feedback)", () => {
     expect(finalizePlan(accepted, { member: ME })).toEqual({ ok: false, reason: "proposal_already_pending" });
   });
 });
+
+describe("witness S5: taken dates at start and the finalized mark (mutation gaps)", () => {
+  const cmd = { id: sessionId("s9"), startedBy: AC, dates: [MON, TUE], now: 1 };
+
+  it("refuses to start a plan on a date another session already planned a dinner for", () => {
+    expect(startSession({ ...cmd, takenDates: [TUE] }, config)).toEqual({ ok: false, reason: "date_already_taken" });
+    expect(startSession({ ...cmd, takenDates: [TUE, SAT] }, config)).toEqual({
+      ok: false,
+      reason: "date_already_taken",
+    });
+    expect(startSession({ ...cmd, takenDates: [SAT] }, config).ok).toBe(true);
+  });
+
+  it("starts a plan explicitly marked as never finalized", () => {
+    expect(must(startSession(cmd, config)).state.wasFinalized).toBe(false);
+  });
+
+  it("logs the dinners of a finalized plan even when its record carries no finalized mark", () => {
+    const recipe = aRecipe();
+    const finalized = must(finalizePlan(plan(aSession([MON, TUE]), MON, recipe), { member: AC }, config)).state;
+    const { wasFinalized: _ignored, ...unmarked } = finalized;
+    expect(dinnersDueForLogging(unmarked, TUE, new Set())).toEqual([{ date: MON, recipe }]);
+  });
+});

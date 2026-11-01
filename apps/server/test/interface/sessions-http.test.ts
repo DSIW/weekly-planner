@@ -1176,6 +1176,49 @@ describe("the meal log over HTTP", () => {
     expect((await call("GET", "/meal-log?days=abc", max)).statusCode).toBe(400);
   });
 
+  it("changes nothing for a caller who is not signed in", async () => {
+    const entry = await loggedFromPlan();
+    for (const verb of ["confirm", "not-cooked"]) {
+      expect((await post(`/meal-log/${entry.id}/${verb}`, undefined)).statusCode).toBe(401);
+    }
+    expect((await post(`/meal-log/${entry.id}/correct`, undefined, { base: "rice", recipeId: 2 })).statusCode).toBe(
+      401,
+    );
+    expect((await post("/meal-log", undefined, { date: yesterday, base: "rice", recipeId: null })).statusCode).toBe(
+      401,
+    );
+    expect(await entriesOf(max)).toEqual([entry]);
+  });
+
+  it("lists the last 14 days unless asked otherwise, and up to 90 days", async () => {
+    await post("/meal-log", max, { date: "2026-10-18", base: "pasta", recipeId: null });
+    await post("/meal-log", max, { date: "2026-10-17", base: "rice", recipeId: null });
+    await post("/meal-log", max, { date: "2026-08-03", base: "bread", recipeId: null });
+    const byDefault = await call("GET", "/meal-log", max);
+    expect(byDefault.statusCode).toBe(200);
+    expect(byDefault.json().entries.map((e: { date: string }) => e.date)).toEqual(["2026-10-18"]);
+    expect((await entriesOf(max, 90)).map((e) => e.date)).toEqual(["2026-10-18", "2026-10-17", "2026-08-03"]);
+    expect((await call("GET", "/meal-log?days=1.5", max)).statusCode).toBe(400);
+  });
+
+  it("refuses a meal without a date or with a recipe id that is no whole number", async () => {
+    expect((await post("/meal-log", max, { base: "pasta", recipeId: null })).statusCode).toBe(400);
+    expect((await post("/meal-log", max, { date: yesterday, base: "pasta", recipeId: 1.5 })).statusCode).toBe(400);
+    expect(await entriesOf(max)).toEqual([]);
+  });
+
+  it("refuses to confirm a meal that names no recipe", async () => {
+    const byBase = (await post("/meal-log", max, { date: yesterday, base: "bread", recipeId: null })).json().entry;
+    const res = await post(`/meal-log/${byBase.id}/confirm`, ac);
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: "no_recipe" });
+  });
+
+  it("lists every ready recipe, none left out", async () => {
+    const res = await call("GET", "/recipes", max);
+    expect(res.json().recipes).toHaveLength(recipes.length);
+  });
+
   it("counts a confirmed new recipe as known in the next session's deck", async () => {
     const entry = await loggedFromPlan(kuerbis);
     const isNew = async () => {

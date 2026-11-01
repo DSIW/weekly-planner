@@ -161,3 +161,23 @@ describe("ListRecipes", () => {
     expect((await h.listRecipes.execute()).map((r) => r.name)).toEqual(["Äpfel", "Neu", "Zebrabraten"]);
   });
 });
+
+describe("witness S5: ListMealLog window edge and tie order (mutation gaps)", () => {
+  it("reaches back exactly the given number of days, that day included", async () => {
+    const h = household([fresh, other]);
+    h.clock.date = THU;
+    ok(await h.addLoggedMeal.execute({ member: ME, date: MON, base: "rice", recipeId: null }));
+    expect((await h.listMealLog.execute({ days: 3 })).map((e) => e.date)).toEqual([MON]);
+    expect(await h.listMealLog.execute({ days: 2 })).toEqual([]);
+  });
+
+  it("orders entries of the same day by their id", async () => {
+    const h = household([fresh, other]);
+    h.clock.date = THU;
+    ok(await h.addLoggedMeal.execute({ member: ME, date: WED, base: "rice", recipeId: null }));
+    ok(await h.addLoggedMeal.execute({ member: ME, date: WED, base: "pasta", recipeId: null }));
+    const ids = (await h.listMealLog.execute({ days: 7 })).map((e) => e.id);
+    expect(ids).toHaveLength(2);
+    expect(ids).toEqual([...ids].sort());
+  });
+});

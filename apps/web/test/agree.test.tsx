@@ -435,6 +435,78 @@ describe("deciding on the other member's proposal", () => {
   });
 });
 
+describe("when every open day has a proposal waiting", () => {
+  const lastDayWaits = (by: string) => ({
+    status: 200,
+    body: {
+      session: session({
+        days: [day("2026-11-02"), day("2026-11-03", "planned", curry)],
+        proposals: [proposal("pending", by)],
+      }),
+    },
+  });
+
+  it("shows your proposal in the waiting list, offers no deck, and does not claim every day is planned", async () => {
+    const calls = server({ ...as(max), [CURRENT]: lastDayWaits("2") });
+    renderApp();
+    expect(await screen.findByRole("list", { name: "Wartet auf Antwort" })).toHaveTextContent("Pasta");
+    expect(screen.queryByText("Alle Tage sind geplant.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Karten" })).not.toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls.some((c) => c.key === DECK)).toBe(false);
+  });
+
+  it("shows the other member's proposal to decide on, and does not claim every day is planned", async () => {
+    server({ ...as(ac), [CURRENT]: lastDayWaits("2") });
+    renderApp();
+    expect(await screen.findByRole("article", { name: "Pasta" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Passt" })).toBeInTheDocument();
+    expect(screen.queryByText("Alle Tage sind geplant.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Wartet auf Antwort" })).not.toBeInTheDocument();
+  });
+});
+
+describe("deciding while the answer is on its way", () => {
+  it("disables Passt and Nein while accepting runs", async () => {
+    server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal("pending", "3")] }) } },
+    });
+    const reply = vi.mocked(fetch);
+    const original = reply.getMockImplementation()!;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    reply.mockImplementation(async (url, init) => {
+      if (`${init?.method ?? "GET"} ${String(url)}` === ACCEPT) await gate;
+      return original(url, init);
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Passt" }));
+    expect(screen.getByRole("button", { name: "Passt" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Nein" })).toBeDisabled();
+    release();
+  });
+});
+
+describe("a recipe proposed twice", () => {
+  it("says that the dish already waits on another day", async () => {
+    server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [RECIPES]: list,
+      [PROPOSE]: { status: 409, body: { error: "recipe_already_proposed" } },
+    });
+    renderApp();
+    await showList();
+    await userEvent.click(await screen.findByRole("button", { name: /Pasta/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Dieses Gericht wartet schon an einem anderen Tag auf eine Antwort.",
+    );
+  });
+});
+
 describe("when every day is planned", () => {
   it("says so instead of offering recipes", async () => {
     server({

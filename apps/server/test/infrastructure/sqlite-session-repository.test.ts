@@ -290,6 +290,16 @@ describe("a session's finalized mark", () => {
   });
 });
 
+describe("a session's finalized mark on a session already stored", () => {
+  it("is saved when an open session becomes finalized", async () => {
+    const { sessions } = fresh();
+    await sessions.save(aSession("s1"));
+    expect((await sessions.get(sessionId("s1")))?.wasFinalized).toBe(false);
+    await sessions.save({ ...aSession("s1"), status: "finalized", wasFinalized: true });
+    expect((await sessions.get(sessionId("s1")))?.wasFinalized).toBe(true);
+  });
+});
+
 describe("SqliteDinnerCalendar and one dinner per date", () => {
   const recipe: Recipe = {
     id: recipeId(7),
@@ -326,6 +336,20 @@ describe("SqliteDinnerCalendar and one dinner per date", () => {
     await sessions.save({ ...first, status: "closed" });
     expect(await calendar.isDateTaken(MON, sessionId("s2"))).toBe(false);
     await expect(sessions.save(planned(aSession("s2"), MON))).resolves.toBeUndefined();
+  });
+
+  it("lists the taken dates from a date on, oldest first, across sessions, without open days or discarded plans", async () => {
+    const { db, sessions } = fresh();
+    const calendar = new SqliteDinnerCalendar(db);
+    const WED = planDate("2026-11-04");
+    const THU = planDate("2026-11-05");
+    const FRI = planDate("2026-11-06");
+    await sessions.save({ ...planned(planned(aSession("s1", [THU, MON]), THU), MON), status: "finalized" });
+    await sessions.save(planned(aSession("s2", [WED, TUE]), WED));
+    await sessions.save({ ...planned(aSession("s3", [FRI, planDate("2026-11-07")]), FRI), status: "closed" });
+    expect(await calendar.takenDatesFrom(MON)).toEqual([MON, WED, THU]);
+    expect(await calendar.takenDatesFrom(TUE)).toEqual([WED, THU]);
+    expect(await calendar.takenDatesFrom(FRI)).toEqual([]);
   });
 
   it("refuses a second planned dinner on one date even if a caller forgot to ask", async () => {

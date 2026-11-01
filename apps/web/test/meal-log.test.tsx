@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { todayPlanDate } from "../src/dates";
 import { api, renderApp, server } from "./helpers";
 
 const ME = `GET ${api}/me`;
@@ -295,5 +296,98 @@ describe("adding a meal", () => {
     await userEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
     expect(screen.queryByLabelText("Tag")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mahlzeit nachtragen" })).toBeInTheDocument();
+  });
+});
+
+describe("the question the day after, further cases", () => {
+  it("does not ask about an unconfirmed meal that did not come from the plan", async () => {
+    server({ ...base, [LOG]: logOf(entry({ id: "added", source: "added", confirmed: false })) });
+    renderApp();
+    await waitFor(() => expect(screen.getByRole("list", { name: "Verlauf" })).toBeInTheDocument());
+    expect(screen.queryByRole("heading", { name: /Habt ihr das gekocht/ })).not.toBeInTheDocument();
+  });
+
+  it("says when the meal is gone, and when it has no recipe to confirm", async () => {
+    server({ ...base, [LOG]: logOf(entry()), [CONFIRM]: { status: 404, body: { error: "unknown_entry" } } });
+    const view = renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Gekocht" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Diese Mahlzeit gibt es nicht mehr.");
+    view.unmount();
+    server({ ...base, [LOG]: logOf(entry()), [CONFIRM]: { status: 422, body: { error: "no_recipe" } } });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Gekocht" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Ohne Rezept lässt sich das nicht bestätigen.");
+  });
+
+  it("disables the answers while one runs", async () => {
+    server({ ...base, [LOG]: logOf(entry()) });
+    const reply = vi.mocked(fetch);
+    const original = reply.getMockImplementation()!;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    reply.mockImplementation(async (url, init) => {
+      if (`${init?.method ?? "GET"} ${String(url)}` === CONFIRM) await gate;
+      return original(url, init);
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Gekocht" }));
+    expect(screen.getByRole("button", { name: "Gekocht" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Nicht gekocht" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Etwas anderes" })).toBeDisabled();
+    release();
+  });
+});
+
+describe("something else was cooked, further cases", () => {
+  it("closes the chooser after the correction went through", async () => {
+    server({
+      ...base,
+      [LOG]: logOf(entry()),
+      [RECIPES]: recipes,
+      [CORRECT]: { status: 200, body: { entry: entry({ source: "corrected", confirmed: true, recipe: risotto }) } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Etwas anderes" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Risotto/ }));
+    await waitFor(() => expect(screen.queryByLabelText("Rezept suchen")).not.toBeInTheDocument());
+  });
+
+  it("says so as an alert when the correction failed", async () => {
+    server({ ...base, [LOG]: logOf(entry()), [RECIPES]: recipes, [CORRECT]: { status: 500, body: {} } });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Etwas anderes" }));
+    await userEvent.click(await screen.findByRole("button", { name: /Risotto/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
+  });
+
+  it("says so when the search finds no recipe", async () => {
+    server({ ...base, [LOG]: logOf(entry()), [RECIPES]: recipes });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Etwas anderes" }));
+    await userEvent.type(await screen.findByLabelText("Rezept suchen"), "xyz");
+    expect(await screen.findByText("Kein Rezept gefunden.")).toBeInTheDocument();
+  });
+});
+
+describe("the history, further cases", () => {
+  it("does not claim nothing was eaten when the history cannot be loaded", async () => {
+    server({ ...base, [LOG]: { status: 500, body: {} } });
+    renderApp();
+    expect(await screen.findByText("Der Verlauf konnte nicht geladen werden.")).toBeInTheDocument();
+    expect(screen.queryByText("Noch nichts eingetragen.")).not.toBeInTheDocument();
+  });
+});
+
+describe("today's date", () => {
+  it("is the phone's own calendar day, not the UTC one", () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "Europe/Berlin";
+    try {
+      expect(todayPlanDate(new Date(2026, 10, 1, 0, 30))).toBe("2026-11-01");
+    } finally {
+      process.env.TZ = tz;
+    }
   });
 });

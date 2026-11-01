@@ -518,3 +518,30 @@ describe("RemindToFinalize", () => {
     expect(await h.remindToFinalize.execute()).toBe(0);
   });
 });
+
+describe("witness S5: base variety ignores a discarded plan (mutation gap)", () => {
+  // The earlier plan holds a pasta dish on the day before the deck's window ends; a different pasta dish (Nudeln, first
+  // in the catalog) only falls behind Reis when that plan counts for base variety, i.e. when it was finalized.
+  const nudeln = aRecipe(60, { name: "Nudeln", base: "pasta" });
+  const reis = aRecipe(61, { name: "Reis", base: "rice" });
+  const spaghetti = aRecipe(62, { name: "Spaghetti", base: "pasta" });
+  const rankedAfter = async (finalize: boolean) => {
+    const sat = planDate("2026-10-31");
+    const { h, s: first } = await started(household([nudeln, reis, spaghetti]), [planDate("2026-10-30"), sat]);
+    ok(await h.markLeftoverDay.execute({ member: AC, sessionId: first.id, date: planDate("2026-10-30") }));
+    await agree(h, first, sat, spaghetti);
+    if (finalize) ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
+    ok(await h.closeSession.execute({ member: AC, sessionId: first.id }));
+    const second = ok(await h.startSession.execute({ member: AC, dates: [MON, TUE] }));
+    const ranked = (await h.suggestRecipes.execute({ sessionId: second.id })).map((r) => r.name);
+    return ranked.indexOf("Nudeln") < ranked.indexOf("Reis");
+  };
+
+  it("does not hold the base of a plan thrown away without being finalized against a dish", async () => {
+    expect(await rankedAfter(false)).toBe(true);
+  });
+
+  it("holds the base of a plan finalized before it was closed against a dish", async () => {
+    expect(await rankedAfter(true)).toBe(false);
+  });
+});

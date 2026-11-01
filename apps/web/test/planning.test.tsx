@@ -210,6 +210,17 @@ describe("the shared board", () => {
     expect(await screen.findByRole("button", { name: "Planung starten" })).toBeInTheDocument();
   });
 
+  it("refreshes the meal log too when the other phone changed something", async () => {
+    const LOG = `GET ${api}/meal-log?days=14`;
+    const calls = server({ ...signedIn, [CURRENT]: { status: 200, body: { session: null } } });
+    renderApp();
+    await screen.findByRole("button", { name: "Planung starten" });
+    await waitFor(() => expect(calls.filter((c) => c.key === LOG).length).toBeGreaterThan(0));
+    const before = calls.filter((c) => c.key === LOG).length;
+    FakeEventSource.instances[0]!.emit("changed");
+    await waitFor(() => expect(calls.filter((c) => c.key === LOG).length).toBeGreaterThan(before));
+  });
+
   it("refetches when the stream reconnects, because changes in between were missed", async () => {
     let session: unknown = null;
     const calls = server({ ...signedIn, [CURRENT]: () => ({ status: 200, body: { session } }) });

@@ -315,11 +315,14 @@ rule VetoProposal {
 -- log entry, once. A plan that was thrown away without ever being finalized
 -- logs nothing: nobody agreed to cook it. A finalized plan that was closed
 -- later still logs, its dinners were agreed and written to KitchenOwl.
+-- The household eats one dinner a day: once a planned dinner for a date was
+-- logged, no other plan's dinner for that date is logged again.
 rule LogPlannedMeal {
     when: day: PlanDay.date + 1.day <= now
     requires: day.status = planned
     requires: day.session.status = finalized or (day.session.status = closed and day.session.was_finalized)
     requires: not day.logged
+    requires: not exists PlanDay{date: day.date, logged: true}
     ensures: day.logged = true
     ensures: MealLogEntry.created(
         date: day.date,
@@ -687,7 +690,8 @@ surface PlanningBoard {
         --      is_proven or a CookedRecipe exists for it. Once the session
         --      has its new recipe, proven recipes rank above new ones;
         --      wants_to_try still orders the new ones among themselves.
-        --   4. recipes planned within config.recent_window ranked lower
+        --   4. recipes planned within config.recent_window (in another
+        --      session that was finalized) ranked lower
         --   5. stock, once the pantry exists
         -- Before all of these, recipes whose total_time exceeds
         -- config.plan_ahead_time come last: they stay eligible on a weekend
@@ -706,4 +710,5 @@ surface PlanningBoard {
 ------------------------------------------------------------
 -- Open Questions
 ------------------------------------------------------------
-open question "StartSession accepts any dates, including past dates and dates another finalized or abandoned session already planned; OneDinnerPerDay only fails later at AcceptProposal. Should StartSession refuse such dates up front?"
+open question "StartSession accepts past dates. Should it refuse them up front?"
+open question "LogPlannedMeal logs one dinner per date. When a finalized plan was closed and a later plan finalized a dinner for the same date, which plan's dinner should become the log entry? Today the first session the job happens to read wins."

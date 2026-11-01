@@ -82,6 +82,14 @@ describe("SqliteMealLogRepository", () => {
     expect(await meal.listSince(planDate("2026-12-01"))).toEqual([]);
   });
 
+  it("orders the entries by date first and by id only within one day", async () => {
+    const { meal } = fresh();
+    await meal.save(entry("a", WED));
+    await meal.save(entry("z", MON));
+    await meal.save(entry("m", MON));
+    expect((await meal.listSince(MON)).map((e) => e.id)).toEqual(["m", "z", "a"]);
+  });
+
   it("forgets a removed entry but remembers that its planned date was logged", async () => {
     const { meal } = fresh();
     await meal.save(entry("a", MON));
