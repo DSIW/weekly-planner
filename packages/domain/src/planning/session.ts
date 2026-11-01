@@ -59,6 +59,8 @@ export const openDays = (s: PlanningSession): PlanDay[] => s.days.filter((d) => 
 export const plannedDays = (s: PlanningSession): PlanDay[] => s.days.filter((d) => d.status === "planned");
 
 /** The day the deck is currently filling: the earliest day that is still open. */
+export const hasPendingProposal = (s: PlanningSession): boolean => s.proposals.some((p) => p.status === "pending");
+
 export const nextOpenDay = (s: PlanningSession): PlanDay | undefined => openDays(s)[0];
 
 const plannedRecipeIds = (s: PlanningSession): Set<RecipeId> =>
@@ -235,6 +237,7 @@ export function markLeftoverDay(s: PlanningSession, cmd: { member: MemberId; dat
   const day = dayOn(s, cmd.date);
   if (!day) return reject("unknown_day");
   if (day.status !== "open") return reject("day_not_open");
+  if (s.proposals.some((p) => p.date === cmd.date && p.status === "pending")) return reject("proposal_already_pending");
   return done(withDay(s, cmd.date, { date: cmd.date, status: "leftovers" }), {
     type: "DayMarkedLeftovers",
     sessionId: s.id,
@@ -248,6 +251,7 @@ export function reopenDay(s: PlanningSession, cmd: { member: MemberId; date: Pla
   const day = dayOn(s, cmd.date);
   if (!day) return reject("unknown_day");
   if (day.status === "open") return reject("day_already_open");
+  if (hasPendingProposal(s)) return reject("proposal_already_pending");
   return done(withDay(s, cmd.date, openOn(cmd.date)), { type: "DayReopened", sessionId: s.id, date: cmd.date });
 }
 
@@ -286,6 +290,7 @@ export function movePlannedDay(
   if (!from || !to) return reject("unknown_day");
   if (from.status !== "planned" || !from.recipe) return reject("day_not_planned");
   if (to.status !== "open") return reject("target_not_open");
+  if (hasPendingProposal(s)) return reject("proposal_already_pending");
   if (cmd.dateTakenElsewhere) return reject("date_already_taken");
   if (!fitsDate(from.recipe, to.date, config)) return reject("too_long_for_weekday");
   const moved = withDay(withDay(s, to.date, plannedWith(to.date, from.recipe)), from.date, openOn(from.date));

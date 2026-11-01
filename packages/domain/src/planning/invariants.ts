@@ -29,5 +29,10 @@ export function invariantViolations(
       }
     }
   }
+  for (const s of sessions) {
+    if (s.proposals.filter((p) => p.status === "pending").length > 1) {
+      out.push(`OnePendingProposalPerSession: session ${s.id} has several pending proposals`);
+    }
+  }
   return out;
 }

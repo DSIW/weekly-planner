@@ -31,6 +31,10 @@ const noSessions = {
   getDeck: { execute: async () => null },
   passSuggestion: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   getRecipePhoto: { execute: async () => null },
+  markLeftoverDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  reopenDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  swapPlannedDays: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  movePlannedDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   planAheadMinutes: 360,
   subscribe: () => () => {},
 };

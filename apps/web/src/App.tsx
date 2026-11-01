@@ -11,11 +11,15 @@ import {
   login,
   LoginFailed,
   logout,
+  markLeftovers,
+  moveDay,
   passRecipe,
   proposeRecipe,
   refreshRecipes,
+  reopenDay,
   SessionFailed,
   startSession,
+  swapDays,
   vetoProposal,
   type LoginError,
   type PlanSession,
@@ -23,6 +27,7 @@ import {
 } from "./api";
 import { LoginForm } from "./LoginForm";
 import { PlanBoard } from "./PlanBoard";
+import type { Drop } from "./plan-moves";
 import { ProposalCard } from "./ProposalCard";
 import { RecipePicker } from "./RecipePicker";
 import { StartSessionForm } from "./StartSessionForm";
@@ -34,6 +39,10 @@ const SESSION_MESSAGES: Record<SessionError, string> = {
   proposal_already_pending: "Der andere hat gerade etwas vorgeschlagen. Du kannst darüber entscheiden.",
   proposal_not_pending: "Darüber ist schon entschieden.",
   not_next_open_day: "Es ist schon ein anderer Tag dran.",
+  too_long_for_weekday: "Das Rezept ist für einen Wochentag zu lang.",
+  day_not_planned: "Der Tag hat sich gerade geändert.",
+  day_already_open: "Der Tag hat sich gerade geändert.",
+  target_not_open: "Der Tag hat sich gerade geändert.",
   date_already_taken: "An diesem Tag ist schon ein Essen geplant.",
   unavailable: "Das hat nicht geklappt. Bitte später noch einmal versuchen.",
 };
@@ -140,6 +149,19 @@ function Planning({ meId }: { meId: string }) {
   const current = useQuery({ queryKey: ["session"], queryFn: fetchCurrentSession });
   const start = useMutation({ mutationFn: startSession, onSettled: refetch });
   const close = useMutation({ mutationFn: closeSession, onSettled: refetch });
+  const shape = useMutation({
+    mutationFn: (
+      change: { sessionId: string } & ({ kind: "leftovers"; date: string } | { kind: "reopen"; date: string } | Drop),
+    ) =>
+      change.kind === "leftovers"
+        ? markLeftovers(change.sessionId, change.date)
+        : change.kind === "reopen"
+          ? reopenDay(change.sessionId, change.date)
+          : change.kind === "swap"
+            ? swapDays(change.sessionId, change.a, change.b)
+            : moveDay(change.sessionId, change.from, change.to),
+    onSettled: refetch,
+  });
 
   if (current.isPending) return <p className="muted">Lädt …</p>;
   if (current.isError) return <p className="error">Die Planung konnte nicht geladen werden.</p>;
@@ -150,8 +172,11 @@ function Planning({ meId }: { meId: string }) {
         <PlanBoard
           session={session}
           onClose={() => close.mutate(session.id)}
-          pending={close.isPending}
-          error={close.isError ? SESSION_MESSAGES.unavailable : null}
+          onLeftovers={(date) => shape.mutate({ sessionId: session.id, kind: "leftovers", date })}
+          onReopen={(date) => shape.mutate({ sessionId: session.id, kind: "reopen", date })}
+          onDrop={(drop) => shape.mutate({ sessionId: session.id, ...drop })}
+          pending={close.isPending || shape.isPending}
+          error={close.isError ? SESSION_MESSAGES.unavailable : messageFor(shape.error)}
         />
         {session.status === "open" && <Proposing session={session} meId={meId} refetch={refetch} />}
       </>

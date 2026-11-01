@@ -7,12 +7,16 @@ import {
   GetCurrentSession,
   GetDeck,
   GetRecipePhoto,
+  MarkLeftoverDay,
+  MovePlannedDay,
   PassSuggestion,
   SuggestRecipes,
   ListEligibleRecipes,
   ProposeRecipe,
   RefreshRecipes,
+  ReopenDay,
   StartSession,
+  SwapPlannedDays,
   VetoProposal,
   type RecipeCatalog,
 } from "@weekly-planner/application";
@@ -127,6 +131,10 @@ beforeEach(async () => {
     getDeck: new GetDeck({ sessions: deps.sessions, experience: noMeals, suggest }),
     passSuggestion: new PassSuggestion({ ...deps, catalog }),
     getRecipePhoto: new GetRecipePhoto(catalog),
+    markLeftoverDay: new MarkLeftoverDay(deps),
+    reopenDay: new ReopenDay(deps),
+    swapPlannedDays: new SwapPlannedDays(deps, defaultPlanningConfig),
+    movePlannedDay: new MovePlannedDay({ ...deps, calendar }, defaultPlanningConfig),
     planAheadMinutes: defaultPlanningConfig.planAheadMinutes,
     log: (line) => logged.push(line),
     subscribe: (l) => hub.subscribe(l),
@@ -521,5 +529,123 @@ describe("the ranked deck over HTTP", () => {
     expect((await call("GET", "/recipes/2/photo", max)).statusCode).toBe(404);
     expect((await call("GET", "/recipes/abc/photo", max)).statusCode).toBe(400);
     expect((await call("GET", "/recipes/1.5/photo", max)).statusCode).toBe(400);
+  });
+});
+
+describe("shaping the plan over HTTP", () => {
+  const agree = async (id: string, date: string, recipe: Recipe) => {
+    const proposed = await propose(max, id, date, recipe);
+    const proposal = pending(proposed.json().session)[0]!;
+    return (await decide(ac, id, proposal.id, "accept")).json().session;
+  };
+  const day = (session: { days: { date: string }[] }, date: string) => session.days.find((d) => d.date === date);
+  const leftovers = (as: typeof max, id: string, date: string) =>
+    call("POST", `/sessions/${id}/days/${date}/leftovers`, as);
+  const reopen = (as: typeof max, id: string, date: string) => call("POST", `/sessions/${id}/days/${date}/reopen`, as);
+  const swap = (as: typeof max, id: string, a: string, b: string) => call("POST", `/sessions/${id}/swap`, as, { a, b });
+  const move = (as: typeof max, id: string, from: string, to: string) =>
+    call("POST", `/sessions/${id}/move`, as, { from, to });
+
+  it("needs a signed-in member for every route", async () => {
+    for (const url of [
+      "/sessions/x/days/2026-11-02/leftovers",
+      "/sessions/x/days/2026-11-02/reopen",
+      "/sessions/x/swap",
+      "/sessions/x/move",
+    ]) {
+      expect((await call("POST", url)).statusCode, url).toBe(401);
+    }
+  });
+
+  it("marks an open day as leftovers and reopens it, for both members", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    const marked = await leftovers(max, session.id, MON);
+    expect(marked.statusCode).toBe(200);
+    expect(day(marked.json().session, MON)).toMatchObject({ status: "leftovers" });
+    expect(day(await sessionOf(ac), MON)).toMatchObject({ status: "leftovers" });
+    expect((await eligible(ac, session.id)).date).toBe(TUE);
+    const back = await reopen(ac, session.id, MON);
+    expect(day(back.json().session, MON)).toMatchObject({ status: "open" });
+    expect((await eligible(max, session.id)).date).toBe(MON);
+  });
+
+  it("reopens an agreed day: the dish is free again and the day is offered again", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    await agree(session.id, MON, pasta);
+    const back = await reopen(max, session.id, MON);
+    expect(day(back.json().session, MON)).toEqual({ date: MON, status: "open" });
+    expect((await eligible(max, session.id)).recipes.map((r: { name: string }) => r.name)).toContain("Pasta");
+  });
+
+  it("refuses to change a day while a proposal waits for an answer", async () => {
+    const { session } = (await start(max, [MON, TUE, SAT])).json();
+    await agree(session.id, MON, pasta);
+    await propose(max, session.id, TUE, risotto);
+    for (const res of [
+      await leftovers(ac, session.id, TUE),
+      await reopen(ac, session.id, MON),
+      await move(ac, session.id, MON, SAT),
+    ]) {
+      expect(res.statusCode).toBe(409);
+      expect(res.json()).toEqual({ error: "proposal_already_pending" });
+    }
+    expect((await leftovers(ac, session.id, SAT)).statusCode).toBe(200);
+  });
+
+  it("swaps two agreed dishes and refuses a long one on a weekday, with the reason", async () => {
+    const { session } = (await start(max, [MON, SAT, SUN])).json();
+    await agree(session.id, MON, pasta);
+    await agree(session.id, SAT, braten);
+    const refused = await swap(ac, session.id, MON, SAT);
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json()).toEqual({ error: "too_long_for_weekday" });
+    const sun = await agree(session.id, SUN, curry);
+    expect(day(sun, SUN)).toMatchObject({ status: "planned" });
+    const swapped = await swap(ac, session.id, SAT, SUN);
+    expect(swapped.statusCode).toBe(200);
+    expect(day(swapped.json().session, SAT)).toMatchObject({ recipe: { name: "Curry" } });
+    expect(day(swapped.json().session, SUN)).toMatchObject({ recipe: { name: "Schmorbraten" } });
+  });
+
+  it("moves an agreed dish onto an open day and frees the old one", async () => {
+    const { session } = (await start(max, [MON, SAT, SUN])).json();
+    await agree(session.id, MON, pasta);
+    await agree(session.id, SAT, braten);
+    expect((await move(max, session.id, SAT, MON)).statusCode).toBe(409); // MON is agreed, not open
+    const moved = await move(max, session.id, SAT, SUN);
+    expect(moved.statusCode).toBe(200);
+    expect(day(moved.json().session, SUN)).toMatchObject({ status: "planned", recipe: { name: "Schmorbraten" } });
+    expect(day(moved.json().session, SAT)).toEqual({ date: SAT, status: "open" });
+    const weekend = await move(max, session.id, MON, SAT);
+    expect(weekend.statusCode).toBe(200); // pasta may go to a weekend day
+  });
+
+  it("refuses a long dish on an open weekday with the reason", async () => {
+    const { session } = (await start(max, [MON, SAT, SUN])).json();
+    await agree(session.id, MON, pasta);
+    await agree(session.id, SAT, braten);
+    await reopen(max, session.id, MON);
+    const refused = await move(max, session.id, SAT, MON);
+    expect(refused.statusCode).toBe(422);
+    expect(refused.json()).toEqual({ error: "too_long_for_weekday" });
+  });
+
+  it("answers 400, 404 and 409 for malformed or impossible requests", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    expect((await leftovers(max, session.id, "tomorrow")).statusCode).toBe(400);
+    expect((await call("POST", `/sessions/${session.id}/swap`, max, { a: MON })).statusCode).toBe(400);
+    expect((await call("POST", `/sessions/${session.id}/move`, max, { from: MON, to: "x" })).statusCode).toBe(400);
+    expect((await leftovers(max, "nope", MON)).statusCode).toBe(404);
+    expect((await leftovers(max, session.id, "2026-12-24")).statusCode).toBe(404);
+    expect((await reopen(max, session.id, MON)).json()).toEqual({ error: "day_already_open" });
+    expect((await swap(max, session.id, MON, MON)).json()).toEqual({ error: "same_day" });
+    expect((await swap(max, session.id, MON, TUE)).json()).toEqual({ error: "day_not_planned" });
+    expect((await move(max, session.id, MON, TUE)).json()).toEqual({ error: "day_not_planned" });
+  });
+
+  it("cannot be done once the session was discarded", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    await call("POST", `/sessions/${session.id}/close`, max);
+    expect((await leftovers(max, session.id, MON)).json()).toEqual({ error: "session_not_open" });
   });
 });

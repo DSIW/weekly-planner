@@ -7,12 +7,16 @@ import type {
   GetCurrentSession,
   GetDeck,
   GetRecipePhoto,
+  MarkLeftoverDay,
+  MovePlannedDay,
   PassSuggestion,
   ListEligibleRecipes,
   ProposeRecipe,
   RefreshRecipes,
+  ReopenDay,
   SignIn,
   StartSession,
+  SwapPlannedDays,
   VetoProposal,
 } from "@weekly-planner/application";
 import {
@@ -43,6 +47,10 @@ interface AppOptions {
   readonly refreshRecipes: Pick<RefreshRecipes, "execute">;
   readonly getDeck: Pick<GetDeck, "execute">;
   readonly passSuggestion: Pick<PassSuggestion, "execute">;
+  readonly markLeftoverDay: Pick<MarkLeftoverDay, "execute">;
+  readonly reopenDay: Pick<ReopenDay, "execute">;
+  readonly swapPlannedDays: Pick<SwapPlannedDays, "execute">;
+  readonly movePlannedDay: Pick<MovePlannedDay, "execute">;
   readonly getRecipePhoto: Pick<GetRecipePhoto, "execute">;
   /** Recipes longer than this need a day's lead time; the phones flag them. */
   readonly planAheadMinutes: number;
@@ -97,6 +105,8 @@ const passBody = z.object({ recipeId: z.number().int() });
 const recipeParam = z.object({ id: z.coerce.number().int() });
 
 const proposalBody = z.object({ date: z.string(), recipeId: z.number().int() });
+const swapBody = z.object({ a: z.string(), b: z.string() });
+const moveBody = z.object({ from: z.string(), to: z.string() });
 
 const COMMAND_REJECTIONS: Record<string, number> = {
   session_already_open: 409,
@@ -109,6 +119,10 @@ const COMMAND_REJECTIONS: Record<string, number> = {
   not_next_open_day: 409,
   proposal_already_pending: 409,
   proposal_not_pending: 409,
+  day_not_planned: 409,
+  day_already_open: 409,
+  target_not_open: 409,
+  same_day: 422,
   session_not_open: 409,
   day_not_open: 409,
   date_already_taken: 409,
@@ -289,6 +303,71 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       },
     );
   }
+
+  for (const [verb, useCase] of [
+    ["leftovers", options.markLeftoverDay],
+    ["reopen", options.reopenDay],
+  ] as const) {
+    app.post<{ Params: { id: string; date: string } }>(`${api}/sessions/:id/days/:date/${verb}`, async (req, reply) => {
+      const member = requireMember(req, reply);
+      if (!member) return reply;
+      let date: ReturnType<typeof planDate>;
+      try {
+        date = planDate(req.params.date);
+      } catch {
+        return reply.code(400).send({ error: "invalid_request" });
+      }
+      const result = await useCase.execute({
+        member: memberId(member.id),
+        sessionId: sessionId(req.params.id),
+        date,
+      });
+      if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+      return { session: sessionView(result.value, options.planAheadMinutes) };
+    });
+  }
+
+  app.post<{ Params: { id: string } }>(`${api}/sessions/:id/swap`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = swapBody.safeParse(req.body);
+    let dates: [ReturnType<typeof planDate>, ReturnType<typeof planDate>];
+    try {
+      if (!body.success) throw new Error("invalid");
+      dates = [planDate(body.data.a), planDate(body.data.b)];
+    } catch {
+      return reply.code(400).send({ error: "invalid_request" });
+    }
+    const result = await options.swapPlannedDays.execute({
+      member: memberId(member.id),
+      sessionId: sessionId(req.params.id),
+      a: dates[0],
+      b: dates[1],
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { session: sessionView(result.value, options.planAheadMinutes) };
+  });
+
+  app.post<{ Params: { id: string } }>(`${api}/sessions/:id/move`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = moveBody.safeParse(req.body);
+    let dates: [ReturnType<typeof planDate>, ReturnType<typeof planDate>];
+    try {
+      if (!body.success) throw new Error("invalid");
+      dates = [planDate(body.data.from), planDate(body.data.to)];
+    } catch {
+      return reply.code(400).send({ error: "invalid_request" });
+    }
+    const result = await options.movePlannedDay.execute({
+      member: memberId(member.id),
+      sessionId: sessionId(req.params.id),
+      from: dates[0],
+      to: dates[1],
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { session: sessionView(result.value, options.planAheadMinutes) };
+  });
 
   app.get<{ Params: { id: string } }>(`${api}/sessions/:id/deck`, async (req, reply) => {
     if (!requireMember(req, reply)) return reply;

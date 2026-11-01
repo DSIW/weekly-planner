@@ -316,6 +316,28 @@ try {
     assert.ok(!names(list).includes(pending.recipe.name), "the vetoed dish is gone from the list");
   });
 
+  await step("leftovers, reopening and moving shape the plan, and the other member sees each change", async () => {
+    const states = (session) => session.days.map((d) => [d.date, d.status, d.recipe?.name]);
+    assert.deepEqual(states(await as("dsiw", () => web.markLeftovers(sessionId, D2))), [
+      [D1, "planned", "Pasta"],
+      [D2, "leftovers", undefined],
+    ]);
+    assert.equal((await as("ac", () => web.fetchCurrentSession())).days[1].status, "leftovers");
+    assert.equal((await as("ac", () => web.reopenDay(sessionId, D2))).days[1].status, "open");
+    assert.deepEqual(states(await as("ac", () => web.moveDay(sessionId, D1, D2))), [
+      [D1, "open", undefined],
+      [D2, "planned", "Pasta"],
+    ]);
+    assert.deepEqual(states(await as("dsiw", () => web.moveDay(sessionId, D2, D1))), [
+      [D1, "planned", "Pasta"],
+      [D2, "open", undefined],
+    ]);
+    const swap = await as("dsiw", () => web.swapDays(sessionId, D1, D2).catch((e) => e));
+    assert.equal(swap.reason, "day_not_planned", "only agreed days can be swapped");
+    const again = await as("dsiw", () => web.reopenDay(sessionId, D2).catch((e) => e));
+    assert.equal(again.reason, "day_already_open");
+  });
+
   await step("recipes can be refreshed from KitchenOwl", async () => {
     await as("dsiw", () => web.refreshRecipes());
   });
@@ -349,6 +371,8 @@ try {
     assert.match(serverLog, /-> 403 own_proposal/);
     assert.match(serverLog, /POST \/plan\/api\/sessions\/[^ ]+\/passes -> 409 already_passed/);
     assert.match(serverLog, /-> 409 proposal_already_pending/);
+    assert.match(serverLog, /-> 409 day_not_planned/);
+    assert.match(serverLog, /-> 409 day_already_open/);
     assert.doesNotMatch(serverLog, /nope|"pw"|service-token/);
   });
 

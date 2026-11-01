@@ -88,6 +88,10 @@ const KNOWN_REASONS = [
   "proposal_not_pending",
   "not_next_open_day",
   "date_already_taken",
+  "too_long_for_weekday",
+  "day_not_planned",
+  "day_already_open",
+  "target_not_open",
 ] as const;
 export type SessionError = (typeof KNOWN_REASONS)[number] | "unavailable";
 
@@ -123,6 +127,14 @@ async function sessionCommand(path: string, body?: unknown): Promise<PlanSession
 
 export const startSession = (dates: string[]) => sessionCommand("/sessions", { dates });
 export const closeSession = (id: string) => sessionCommand(`/sessions/${id}/close`);
+export const markLeftovers = (sessionId: string, date: string) =>
+  sessionCommand(`/sessions/${sessionId}/days/${date}/leftovers`);
+export const reopenDay = (sessionId: string, date: string) =>
+  sessionCommand(`/sessions/${sessionId}/days/${date}/reopen`);
+export const swapDays = (sessionId: string, a: string, b: string) =>
+  sessionCommand(`/sessions/${sessionId}/swap`, { a, b });
+export const moveDay = (sessionId: string, from: string, to: string) =>
+  sessionCommand(`/sessions/${sessionId}/move`, { from, to });
 export const proposeRecipe = (sessionId: string, date: string, recipeId: number) =>
   sessionCommand(`/sessions/${sessionId}/proposals`, { date, recipeId });
 export const acceptProposal = (sessionId: string, proposalId: string) =>

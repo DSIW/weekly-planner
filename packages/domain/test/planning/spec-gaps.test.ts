@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  acceptProposal,
   closeSession,
   eligibleRecipes,
+  invariantViolations,
   isNewRecipe,
   needsPlanningAhead,
   suggestRecipes,
@@ -10,6 +10,7 @@ import {
   markLeftoverDay,
   movePlannedDay,
   reopenDay,
+  proposalId,
   sessionId,
   startSession,
   type Recipe,
@@ -42,20 +43,48 @@ describe("rule MovePlannedDay across sessions", () => {
   });
 });
 
-describe("rule AcceptProposal with an older pending proposal", () => {
-  it("is rejected when the same recipe was planned on another day meanwhile", () => {
-    const r = aRecipe();
-    const first = withProposal(aSession(), MON, r, AC); // MON: pending
-    const left = must(markLeftoverDay(first.session, { member: AC, date: MON })).state;
-    const second = withProposal(left, TUE, r, AC); // TUE: pending, same recipe
-    const planned = must(
-      acceptProposal(second.session, { member: ME, proposalId: second.id, dateTakenElsewhere: false }),
-    ).state;
-    const reopened = must(reopenDay(planned, { member: AC, date: MON })).state;
-    expect(acceptProposal(reopened, { member: ME, proposalId: first.id, dateTakenElsewhere: false })).toEqual({
-      ok: false,
-      reason: "recipe_already_planned",
-    });
+// Added with slice S3: a day never changes under a vote, so a session holds at most one pending proposal. This
+// also makes the older "same recipe planned elsewhere while a proposal waits" scenario unreachable.
+describe("day operations while a proposal is pending", () => {
+  const voting = () => withProposal(plan(aSession([MON, TUE, SAT]), MON, aRecipe()), TUE, aRecipe(), AC);
+  const pendingRejection = { ok: false, reason: "proposal_already_pending" };
+
+  it("MarkLeftoverDay refuses the day that holds the proposal, but not another open day", () => {
+    const { session } = voting();
+    expect(markLeftoverDay(session, { member: ME, date: TUE })).toEqual(pendingRejection);
+    expect(markLeftoverDay(session, { member: ME, date: SAT }).ok).toBe(true);
+  });
+
+  it("ReopenDay refuses planned and leftover days alike", () => {
+    const { session } = voting();
+    expect(reopenDay(session, { member: ME, date: MON })).toEqual(pendingRejection);
+    const left = must(markLeftoverDay(session, { member: ME, date: SAT })).state;
+    expect(reopenDay(left, { member: ME, date: SAT })).toEqual(pendingRejection);
+  });
+
+  it("MovePlannedDay refuses to vacate a day while a proposal waits", () => {
+    const { session } = voting();
+    expect(movePlannedDay(session, { member: ME, from: MON, to: SAT }, config)).toEqual(pendingRejection);
+  });
+
+  it("all of them work once the proposal is decided", () => {
+    const { session, id } = voting();
+    const decided = must(vetoProposal(session, { member: ME, proposalId: id })).state;
+    expect(reopenDay(decided, { member: ME, date: MON }).ok).toBe(true);
+    expect(movePlannedDay(decided, { member: ME, from: MON, to: SAT }, config).ok).toBe(true);
+    expect(markLeftoverDay(decided, { member: ME, date: TUE }).ok).toBe(true);
+  });
+
+  it("invariantViolations reports a second pending proposal", () => {
+    const { session } = voting();
+    const pending = session.proposals.find((p) => p.status === "pending");
+    if (!pending) throw new Error("setup failed: no pending proposal");
+    const second = {
+      ...session,
+      proposals: [...session.proposals, { ...pending, id: proposalId("extra"), date: SAT }],
+    };
+    expect(invariantViolations([second]).some((v) => v.startsWith("OnePendingProposalPerSession"))).toBe(true);
+    expect(invariantViolations([session])).toEqual([]);
   });
 });
 
