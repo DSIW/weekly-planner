@@ -24,7 +24,8 @@
     "dev:web": "npm run dev -w @weekly-planner/web",
     "recipes:check": "npm run recipes:check -w @weekly-planner/server",
     "prepare": "husky",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "staging:check": "node scripts/staging-check.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
