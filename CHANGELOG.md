@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.17](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.16...weekly-planner-v0.1.17) (2026-11-01)
+
+
+### Features
+
+* dinners chosen in KitchenOwl take their date, links open recipes and the shopping list in KitchenOwl ([85659dc](https://github.com/DSIW/weekly-planner/commit/85659dc1f963ae8ae058d8f14e20619d4203a46a))
+
 ## [0.1.16](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.15...weekly-planner-v0.1.16) (2026-11-01)
 
 
