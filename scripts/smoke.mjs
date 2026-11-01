@@ -23,14 +23,34 @@ const listen = (server) =>
 
 // Every recipe carries the "proven" tag, as the real ones carry either that or "new".
 const tags = (...names) => [...names, "✅ Erprobt"].map((name) => ({ name }));
+const item = (id, name, description) => ({ id, name, description, optional: false });
 const recipes = [
-  { id: 1, name: "Pasta", time: 30, photo: "pasta.jpg", tags: tags("🍽️ Hauptgericht", "🥬 Vegetarisch", "🍝 Pasta") },
-  { id: 2, name: "Curry", time: 25, tags: tags("🍽️ Hauptgericht", "🌱 Vegan", "🍚 Reis") },
+  {
+    id: 1,
+    name: "Pasta",
+    time: 30,
+    photo: "pasta.jpg",
+    yields: 2,
+    items: [item(101, "Zwiebel", "1 Stück, gehackt"), item(102, "Mehl", "200 g")],
+    tags: tags("🍽️ Hauptgericht", "🥬 Vegetarisch", "🍝 Pasta"),
+  },
+  {
+    id: 2,
+    name: "Curry",
+    time: 25,
+    yields: 4,
+    items: [item(101, "Zwiebel", "2 Stück"), item(102, "Mehl", "0.1 kg"), item(103, "Salz", "etwas")],
+    tags: tags("🍽️ Hauptgericht", "🌱 Vegan", "🍚 Reis"),
+  },
   { id: 3, name: "Risotto", time: 40, tags: tags("🍽️ Hauptgericht", "🥬 Vegetarisch", "🍚 Reis") },
   { id: 4, name: "Schmorbraten", time: 120, tags: tags("🍽️ Hauptgericht", "🥩 Fleisch") },
   { id: 5, name: "Tiramisu", time: 30, tags: tags("🍦 Dessert", "🥬 Vegetarisch") },
   { id: 6, name: "Linsensuppe", time: 35, tags: tags("🍽️ Hauptgericht", "🌱 Vegan") },
 ];
+
+// What reached the fake KitchenOwl's write endpoints, and how it should behave on the next request.
+const written = { planner: [], list: [] };
+const behaviour = { plannerStatus: 200, listHangs: false };
 
 /** Just enough of KitchenOwl: sign-in with the password "pw", who is who, the household and its recipes. */
 const kitchenowl = http.createServer((req, res) => {
@@ -54,6 +74,16 @@ const kitchenowl = http.createServer((req, res) => {
     }
     if (req.url === "/api/household/2") return send(200, { member: [{ id: 2 }, { id: 3 }] });
     if (req.url === "/api/household/2/recipe") return send(200, recipes);
+    if (req.method === "POST" && req.url === "/api/household/2/planner/recipe") {
+      if (behaviour.plannerStatus !== 200) return send(behaviour.plannerStatus, {});
+      written.planner.push(JSON.parse(body));
+      return send(200, {});
+    }
+    if (req.method === "POST" && req.url === "/api/shoppinglist/2/recipeitems") {
+      written.list.push(JSON.parse(body));
+      // A hanging answer stands for the process dying between sending a request and hearing back.
+      return behaviour.listHangs ? undefined : send(200, {});
+    }
     if (req.url === "/api/upload/pasta.jpg") {
       if (req.headers.authorization !== "Bearer service-token") return send(401, {});
       res.setHeader("content-type", "image/jpeg");
@@ -99,6 +129,13 @@ async function startServer(kitchenowlPort) {
     await new Promise((r) => setTimeout(r, 100));
   }
   throw new Error(`server did not start:\n${serverLog}`);
+}
+
+/** Kills the server without letting it finish anything, the way a crash would. */
+async function crashServer() {
+  const exited = new Promise((resolve) => proc.once("exit", resolve));
+  proc.kill("SIGKILL");
+  await exited;
 }
 
 async function stopServer() {
@@ -352,11 +389,134 @@ try {
     assert.equal((await as("ac", () => web.fetchMe())).name, "AC");
   });
 
+  let nextSession = "";
   await step("the other member discards it, then a new one can start", async () => {
     const closed = await as("ac", () => web.closeSession(sessionId));
     assert.equal(closed.status, "closed");
     assert.equal(await as("dsiw", () => web.fetchCurrentSession()), null);
-    assert.ok(await as("dsiw", () => web.startSession([D3, D4])));
+    nextSession = (await as("dsiw", () => web.startSession([D3, D4]))).id;
+    assert.ok(nextSession);
+  });
+
+  // S4a: finalize into KitchenOwl.
+  const agreeDay = async (date, recipeId) => {
+    const proposed = await as("dsiw", () => web.proposeRecipe(nextSession, date, recipeId));
+    const pending = proposed.proposals.find((p) => p.status === "pending").id;
+    return as("ac", () => web.acceptProposal(nextSession, pending));
+  };
+  await step("finalize needs an agreed day, and writes nothing before the button is pressed", async () => {
+    const none = await as("dsiw", () => web.finalizePlan(nextSession).catch((e) => e));
+    assert.equal(none.reason, "nothing_planned");
+    const noPreview = await as("dsiw", () => web.fetchFinalizePreview(nextSession).catch((e) => e));
+    assert.match(String(noPreview), /HTTP 409/);
+    await agreeDay(D3, 2);
+    await agreeDay(D4, 1);
+    assert.deepEqual(written, { planner: [], list: [] });
+  });
+
+  await step(
+    "the preview is scaled to two portions, summed per ingredient, and flags what it cannot read",
+    async () => {
+      const preview = await as("ac", () => web.fetchFinalizePreview(nextSession));
+      assert.deepEqual(
+        preview.dinners.map((d) => [d.date, d.recipeName]),
+        [
+          [D3, "Curry"],
+          [D4, "Pasta"],
+        ],
+      );
+      assert.deepEqual(
+        preview.items.map((i) => [i.name, i.description, i.needsReview]),
+        [
+          ["Zwiebel", "2 Stück", false],
+          ["Mehl", "250 g", false],
+          ["Salz", "etwas", true],
+        ],
+      );
+    },
+  );
+
+  let finalizedAt = null;
+  await step(
+    "a refused planner entry leaves the plan finalized and the retry finishes without duplicates",
+    async () => {
+      behaviour.plannerStatus = 503;
+      const done = await as("dsiw", () => web.finalizePlan(nextSession));
+      finalizedAt = done;
+      assert.equal(done.status, "finalized");
+      assert.equal(done.export.complete, false);
+      assert.equal(done.export.failure, "refused");
+      assert.deepEqual(written, { planner: [], list: [] });
+      // The other member still sees the unfinished export, and cannot start a plan over it.
+      const seen = await as("ac", () => web.fetchCurrentSession());
+      assert.equal(seen.id, nextSession);
+      assert.equal(seen.export.failure, "refused");
+      behaviour.plannerStatus = 200;
+      const retried = await as("ac", () => web.retryExport(nextSession, false));
+      assert.equal(retried.complete, true);
+      assert.deepEqual(
+        written.planner.map((p) => [p.recipe_id, p.yields]),
+        [
+          [2, 2],
+          [1, 2],
+        ],
+      );
+      assert.equal(written.list.length, 1);
+      assert.deepEqual(written.list[0].items, [
+        { id: 101, name: "Zwiebel", description: "2 Stück", optional: false },
+        { id: 102, name: "Mehl", description: "250 g", optional: false },
+        { id: 103, name: "Salz", description: "etwas", optional: false },
+      ]);
+      assert.equal(await as("dsiw", () => web.fetchCurrentSession()), null, "an exported plan leaves the board");
+      const again = await as("dsiw", () => web.retryExport(nextSession, false));
+      assert.equal(again.complete, true);
+      assert.equal(written.planner.length, 2, "retrying a finished export sends nothing");
+      assert.equal(written.list.length, 1);
+    },
+  );
+
+  await step("finalizing twice is refused", async () => {
+    const twice = await as("ac", () => web.finalizePlan(nextSession).catch((e) => e));
+    assert.equal(twice.reason, "session_not_open");
+    assert.ok(finalizedAt);
+  });
+
+  let crashed = "";
+  await step("a crash while the list is on its way never sends it twice by itself", async () => {
+    await as("dsiw", () => web.startSession([D1, D2]).then((s) => (crashed = s.id)));
+    for (const [date, recipeId] of [
+      [D1, 3],
+      [D2, 1],
+    ]) {
+      const proposed = await as("dsiw", () => web.proposeRecipe(crashed, date, recipeId));
+      const pending = proposed.proposals.find((p) => p.status === "pending").id;
+      await as("ac", () => web.acceptProposal(crashed, pending));
+    }
+    written.planner.length = 0;
+    written.list.length = 0;
+    behaviour.listHangs = true;
+    const inFlight = as("dsiw", () => web.finalizePlan(crashed)).catch(() => undefined);
+    for (let i = 0; i < 100 && written.list.length === 0; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.equal(written.list.length, 1, "the list request reached KitchenOwl");
+    await crashServer();
+    await inFlight;
+    behaviour.listHangs = false;
+    await startServer(kitchenowlPort);
+    const seen = await as("ac", () => web.fetchCurrentSession());
+    assert.equal(seen.id, crashed);
+    assert.equal(seen.export.list.status, "sending");
+    assert.deepEqual(
+      seen.export.days.map((d) => d.status),
+      ["done", "done"],
+    );
+    const refused = await as("ac", () => web.retryExport(crashed, false).catch((e) => e));
+    assert.equal(refused.reason, "step_unconfirmed");
+    assert.equal(written.list.length, 1, "nothing was sent again");
+    assert.equal(written.planner.length, 2);
+    const resent = await as("ac", () => web.retryExport(crashed, true));
+    assert.equal(resent.complete, true);
+    assert.equal(written.list.length, 2, "only the explicit choice sends it again");
+    assert.equal(await as("dsiw", () => web.fetchCurrentSession()), null);
   });
 
   await step("signing out ends the session", async () => {
@@ -373,6 +533,9 @@ try {
     assert.match(serverLog, /-> 409 proposal_already_pending/);
     assert.match(serverLog, /-> 409 day_not_planned/);
     assert.match(serverLog, /-> 409 day_already_open/);
+    assert.match(serverLog, /POST \/plan\/api\/sessions\/[^ ]+\/finalize -> 409 nothing_planned/);
+    assert.match(serverLog, /POST \/plan\/api\/sessions\/[^ ]+\/export\/retry -> 409 step_unconfirmed/);
+    assert.match(serverLog, /POST \/plan\/api\/sessions\/[^ ]+\/finalize -> 409 session_not_open/);
     assert.doesNotMatch(serverLog, /nope|"pw"|service-token/);
   });
 
