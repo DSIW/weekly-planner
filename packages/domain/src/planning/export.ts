@@ -8,12 +8,12 @@ import type { PlanDate } from "./dates.js";
 import type { FinalizedDinner, PlanningEvent } from "./events.js";
 import type { ListItem } from "./shopping.js";
 
-export type StepStatus = "pending" | "sending" | "done";
+type StepStatus = "pending" | "sending" | "done";
 
 /** Why the export stopped: KitchenOwl refused (nothing was written) or gave no answer (unknown). */
 export type ExportFailure = "refused" | "unconfirmed";
 
-export interface ExportDay {
+interface ExportDay {
   readonly date: PlanDate;
   readonly recipeId: RecipeId;
   readonly recipeName: string;

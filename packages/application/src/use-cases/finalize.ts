@@ -30,7 +30,7 @@ import type { EventPublisher, UnitOfWork } from "../ports/services.js";
 import { changeSession, type SessionDeps } from "./support.js";
 
 /** What finalizing shows and sends: the consolidated list and the days it comes from. */
-export interface FinalizePreview {
+interface FinalizePreview {
   readonly dinners: readonly { date: PlanDate; recipeName: string }[];
   readonly items: readonly ListItem[];
 }

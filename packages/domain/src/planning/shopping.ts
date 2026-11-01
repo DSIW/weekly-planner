@@ -3,7 +3,7 @@
 // cannot read is passed on unchanged and flagged for a person to look at.
 import type { Ingredient } from "../catalog/recipe.js";
 
-export interface ScaledAmount {
+interface ScaledAmount {
   /** What goes on the list: amount and unit without any note, or the original text when it could not be read. */
   readonly text: string;
   /** Null when there is no amount (empty description) or it could not be read. */
@@ -59,7 +59,7 @@ export function scaleDescription(description: string, factor: number): ScaledAmo
 }
 
 /** What one recipe contributes to the list. */
-export interface ConsolidationInput {
+interface ConsolidationInput {
   readonly recipeName: string;
   /** Portions the recipe's amounts are written for. */
   readonly yields: number;
