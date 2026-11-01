@@ -4,6 +4,7 @@ import {
   planDate,
   recipeId,
   type CatalogEntry,
+  type FinalizeExport,
   type MealLogEntry,
   type MealLogEntryId,
   type PlanDate,
@@ -18,12 +19,16 @@ import type {
   DinnerCalendar,
   DomainEvent,
   EventPublisher,
+  ExportRepository,
   IdGenerator,
   MealLogRepository,
   Notifier,
+  PlannerEntry,
+  PlannerGateway,
   RecipeCatalog,
   RecipeExperienceRepository,
   SessionRepository,
+  ShoppingListItem,
   UnitOfWork,
 } from "../../src/index.js";
 
@@ -40,6 +45,35 @@ export class InMemorySessions implements SessionRepository {
   }
   async findOpen() {
     return [...this.byId.values()].find((s) => s.status === "open") ?? null;
+  }
+}
+
+export class InMemoryExports implements ExportRepository {
+  readonly bySession = new Map<SessionId, FinalizeExport>();
+  async get(id: SessionId) {
+    return this.bySession.get(id) ?? null;
+  }
+  async save(e: FinalizeExport) {
+    this.bySession.set(e.sessionId, e);
+  }
+}
+
+/** Records what would reach KitchenOwl. `failWith` makes the next requests throw, once per queued error. */
+export class FakePlanner implements PlannerGateway {
+  readonly entries: PlannerEntry[] = [];
+  readonly batches: (readonly ShoppingListItem[])[] = [];
+  readonly failures: Error[] = [];
+  private maybeFail() {
+    const error = this.failures.shift();
+    if (error) throw error;
+  }
+  async addPlannerEntry(entry: PlannerEntry) {
+    this.maybeFail();
+    this.entries.push(entry);
+  }
+  async addShoppingListItems(items: readonly ShoppingListItem[]) {
+    this.maybeFail();
+    this.batches.push(items);
   }
 }
 

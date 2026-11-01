@@ -35,7 +35,7 @@ describe("a planning session through the use cases", () => {
     const planned = await agree(h, s, MON);
     expect(planned.days[0]).toMatchObject({ status: "planned", recipe: { id: r1.id } });
     const finalized = ok(await h.finalizePlan.execute({ member: ME, sessionId: s.id }));
-    expect(finalized.status).toBe("finalized");
+    expect(finalized.session.status).toBe("finalized");
     ok(await h.closeSession.execute({ member: AC, sessionId: s.id }));
     expect((await h.sessions.get(s.id))?.status).toBe("closed");
     expect(h.events.types).toEqual([
@@ -43,6 +43,8 @@ describe("a planning session through the use cases", () => {
       "RecipeProposed",
       "ProposalAccepted",
       "PlanFinalized",
+      "ExportProgressed",
+      "ExportProgressed",
       "SessionClosed",
     ]);
   });

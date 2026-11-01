@@ -1,4 +1,5 @@
 import type {
+  FinalizeExport,
   MealLogEntry,
   MealLogEntryId,
   PlanDate,
@@ -51,4 +52,10 @@ export interface RecipeExperienceRepository {
   get(recipeId: RecipeId): Promise<RecipeExperience | null>;
   save(experience: RecipeExperience): Promise<void>;
   allRecipeIds(): Promise<ReadonlySet<RecipeId>>;
+}
+
+/** Port: how far the export of each finalized plan to KitchenOwl has come. */
+export interface ExportRepository {
+  get(sessionId: SessionId): Promise<FinalizeExport | null>;
+  save(exported: FinalizeExport): Promise<void>;
 }

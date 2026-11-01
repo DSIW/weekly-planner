@@ -5,8 +5,11 @@ import {
   CloseSession,
   ConfirmCooked,
   CorrectLoggedMeal,
+  ExportFinalizedPlan,
   FinalizePlan,
   GetCurrentSession,
+  GetExport,
+  GetFinalizePreview,
   GetDeck,
   GetRecipePhoto,
   ListEligibleRecipes,
@@ -19,6 +22,7 @@ import {
   RefreshRecipes,
   RemindToFinalize,
   ReopenDay,
+  RetryExport,
   StartSession,
   SuggestRecipes,
   SwapPlannedDays,
@@ -26,7 +30,9 @@ import {
 } from "../src/index.js";
 import {
   FakeClock,
+  FakePlanner,
   InMemoryCatalog,
+  InMemoryExports,
   InMemoryExperience,
   InMemoryMealLog,
   InMemorySessions,
@@ -46,6 +52,8 @@ export function household(recipes: Recipe[] = []) {
   const catalog = new InMemoryCatalog(recipes.map((recipe): CatalogEntry => ({ kind: "ready", recipe })));
   const events = new RecordingPublisher();
   const notifier = new RecordingNotifier();
+  const exports = new InMemoryExports();
+  const planner = new FakePlanner();
   const clock = new FakeClock();
   const ids = new SequenceIds();
   const calendar = new SessionsDinnerCalendar(sessions);
@@ -59,6 +67,7 @@ export function household(recipes: Recipe[] = []) {
   const uow = immediateUow;
   const suggestRecipes = new SuggestRecipes({ sessions, catalog, mealLog, experience, clock, randomness }, config);
   const session = { sessions, events, uow };
+  const exporter = new ExportFinalizedPlan({ exports, planner, events, uow });
   const logDeps = { mealLog, experience, events, uow };
   return {
     sessions,
@@ -67,9 +76,14 @@ export function household(recipes: Recipe[] = []) {
     catalog,
     events,
     notifier,
+    exports,
+    planner,
     clock,
     randomKeys,
-    getCurrentSession: new GetCurrentSession(sessions),
+    getCurrentSession: new GetCurrentSession({ sessions, exports }),
+    getExport: new GetExport(exports),
+    getFinalizePreview: new GetFinalizePreview({ sessions, catalog }, config),
+    retryExport: new RetryExport({ sessions, exporter }),
     getRecipePhoto: new GetRecipePhoto(catalog),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, config),
     refreshRecipes: new RefreshRecipes(catalog),
@@ -82,7 +96,7 @@ export function household(recipes: Recipe[] = []) {
     reopenDay: new ReopenDay(session),
     swapPlannedDays: new SwapPlannedDays(session, config),
     movePlannedDay: new MovePlannedDay({ ...session, calendar }, config),
-    finalizePlan: new FinalizePlan(session, config),
+    finalizePlan: new FinalizePlan({ ...session, catalog, exports, exporter }, config),
     closeSession: new CloseSession(session),
     suggestRecipes,
     getDeck: new GetDeck({ sessions, experience, suggest: suggestRecipes }),

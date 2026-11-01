@@ -2,7 +2,6 @@ import {
   acceptProposal,
   closeSession,
   eligibleRecipes,
-  finalizePlan,
   markLeftoverDay,
   movePlannedDay,
   needsPlanningAhead,
@@ -66,15 +65,6 @@ export class StartSession {
     if (!result.ok) return result;
     await deps.events.publish(result.value.events);
     return { ok: true, value: result.value.state };
-  }
-}
-
-/** What both phones show: the session that is still open, or none. */
-export class GetCurrentSession {
-  constructor(private readonly sessions: Pick<SessionRepository, "findOpen">) {}
-
-  execute(): Promise<PlanningSession | null> {
-    return this.sessions.findOpen();
   }
 }
 
@@ -207,18 +197,6 @@ export class MovePlannedDay {
       const dateTakenElsewhere = await this.deps.calendar.isDateTaken(cmd.to, s.id);
       return movePlannedDay(s, { member: cmd.member, from: cmd.from, to: cmd.to, dateTakenElsewhere }, this.config);
     });
-  }
-}
-
-/** rule FinalizePlan */
-export class FinalizePlan {
-  constructor(
-    private readonly deps: SessionDeps,
-    private readonly config: PlanningConfig,
-  ) {}
-
-  execute(cmd: { member: MemberId; sessionId: SessionId }): Promise<CommandResult> {
-    return changeSession(this.deps, cmd.sessionId, async (s) => finalizePlan(s, cmd, this.config));
   }
 }
 
