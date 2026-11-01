@@ -25,9 +25,9 @@ function setup(tags = ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 S
   const created: NewRecipe[] = [];
   let now = 0;
   const client = {
-    async listItemNames() {
+    async listItems() {
       calls.items++;
-      return ["Linsen", "Zwiebel"];
+      return [{ name: "Linsen", icon: "lentils" }, { name: "Zwiebel" }];
     },
     async listTagNames() {
       calls.tags++;
@@ -56,7 +56,11 @@ describe("descriptionOf", () => {
 describe("KitchenOwlRecipeWriter", () => {
   it("offers the item names and only the free tags as vocabulary, and reads KitchenOwl once for a while", async () => {
     const { writer, calls, advance } = setup();
-    expect(await writer.vocabulary()).toEqual({ items: ["Linsen", "Zwiebel"], tags: ["🍲 Suppe"] });
+    expect(await writer.vocabulary()).toEqual({
+      items: ["Linsen", "Zwiebel"],
+      icons: { Linsen: "lentils" },
+      tags: ["🍲 Suppe"],
+    });
     await writer.vocabulary();
     expect(calls).toEqual({ items: 1, tags: 1 });
     advance(4 * 60_000);

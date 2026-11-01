@@ -37,8 +37,11 @@ export const plannerListSchema = z.array(
   }),
 );
 
-/** Items and tags of the household: only their names matter for matching a draft. */
+/** Tags of the household: only their names matter for matching a draft. */
 export const nameListSchema = z.array(z.object({ name: z.string() }));
+
+/** Items of the household: the name to match a draft with, and the icon the phones draw. */
+export const itemListSchema = z.array(z.object({ name: z.string(), icon: z.string().nullish() }));
 
 /** A created recipe: the id is all the planner needs back. */
 export const createdRecipeSchema = z.object({ id: z.number().int() });

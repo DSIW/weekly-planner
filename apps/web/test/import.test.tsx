@@ -1,11 +1,13 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetItemFont } from "../src/ItemIcon";
 import { api, renderApp, server } from "./helpers";
 
 const DRAFT = `POST ${api}/import/draft`;
 const CREATE = `POST ${api}/import/create`;
 const LINKS = `GET ${api}/links`;
+const MATCH = `POST ${api}/import/match`;
 const base = {
   [`GET ${api}/me`]: { status: 200, body: { member: { id: "2", name: "Max" } } },
   [`GET ${api}/sessions/current`]: { status: 200, body: { session: null } },
@@ -17,7 +19,7 @@ const draft = {
   subtitle: "Wärmt von innen",
   steps: ["Linsen waschen.", "Kochen."],
   ingredients: [
-    { name: "Linsen", amount: "200 g", optional: false, isNewItem: false },
+    { name: "Linsen", amount: "200 g", optional: false, isNewItem: false, icon: "onion" },
     { name: "Petersilie", amount: "", optional: true, isNewItem: true },
   ],
   mealType: "main",
@@ -29,7 +31,10 @@ const draft = {
   source: "https://example.org/linsen",
 };
 
-beforeEach(() => vi.stubGlobal("EventSource", undefined));
+beforeEach(() => {
+  vi.stubGlobal("EventSource", undefined);
+  resetItemFont();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 const openImport = async () => {
@@ -59,10 +64,14 @@ describe("recipe import", () => {
     await screen.findByRole("heading", { name: "Rezept prüfen" });
     expect(calls.find((c) => c.key === DRAFT)?.body).toEqual({ address: "https://example.org/linsen" });
     expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("Linsensuppe");
-    const ingredients = within(screen.getByRole("list", { name: "Zutaten" })).getAllByRole("listitem");
-    expect(ingredients[0]).toHaveTextContent("Linsen200 g");
-    expect(ingredients[0]).not.toHaveTextContent("neu");
-    expect(ingredients[1]).toHaveTextContent("Petersilieohne Mengeneuoptional");
+    const tiles = within(screen.getByRole("list", { name: "Zutaten" })).getAllByRole("listitem");
+    expect(tiles).toHaveLength(2);
+    expect(within(tiles[0]!).getByRole("textbox", { name: "Zutat 1" })).toHaveValue("Linsen");
+    expect(within(tiles[0]!).getByRole("textbox", { name: "Menge 1" })).toHaveValue("200 g");
+    expect(tiles[0]).not.toHaveTextContent("neu");
+    expect(within(tiles[1]!).getByRole("textbox", { name: "Zutat 2" })).toHaveValue("Petersilie");
+    expect(tiles[1]).toHaveTextContent("neu");
+    expect(tiles[1]).toHaveTextContent("optional");
     expect(within(screen.getByRole("list", { name: "Schritte" })).getAllByRole("listitem")).toHaveLength(2);
     expect(screen.getByRole("list", { name: "Eigenschaften" })).toHaveTextContent(
       "HauptgerichtSonstigesVegan40 Min.4 Portionen🍲 Suppe",
@@ -161,5 +170,82 @@ describe("recipe import", () => {
     await userEvent.click(await screen.findByRole("button", { name: "In KitchenOwl anlegen" }));
     await userEvent.click(await screen.findByRole("button", { name: "Noch ein Rezept importieren" }));
     expect(screen.getByRole("textbox", { name: /Link oder Rezepttext/ })).toHaveValue("");
+  });
+});
+
+describe("renaming an ingredient in the review", () => {
+  const read = async (routes: Parameters<typeof server>[0]) => {
+    const calls = server({ ...base, [DRAFT]: { status: 200, body: { draft } }, ...routes });
+    await openImport();
+    await paste("Text");
+    await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
+    await screen.findByRole("heading", { name: "Rezept prüfen" });
+    return calls;
+  };
+
+  it("looks the new name up: one of the household's items takes its name and icon and loses the 'neu' mark", async () => {
+    const calls = await read({
+      [MATCH]: {
+        status: 200,
+        body: { items: [{ written: "Petersilie frisch", name: "Petersilie", isNewItem: false, icon: "parsley" }] },
+      },
+    });
+    const name = screen.getByRole("textbox", { name: "Zutat 2" });
+    expect(screen.getAllByText("neu")).toHaveLength(1);
+    await userEvent.clear(name);
+    await userEvent.type(name, "Petersilie frisch");
+    await userEvent.tab();
+    await waitFor(() => expect(screen.queryByText("neu")).not.toBeInTheDocument());
+    expect(calls.find((c) => c.key === MATCH)?.body).toEqual({ names: ["Petersilie frisch"] });
+    expect(screen.getByRole("textbox", { name: "Zutat 2" })).toHaveValue("Petersilie");
+  });
+
+  it("keeps a name that matches nothing as a new item, and sends the typed name and amount on", async () => {
+    const calls = await read({
+      [MATCH]: { status: 200, body: { items: [{ written: "Safran", name: "Safran", isNewItem: true }] } },
+      [CREATE]: { status: 201, body: { recipeId: 1, draft } },
+    });
+    const name = screen.getByRole("textbox", { name: "Zutat 2" });
+    await userEvent.clear(name);
+    await userEvent.type(name, "Safran");
+    await userEvent.tab();
+    const amount = screen.getByRole("textbox", { name: "Menge 2" });
+    await userEvent.type(amount, "1 Prise");
+    await waitFor(() => expect(calls.some((c) => c.key === MATCH)).toBe(true));
+    expect(screen.getAllByText("neu")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "In KitchenOwl anlegen" }));
+    await waitFor(() => expect(calls.some((c) => c.key === CREATE)).toBe(true));
+    const sent = calls.find((c) => c.key === CREATE)?.body as { draft: { ingredients: unknown[] } };
+    expect(sent.draft.ingredients[1]).toMatchObject({ name: "Safran", amount: "1 Prise", isNewItem: true });
+  });
+
+  it("does not look up an empty name, and ignores an answer for a name that was changed again", async () => {
+    const calls = await read({
+      [MATCH]: { status: 200, body: { items: [{ written: "Safran", name: "Safran", isNewItem: true }] } },
+    });
+    const name = screen.getByRole("textbox", { name: "Zutat 2" });
+    await userEvent.clear(name);
+    await userEvent.tab();
+    expect(calls.some((c) => c.key === MATCH)).toBe(false);
+  });
+
+  it("draws the icon of a known ingredient from KitchenOwl's icon font", async () => {
+    vi.stubGlobal(
+      "FontFace",
+      class {
+        constructor(
+          readonly family: string,
+          readonly source: string,
+        ) {}
+        load() {
+          return Promise.resolve(this);
+        }
+      },
+    );
+    Object.defineProperty(document, "fonts", { value: { add: vi.fn() }, configurable: true });
+    await read({});
+    const tiles = within(screen.getByRole("list", { name: "Zutaten" })).getAllByRole("listitem");
+    await waitFor(() => expect(tiles[0]?.querySelector(".item-icon")).toHaveAttribute("data-icon", "onion"));
+    expect(tiles[1]?.querySelector(".item-icon")).toHaveClass("letter"); // a new item has no icon yet
   });
 });

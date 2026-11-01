@@ -895,19 +895,46 @@ textarea {
   margin: 4px 0 0;
   font-size: 1rem;
 }
-.import-ingredients {
+.import-tile {
+  position: relative;
   display: grid;
-  gap: 6px;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  height: 100%;
+  padding: 10px 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  text-align: center;
 }
-.import-ingredients li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.import-tile input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px dashed var(--outline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+  padding: 2px 0;
 }
 .import-name {
-  flex: 1;
   font-weight: 600;
-  overflow-wrap: anywhere;
+}
+.import-amount {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.import-tile button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  font-size: 0.8rem;
+  line-height: 1;
 }
 .import-steps {
   margin: 0;

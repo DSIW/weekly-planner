@@ -23,6 +23,8 @@ export interface DraftIngredient {
   readonly optional: boolean;
   /** No known item has this name: KitchenOwl will create it. */
   readonly isNewItem: boolean;
+  /** KitchenOwl's icon key of the known item ("carrot"); the phones draw it. */
+  readonly icon?: string;
 }
 
 export interface RecipeDraft {
@@ -43,6 +45,8 @@ export interface RecipeDraft {
 /** What the household's KitchenOwl already holds: names a draft is checked against. */
 export interface Vocabulary {
   readonly items: readonly string[];
+  /** The icon key of an item, by its name, for those that have one. */
+  readonly icons?: Readonly<Record<string, string>>;
   /** Tags a draft may carry besides the ones its meal type, base and diet stand for. */
   readonly tags: readonly string[];
 }
@@ -59,6 +63,43 @@ export const fold = (s: string): string =>
     .replace(/\p{M}/gu, "")
     .replace(/\s+/g, " ")
     .trim();
+
+/** "Karotte" and "Karotten", "Zwiebel" and "Zwiebeln": a plural ending is dropped from a name of four letters or more. */
+const stemKey = (folded: string): string => {
+  for (const ending of ["en", "n", "e"])
+    if (folded.endsWith(ending) && folded.length - ending.length >= 4) return folded.slice(0, -ending.length);
+  return folded;
+};
+
+export interface ItemMatch {
+  readonly name: string;
+  readonly icon?: string;
+}
+
+/**
+ * The household's item a written ingredient name stands for, or null. Names are compared without case, accents and
+ * umlaut spelling, and a plural counts as the singular. When several items fit, one with an icon wins (the household's
+ * own item rather than a stray one made by an earlier import), then an exact spelling.
+ */
+export function itemMatcher(vocabulary: Vocabulary): (written: string) => ItemMatch | null {
+  const byStem = new Map<string, string[]>();
+  for (const item of vocabulary.items) {
+    const key = stemKey(fold(item));
+    byStem.set(key, [...(byStem.get(key) ?? []), item]);
+  }
+  return (written) => {
+    const folded = fold(written);
+    const candidates = byStem.get(stemKey(folded)) ?? [];
+    const best = [...candidates].sort(
+      (a, b) =>
+        Number(vocabulary.icons?.[b] !== undefined) - Number(vocabulary.icons?.[a] !== undefined) ||
+        Number(fold(b) === folded) - Number(fold(a) === folded),
+    )[0];
+    if (best === undefined) return null;
+    const icon = vocabulary.icons?.[best];
+    return { name: best, ...(icon ? { icon } : {}) };
+  };
+}
 
 /** Plain text: no markup, no links, no control characters, one line of spaces, at most `max` characters. */
 export function cleanText(value: unknown, max: number): string {
@@ -98,22 +139,23 @@ export function reviewDraft(raw: unknown, vocabulary: Vocabulary, source?: strin
   if (name === "" || steps.length === 0 || !mealType || !base || !diet) return reject("not_a_recipe");
   if (steps.length > IMPORT_LIMITS.maxSteps) return reject("too_many_steps");
 
-  const known = new Map(vocabulary.items.map((i) => [fold(i), i]));
+  const match = itemMatcher(vocabulary);
   const ingredients: DraftIngredient[] = [];
   const seen = new Set<string>();
   for (const entry of Array.isArray(raw.ingredients) ? raw.ingredients : []) {
     if (!isObject(entry)) continue;
     const written = cleanText(entry.name, IMPORT_LIMITS.maxIngredientName);
     if (written === "") continue;
-    const canonical = known.get(fold(written));
-    const key = fold(canonical ?? written);
+    const found = match(written);
+    const key = fold(found?.name ?? written);
     if (seen.has(key)) continue;
     seen.add(key);
     ingredients.push({
-      name: canonical ?? written,
+      name: found?.name ?? written,
       amount: cleanText(entry.amount, IMPORT_LIMITS.maxAmount),
       optional: entry.optional === true,
-      isNewItem: canonical === undefined,
+      isNewItem: found === null,
+      ...(found?.icon ? { icon: found.icon } : {}),
     });
   }
   if (ingredients.length === 0) return reject("not_a_recipe");

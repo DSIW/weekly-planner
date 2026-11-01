@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { SignIn } from "@weekly-planner/application";
 import { memberId } from "@weekly-planner/domain";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CreateImportedRecipe, DraftRecipeImport } from "@weekly-planner/application";
+import type { CreateImportedRecipe, DraftRecipeImport, MatchIngredients } from "@weekly-planner/application";
 import { buildApp } from "../../src/interface/http/app.js";
 import { decodeSession, encodeSession } from "../../src/interface/http/session-cookie.js";
 
@@ -30,6 +30,7 @@ const noSessions = {
   agreeInPerson: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   draftRecipeImport: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   createImportedRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  matchIngredients: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   vetoProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   withdrawProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   refreshRecipes: { execute: async () => {} },
@@ -82,6 +83,7 @@ const app = (
     links?: { kitchenowl: string | null; householdId: number };
     draftRecipeImport?: Pick<DraftRecipeImport, "execute">;
     createImportedRecipe?: Pick<CreateImportedRecipe, "execute">;
+    matchIngredients?: Pick<MatchIngredients, "execute">;
   } = {},
 ) =>
   buildApp({
@@ -402,5 +404,43 @@ describe("recipe import", () => {
       { createImportedRecipe: { execute: async () => ({ ok: false, reason: "not_a_recipe" }) } },
     );
     expect(refused.statusCode).toBe(422);
+  });
+});
+
+describe("matching renamed ingredients", () => {
+  const post = async (payload: unknown, signedIn = true) => {
+    const a = await app({
+      matchIngredients: {
+        execute: async ({ names }) => ({
+          ok: true,
+          value: names.map((w) => ({ written: w, name: w.toUpperCase(), isNewItem: false, icon: "carrot" })),
+        }),
+      },
+    });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: "/plan/api/import/match", payload: payload as object, cookies });
+  };
+
+  it("answers for each name, for the signed-in member only", async () => {
+    const res = await post({ names: ["Karotte", "Salz"] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      items: [
+        { written: "Karotte", name: "KAROTTE", isNewItem: false, icon: "carrot" },
+        { written: "Salz", name: "SALZ", isNewItem: false, icon: "carrot" },
+      ],
+    });
+    expect((await post({ names: ["Karotte"] }, false)).statusCode).toBe(401);
+  });
+
+  it("refuses a malformed request", async () => {
+    for (const bad of [
+      {},
+      { names: "Salz" },
+      { names: [1] },
+      { names: ["x".repeat(201)] },
+      { names: Array(61).fill("a") },
+    ])
+      expect((await post(bad)).statusCode, JSON.stringify(bad).slice(0, 30)).toBe(400);
   });
 });

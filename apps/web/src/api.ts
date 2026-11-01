@@ -321,6 +321,8 @@ interface DraftIngredient {
   optional: boolean;
   /** No known item has this name: KitchenOwl creates it. */
   isNewItem: boolean;
+  /** KitchenOwl's icon key of the known item. */
+  icon?: string;
 }
 
 /** A recipe read from a link or a text, for a member to review before it is created. */
@@ -364,6 +366,15 @@ async function importCall<T>(path: string, body: unknown): Promise<T> {
 /** Reads a web link or a pasted text into a draft recipe. Can take a minute. */
 export const draftImport = async (source: { address: string } | { text: string }): Promise<RecipeDraft> =>
   (await importCall<{ draft: RecipeDraft }>("/import/draft", source)).draft;
+
+/** Which of the household's items each typed ingredient name is, with its icon, or that it is new. */
+export const matchIngredients = async (names: string[]) =>
+  (
+    await importCall<{ items: { written: string; name: string; isNewItem: boolean; icon?: string }[] }>(
+      "/import/match",
+      { names },
+    )
+  ).items;
 
 /** Creates the recipe a member confirmed in KitchenOwl. */
 export const createImport = (draft: RecipeDraft) =>

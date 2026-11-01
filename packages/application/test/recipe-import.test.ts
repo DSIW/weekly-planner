@@ -4,6 +4,7 @@ import {
   CreateImportedRecipe,
   DraftRecipeImport,
   ExtractorNotConfigured,
+  MatchIngredients,
   type RecipeExtractor,
   type RecipeSource,
   type RecipeWriter,
@@ -191,5 +192,36 @@ describe("CreateImportedRecipe", () => {
       ok: false,
       reason: "kitchenowl_unavailable",
     });
+  });
+});
+
+describe("MatchIngredients", () => {
+  const vocab: Vocabulary = {
+    items: ["Karotte", "Karotten", "Zwiebel"],
+    icons: { Karotten: "carrot", Zwiebel: "onion" },
+    tags: [],
+  };
+  const matcher = () => new MatchIngredients({ writer: { vocabulary: async () => vocab } });
+
+  it("says which item a renamed ingredient is now, with its icon, or that it is new", async () => {
+    const r = await matcher().execute({ names: ["Karotte", " zwiebeln ", "Safran", "<b>Salz</b>", ""] });
+    expect(r.ok && r.value).toEqual([
+      { written: "Karotte", name: "Karotten", isNewItem: false, icon: "carrot" },
+      { written: "zwiebeln", name: "Zwiebel", isNewItem: false, icon: "onion" },
+      { written: "Safran", name: "Safran", isNewItem: true },
+      { written: "Salz", name: "Salz", isNewItem: true },
+      { written: "", name: "", isNewItem: true },
+    ]);
+  });
+
+  it("does not guess when KitchenOwl cannot be read", async () => {
+    const down = new MatchIngredients({
+      writer: {
+        vocabulary: async () => {
+          throw new Error("down");
+        },
+      },
+    });
+    expect(await down.execute({ names: ["Salz"] })).toEqual({ ok: false, reason: "kitchenowl_unavailable" });
   });
 });

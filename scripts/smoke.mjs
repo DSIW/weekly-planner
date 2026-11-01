@@ -88,7 +88,12 @@ const kitchenowl = http.createServer((req, res) => {
     }
     if (req.method === "GET" && req.url === "/api/household/2/planner") return send(200, plannerHolds);
     if (req.method === "GET" && req.url === "/api/household/2/item")
-      return send(200, [{ name: "Zwiebel" }, { name: "Linsen" }]);
+      return send(200, [
+        { name: "Zwiebel" },
+        { name: "Linsen", icon: "lentils" },
+        { name: "Karotte" },
+        { name: "Karotten", icon: "carrot" },
+      ]);
     if (req.method === "GET" && req.url === "/api/household/2/tag")
       return send(200, [{ name: "🍲 Suppe" }, { name: "🌱 Vegan" }]);
     if (req.method === "POST" && req.url === "/api/household/2/recipe") {
@@ -718,6 +723,16 @@ try {
       "an ingredient takes the household's name, markup and links are gone",
     );
     assert.deepEqual(draft.tags, ["🍲 Suppe"], "a tag the household does not have is dropped");
+    assert.equal(draft.ingredients[0].icon, "lentils", "a known item brings its icon");
+    const renamed = await (await call("/import/match", { names: ["Karotte", "Safran"] })).json();
+    assert.deepEqual(
+      renamed.items.map((i) => [i.name, i.isNewItem, i.icon ?? null]),
+      [
+        ["Karotten", false, "carrot"],
+        ["Safran", true, null],
+      ],
+      "a renamed ingredient finds the household's own item, not the stray one",
+    );
     assert.equal(draft.visibility, undefined, "whatever else the model said is dropped");
     assert.equal(imported.recipes.length, 0, "nothing is created before the member confirms");
     assert.equal(imported.llm[0].auth, "Bearer llm-key");

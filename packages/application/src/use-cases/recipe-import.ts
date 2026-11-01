@@ -1,4 +1,12 @@
-import { IMPORT_LIMITS, reviewDraft, type MemberId, type RecipeDraft, type Result } from "@weekly-planner/domain";
+import {
+  cleanText,
+  IMPORT_LIMITS,
+  itemMatcher,
+  reviewDraft,
+  type MemberId,
+  type RecipeDraft,
+  type Result,
+} from "@weekly-planner/domain";
 import {
   ExtractorNotConfigured,
   type RecipeExtractor,
@@ -40,6 +48,43 @@ export class DraftRecipeImport {
       return { ok: false, reason: e instanceof ExtractorNotConfigured ? "not_configured" : "extraction_failed" };
     }
     return reviewDraft(answer, vocabulary, address === "" ? undefined : address);
+  }
+}
+
+export interface IngredientMatch {
+  /** The name as it was typed. */
+  readonly written: string;
+  /** The household's item it stands for, else the name as typed. */
+  readonly name: string;
+  readonly isNewItem: boolean;
+  readonly icon?: string;
+}
+
+/** A member renames an ingredient in the review: which of the household's items it is now, if any. */
+export class MatchIngredients {
+  constructor(private readonly deps: { writer: Pick<RecipeWriter, "vocabulary"> }) {}
+
+  async execute(cmd: { names: readonly string[] }): Promise<Result<readonly IngredientMatch[]>> {
+    let vocabulary: Awaited<ReturnType<RecipeWriter["vocabulary"]>>;
+    try {
+      vocabulary = await this.deps.writer.vocabulary();
+    } catch {
+      return { ok: false, reason: "kitchenowl_unavailable" };
+    }
+    const match = itemMatcher(vocabulary);
+    return {
+      ok: true,
+      value: cmd.names.map((typed) => {
+        const written = cleanText(typed, IMPORT_LIMITS.maxIngredientName);
+        const found = written === "" ? null : match(written);
+        return {
+          written,
+          name: found?.name ?? written,
+          isNewItem: found === null,
+          ...(found?.icon ? { icon: found.icon } : {}),
+        };
+      }),
+    };
   }
 }
 

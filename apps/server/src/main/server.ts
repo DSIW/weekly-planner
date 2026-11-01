@@ -1,6 +1,7 @@
 import {
   AcceptProposal,
   CreateImportedRecipe,
+  MatchIngredients,
   DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
@@ -140,6 +141,7 @@ async function main(): Promise<void> {
       writer: recipeWriter,
     }),
     createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter }),
+    matchIngredients: new MatchIngredients({ writer: recipeWriter }),
     acceptProposal: new AcceptProposal({ ...deps, calendar }, planning),
     agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...deps, calendar }, planning)),
     vetoProposal: new VetoProposal(deps),

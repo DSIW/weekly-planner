@@ -3,6 +3,7 @@ import {
   type RawRecipe,
   authResponseSchema,
   createdRecipeSchema,
+  itemListSchema,
   nameListSchema,
   householdSchema,
   plannerListSchema,
@@ -84,11 +85,11 @@ export class KitchenOwlClient {
     if (!res.ok) throw new KitchenOwlError(`KitchenOwl POST ${path} failed with HTTP ${res.status}`, res.status);
   }
 
-  /** The names of every item the household has, as KitchenOwl spells them. */
-  async listItemNames(): Promise<string[]> {
-    const parsed = nameListSchema.safeParse(await this.get(`/household/${this.config.householdId}/item`));
+  /** Every item the household has, as KitchenOwl spells it, with the icon key it draws it with. */
+  async listItems(): Promise<{ name: string; icon?: string }[]> {
+    const parsed = itemListSchema.safeParse(await this.get(`/household/${this.config.householdId}/item`));
     if (!parsed.success) throw new KitchenOwlError("unexpected item list shape");
-    return parsed.data.map((i) => i.name);
+    return parsed.data.map((i) => ({ name: i.name, ...(i.icon ? { icon: i.icon } : {}) }));
   }
 
   /** The names of every tag the household has. */

@@ -3,6 +3,7 @@ import rateLimit from "@fastify/rate-limit";
 import type {
   AcceptProposal,
   CreateImportedRecipe,
+  MatchIngredients,
   DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
@@ -71,6 +72,7 @@ interface AppOptions {
   readonly proposeRecipe: Pick<ProposeRecipe, "execute">;
   readonly draftRecipeImport: Pick<DraftRecipeImport, "execute">;
   readonly createImportedRecipe: Pick<CreateImportedRecipe, "execute">;
+  readonly matchIngredients: Pick<MatchIngredients, "execute">;
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
   readonly agreeInPerson: Pick<AgreeInPerson, "execute">;
   readonly vetoProposal: Pick<VetoProposal, "execute">;
@@ -211,6 +213,7 @@ const swapBody = z.object({ a: z.string(), b: z.string() });
 const moveBody = z.object({ from: z.string(), to: z.string() });
 
 const importDraftBody = z.object({ address: z.string().max(2000).optional(), text: z.string().max(60_000).optional() });
+const importMatchBody = z.object({ names: z.array(z.string().max(200)).max(60) });
 const importCreateBody = z.object({ draft: z.record(z.string(), z.unknown()) });
 
 /** Drafts a member may ask for per hour: each one costs money at the language model, so a loop cannot run it dry. */
@@ -368,6 +371,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
     return { draft: result.value };
+  });
+
+  app.post(`${api}/import/match`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const body = importMatchBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.matchIngredients.execute({ names: body.data.names });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { items: result.value };
   });
 
   app.post(`${api}/import/create`, async (req, reply) => {

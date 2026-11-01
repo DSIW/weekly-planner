@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { createImport, draftImport, ImportFailed, type RecipeDraft } from "./api";
+import { createImport, draftImport, ImportFailed, matchIngredients, type RecipeDraft } from "./api";
+import { ItemIcon } from "./ItemIcon";
 import { useLinks } from "./Links";
 
 const MESSAGES: Record<string, string> = {
@@ -55,6 +56,8 @@ export function ImportPanel() {
     onSuccess: setDraft,
   });
   const create = useMutation({ mutationFn: createImport });
+  // A renamed ingredient is looked up again: it may be one of the household's items now, with its icon.
+  const lookup = useMutation({ mutationFn: (name: string) => matchIngredients([name]) });
 
   if (create.data) {
     const recipeHref = links?.recipe.replace("{id}", String(create.data.recipeId));
@@ -87,6 +90,37 @@ export function ImportPanel() {
 
   if (draft) {
     const set = (change: Partial<RecipeDraft>) => setDraft({ ...draft, ...change });
+    const changeIngredient = (index: number, change: Partial<RecipeDraft["ingredients"][number]>) =>
+      setDraft((now) =>
+        now ? { ...now, ingredients: now.ingredients.map((x, n) => (n === index ? { ...x, ...change } : x)) } : now,
+      );
+    const rename = (index: number, typed: string) => {
+      const name = typed.trim();
+      if (name === "") return;
+      lookup.mutate(name, {
+        onSuccess: ([found]) => {
+          if (!found) return;
+          // Only if the field still holds what was looked up.
+          setDraft((now) =>
+            now && now.ingredients[index]?.name.trim() === name
+              ? {
+                  ...now,
+                  ingredients: now.ingredients.map((x, n) => {
+                    if (n !== index) return x;
+                    const { icon: _old, ...rest } = x;
+                    return {
+                      ...rest,
+                      name: found.name,
+                      isNewItem: found.isNewItem,
+                      ...(found.icon ? { icon: found.icon } : {}),
+                    };
+                  }),
+                }
+              : now,
+          );
+        },
+      });
+    };
     const facts = [
       MEAL[draft.mealType],
       BASE[draft.base],
@@ -110,21 +144,39 @@ export function ImportPanel() {
           ))}
         </ul>
         <h3>Zutaten</h3>
-        <ul className="plain import-ingredients" aria-label="Zutaten">
-          {draft.ingredients.map((i) => (
-            <li key={i.name}>
-              <span className="import-name">{i.name}</span>
-              <span className="tile-amount">{i.amount || "ohne Menge"}</span>
-              {i.isNewItem && <span className="badge">neu</span>}
-              {i.optional && <span className="badge">optional</span>}
-              <button
-                type="button"
-                className="secondary small"
-                aria-label={`${i.name} entfernen`}
-                onClick={() => set({ ingredients: draft.ingredients.filter((x) => x !== i) })}
-              >
-                Entfernen
-              </button>
+        <ul className="ingredient-grid" aria-label="Zutaten">
+          {draft.ingredients.map((i, index) => (
+            // Names can be edited, so a tile is identified by its place.
+            // biome-ignore lint/suspicious/noArrayIndexKey: the name is what the member is changing
+            <li key={index}>
+              <div className="import-tile">
+                <ItemIcon icon={i.icon ?? null} name={i.name} />
+                <input
+                  className="import-name"
+                  aria-label={`Zutat ${index + 1}`}
+                  value={i.name}
+                  onChange={(e) => changeIngredient(index, { name: e.target.value })}
+                  onBlur={() => rename(index, i.name)}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                />
+                <input
+                  className="import-amount"
+                  aria-label={`Menge ${index + 1}`}
+                  placeholder="Menge"
+                  value={i.amount}
+                  onChange={(e) => changeIngredient(index, { amount: e.target.value })}
+                />
+                {i.isNewItem && <span className="badge">neu</span>}
+                {i.optional && <span className="badge">optional</span>}
+                <button
+                  type="button"
+                  className="secondary small"
+                  aria-label={`${i.name} entfernen`}
+                  onClick={() => set({ ingredients: draft.ingredients.filter((x) => x !== i) })}
+                >
+                  ✕
+                </button>
+              </div>
             </li>
           ))}
         </ul>

@@ -142,7 +142,7 @@ describe("KitchenOwlClient", () => {
 });
 
 describe("KitchenOwlClient: items, tags and creating a recipe", () => {
-  it("lists the names of the household's items and tags", async () => {
+  it("lists the household's items with their icons, and the names of its tags", async () => {
     const urls: string[] = [];
     const f = (async (url: string | URL | Request) => {
       urls.push(String(url));
@@ -154,12 +154,10 @@ describe("KitchenOwlClient: items, tags and creating a recipe", () => {
       );
     }) as typeof fetch;
     const client = new KitchenOwlClient(cfg, f);
-    expect(await client.listItemNames()).toEqual(["Zwiebel", "Milch"]);
+    expect(await client.listItems()).toEqual([{ name: "Zwiebel", icon: "onion" }, { name: "Milch" }]);
     expect(await client.listTagNames()).toEqual(["Zwiebel", "Milch"]);
     expect(urls).toEqual(["https://ko.test/api/household/2/item", "https://ko.test/api/household/2/tag"]);
-    await expect(new KitchenOwlClient(cfg, json({ no: "list" })).listItemNames()).rejects.toBeInstanceOf(
-      KitchenOwlError,
-    );
+    await expect(new KitchenOwlClient(cfg, json({ no: "list" })).listItems()).rejects.toBeInstanceOf(KitchenOwlError);
     await expect(new KitchenOwlClient(cfg, json([{ id: 1 }])).listTagNames()).rejects.toBeInstanceOf(KitchenOwlError);
   });
 

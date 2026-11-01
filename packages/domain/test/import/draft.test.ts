@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cleanText, fold, IMPORT_LIMITS, reviewDraft } from "../../src/index.js";
+import { cleanText, fold, IMPORT_LIMITS, itemMatcher, reviewDraft } from "../../src/index.js";
 
 const vocabulary = {
   items: ["Zwiebel", "Möhre", "Olivenöl", "Spaghetti"],
@@ -159,5 +159,80 @@ describe("rule CheckDraft", () => {
   it("marks an ingredient optional only when the model says so for certain", () => {
     const d = draftOf({ ingredients: [{ name: "A", optional: true }, { name: "B", optional: "yes" }, { name: "C" }] });
     expect(d.ingredients.map((i) => i.optional)).toEqual([true, false, false]);
+  });
+});
+
+describe("itemMatcher", () => {
+  const vocab = {
+    items: [
+      "Karotte",
+      "Karotten",
+      "Zwiebel",
+      "Kartoffeln",
+      "Tomaten",
+      "Ei",
+      "Eis",
+      "Olivenöl",
+      "Oliven",
+      "Linse",
+      "Linsen",
+    ],
+    icons: {
+      Karotten: "carrot",
+      Zwiebel: "onion",
+      Kartoffeln: "potato",
+      Tomaten: "tomato",
+      Oliven: "olive",
+      Linsen: "lentils",
+    },
+  };
+  const match = itemMatcher({ ...vocab, tags: [] });
+
+  it("takes the household's own item, with its icon, over a stray one without", () => {
+    expect(match("Karotte")).toEqual({ name: "Karotten", icon: "carrot" });
+    expect(match("karotten")).toEqual({ name: "Karotten", icon: "carrot" });
+    expect(match("Linse")).toEqual({ name: "Linsen", icon: "lentils" });
+  });
+
+  it("counts a plural as the singular and the other way round", () => {
+    expect(match("Zwiebeln")).toEqual({ name: "Zwiebel", icon: "onion" });
+    expect(match("Kartoffel")).toEqual({ name: "Kartoffeln", icon: "potato" });
+    expect(match("Tomate")).toEqual({ name: "Tomaten", icon: "tomato" });
+    expect(match("Olive")).toEqual({ name: "Oliven", icon: "olive" });
+  });
+
+  it("keeps different words apart: short names are not stemmed, and a longer compound is another item", () => {
+    expect(match("Ei")).toEqual({ name: "Ei" });
+    expect(match("Eis")).toEqual({ name: "Eis" });
+    expect(match("Olivenöl")).toEqual({ name: "Olivenöl" });
+    expect(match("Tomatenmark")).toBeNull();
+    expect(match("Petersilie")).toBeNull();
+  });
+
+  it("prefers the exact spelling when no icon decides", () => {
+    const plain = itemMatcher({ items: ["Gurke", "Gurken"], tags: [] });
+    expect(plain("Gurken")).toEqual({ name: "Gurken" });
+    expect(plain("gurke")).toEqual({ name: "Gurke" });
+  });
+
+  it("finds nothing in an empty vocabulary", () => {
+    expect(itemMatcher({ items: [], tags: [] })("Salz")).toBeNull();
+  });
+
+  it("puts the icon on the drafted ingredient, and leaves it off a new one", () => {
+    const d = reviewDraft(
+      {
+        ...raw(),
+        ingredients: [
+          { name: "Karotte", amount: "2" },
+          { name: "Safran", amount: "1 Prise" },
+        ],
+      },
+      { ...vocab, tags: [] },
+    );
+    expect(d.ok && d.value.ingredients).toEqual([
+      { name: "Karotten", amount: "2", optional: false, isNewItem: false, icon: "carrot" },
+      { name: "Safran", amount: "1 Prise", optional: false, isNewItem: true },
+    ]);
   });
 });

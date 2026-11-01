@@ -13,23 +13,28 @@ export function descriptionOf(draft: Pick<RecipeDraft, "subtitle" | "steps">): s
 
 /** Adapter: KitchenOwl as the place recipes are checked against and created in. */
 export class KitchenOwlRecipeWriter implements RecipeWriter {
-  private cached: { at: number; items: string[]; tags: string[] } | null = null;
+  private cached: { at: number; items: string[]; icons: Record<string, string>; tags: string[] } | null = null;
 
   constructor(
-    private readonly client: Pick<KitchenOwlClient, "listItemNames" | "listTagNames" | "createRecipe">,
+    private readonly client: Pick<KitchenOwlClient, "listItems" | "listTagNames" | "createRecipe">,
     private readonly now: () => number = Date.now,
   ) {}
 
-  private async names(): Promise<{ items: string[]; tags: string[] }> {
+  private async names(): Promise<{ items: string[]; icons: Record<string, string>; tags: string[] }> {
     if (this.cached && this.now() - this.cached.at < TTL_MS) return this.cached;
-    const [items, tags] = await Promise.all([this.client.listItemNames(), this.client.listTagNames()]);
-    this.cached = { at: this.now(), items, tags };
+    const [items, tags] = await Promise.all([this.client.listItems(), this.client.listTagNames()]);
+    this.cached = {
+      at: this.now(),
+      items: items.map((i) => i.name),
+      icons: Object.fromEntries(items.flatMap((i) => (i.icon ? [[i.name, i.icon]] : []))),
+      tags,
+    };
     return this.cached;
   }
 
   async vocabulary(): Promise<Vocabulary> {
-    const { items, tags } = await this.names();
-    return { items, tags: freeTags(tags) };
+    const { items, icons, tags } = await this.names();
+    return { items, icons, tags: freeTags(tags) };
   }
 
   async create(draft: RecipeDraft): Promise<{ recipeId: number }> {
