@@ -509,6 +509,20 @@ describe("dates that already hold a dinner (witness r3)", () => {
     expect(first?.querySelector(".thumb img")).toHaveAttribute("src", `${api}/recipes/7/photo`);
   });
 
+  it("are asked for again when the app comes back to the foreground, so a date freed in KitchenOwl shows at once", async () => {
+    let dates = [{ date: "2026-11-03", recipeName: "Pasta", recipeId: 7 }];
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: () => ({ status: 200, body: { dates } }),
+    });
+    renderApp();
+    await screen.findByRole("list", { name: "Schon geplant" });
+    dates = [];
+    document.dispatchEvent(new Event("visibilitychange"));
+    await waitFor(() => expect(screen.queryByRole("list", { name: "Schon geplant" })).not.toBeInTheDocument());
+  });
+
   it("are not explained when there are none", async () => {
     server({
       ...signedIn,

@@ -284,6 +284,14 @@ function Planning({ meId }: { meId: string }) {
     void client.invalidateQueries({ queryKey: ["session"] });
   }, [client]);
   useEffect(() => listenForChanges(refetch), [refetch]);
+  // Coming back to the app (from KitchenOwl, say) asks again: what was deleted there frees its date at once.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refetch();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refetch]);
   const [exported, setExported] = useState<string | null>(null);
   const [step, setStep] = useState<"dishes" | "list">("dishes");
   const current = useQuery({ queryKey: ["session"], queryFn: fetchCurrentSession });
