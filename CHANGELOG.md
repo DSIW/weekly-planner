@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.13](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.12...weekly-planner-v0.1.13) (2026-11-01)
+
+
+### Features
+
+* planning in three steps, KitchenOwl's ingredient icons, staples off the list, freed dates ([bcfd886](https://github.com/DSIW/weekly-planner/commit/bcfd886d1ab19296d06cc5eb388b55d35418a511))
+
 ## [0.1.12](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.11...weekly-planner-v0.1.12) (2026-11-01)
 
 
