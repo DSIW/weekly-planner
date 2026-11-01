@@ -10,6 +10,7 @@ import {
   failStep,
   newExport,
   nextStep,
+  retriableAfterRefusal,
   scaleDescription,
   type Ingredient,
   type FinalizeExport,
@@ -422,6 +423,22 @@ describe("the export of a finalized plan", () => {
       { type: "ExportProgressed", sessionId: sessionId("s1"), complete: false, failure: "refused" },
     ]);
     expect(beginStep(failed.state, { kind: "planner", date: MON }, { resendUnconfirmed: false }).ok).toBe(true);
+  });
+
+  it("is retried by itself only after a refusal, and only when the next step is waiting rather than sent", () => {
+    const first = { kind: "planner", date: MON } as const;
+    const begun = must(beginStep(fresh(), first, { resendUnconfirmed: false })).state;
+    const refused = must(failStep(begun, first, "refused")).state;
+    expect(retriableAfterRefusal(fresh())).toBe(false); // nothing failed yet
+    expect(retriableAfterRefusal(refused)).toBe(true);
+    // A crash after the failed step was begun again leaves it sending while the old failure still says refused.
+    const crashed = must(beginStep(refused, first, { resendUnconfirmed: false })).state;
+    expect(crashed.failure).toBe("refused");
+    expect(retriableAfterRefusal(crashed)).toBe(false);
+    const listBegun = must(beginStep(fresh(), { kind: "list" }, { resendUnconfirmed: false })).state;
+    expect(retriableAfterRefusal(must(failStep(listBegun, { kind: "list" }, "unconfirmed")).state)).toBe(false);
+    const finished = step(step(step(fresh(), first), { kind: "planner", date: TUE }), { kind: "list" });
+    expect(retriableAfterRefusal({ ...finished, failure: "refused" })).toBe(false); // nothing left to send
   });
 
   it("keeps a step sending without an answer and sends it again only when a member says so", () => {

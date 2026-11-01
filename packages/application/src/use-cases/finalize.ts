@@ -8,6 +8,7 @@ import {
   newExport,
   nextStep,
   plannedDays,
+  retriableAfterRefusal,
   type ExportFailure,
   type ExportStep,
   type FinalizeExport,
@@ -223,6 +224,34 @@ export class RetryExport {
     if (!session) return { ok: false, reason: "unknown_session" };
     if (session.status !== "finalized") return { ok: false, reason: "session_not_finalized" };
     return this.deps.exporter.run(cmd.sessionId, { resendUnconfirmed: cmd.resendUnconfirmed });
+  }
+}
+
+/**
+ * rule RetryRefusedExports (run by the scheduler): sends again what KitchenOwl refused, since nothing was written.
+ * A step that went out without an answer is left to the members.
+ */
+export class RetryRefusedExports {
+  constructor(
+    private readonly deps: {
+      sessions: Pick<SessionRepository, "listAll">;
+      exports: Pick<ExportRepository, "get">;
+      exporter: ExportFinalizedPlan;
+    },
+  ) {}
+
+  /** Returns the number of exports it tried again. */
+  async execute(): Promise<number> {
+    const { deps } = this;
+    let tried = 0;
+    for (const session of await deps.sessions.listAll()) {
+      if (session.status !== "finalized") continue;
+      const pending = await deps.exports.get(session.id);
+      if (!pending || !retriableAfterRefusal(pending)) continue;
+      await deps.exporter.run(session.id, { resendUnconfirmed: false });
+      tried++;
+    }
+    return tried;
   }
 }
 

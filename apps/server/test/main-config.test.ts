@@ -33,6 +33,18 @@ describe("loadServerConfig", () => {
     });
   });
 
+  it("tells the push services who to contact, as a mailto: address or an https URL", () => {
+    expect(loadServerConfig(base).vapidSubject).toBe("mailto:planner@example.org");
+    expect(loadServerConfig({ ...base, VAPID_SUBJECT: "mailto:me@home.example" }).vapidSubject).toBe(
+      "mailto:me@home.example",
+    );
+    expect(loadServerConfig({ ...base, VAPID_SUBJECT: "https://home.example" }).vapidSubject).toBe(
+      "https://home.example",
+    );
+    expect(() => loadServerConfig({ ...base, VAPID_SUBJECT: "me@home.example" })).toThrow(/VAPID_SUBJECT/);
+    expect(() => loadServerConfig({ ...base, VAPID_SUBJECT: "http://home.example" })).toThrow(/VAPID_SUBJECT/);
+  });
+
   it("fills the shopping list with id 2 unless SHOPPING_LIST_ID says otherwise", () => {
     expect(loadServerConfig(base).shoppingListId).toBe(2);
     expect(loadServerConfig({ ...base, SHOPPING_LIST_ID: "3" }).shoppingListId).toBe(3);

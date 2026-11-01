@@ -519,6 +519,22 @@ try {
     assert.equal(await as("dsiw", () => web.fetchCurrentSession()), null);
   });
 
+  await step("a phone subscribes to notifications with the server's own key and unsubscribes again", async () => {
+    const cookie = [...jars.get("ac")].map(([k, v]) => `${k}=${v}`).join("; ");
+    const call = (method, path, body) =>
+      realFetch(`${origin()}/plan/api${path}`, {
+        method,
+        headers: { cookie, ...(body ? { "content-type": "application/json" } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    const { key } = await (await call("GET", "/push/key")).json();
+    assert.match(key, /^[A-Za-z0-9_-]{87}$/, "an uncompressed P-256 public key, base64url");
+    const phone = { endpoint: "https://push.example/smoke", keys: { p256dh: "pk", auth: "au" } };
+    assert.equal((await call("POST", "/push/subscription", phone)).status, 204);
+    assert.equal((await call("DELETE", "/push/subscription", { endpoint: phone.endpoint })).status, 204);
+    assert.equal((await call("POST", "/push/subscription", { endpoint: "nope" })).status, 400);
+  });
+
   await step("signing out ends the session", async () => {
     await as("dsiw", () => web.logout());
     assert.equal(await as("dsiw", () => web.fetchMe()), null);

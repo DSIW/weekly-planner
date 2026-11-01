@@ -74,6 +74,15 @@ export function nextStep(e: FinalizeExport): ExportStep | null {
   return e.list.status === "done" ? null : { kind: "list" };
 }
 
+/**
+ * rule RetryRefusedExports: the last failure was a refusal and the step it left behind is waiting. A step that
+ * is sending (sent without an answer, or interrupted by a crash) is never part of this: a person decides about it.
+ */
+export function retriableAfterRefusal(e: FinalizeExport): boolean {
+  const next = nextStep(e);
+  return e.failure === "refused" && next !== null && statusOf(e, next) === "pending";
+}
+
 const progressed = (e: FinalizeExport): PlanningEvent => ({
   type: "ExportProgressed",
   sessionId: e.sessionId,

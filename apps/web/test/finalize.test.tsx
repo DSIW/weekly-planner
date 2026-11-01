@@ -36,6 +36,7 @@ const session = (over: Record<string, unknown> = {}) => ({
     { date: "2026-11-03", status: "open" },
   ],
   proposals: [],
+  reminderSent: false,
   ...over,
 });
 const preview = {
@@ -157,6 +158,53 @@ describe("the finalize panel", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Einkaufsliste füllen" }));
     expect(await screen.findByRole("heading", { name: "Eintragen in KitchenOwl" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Erneut versuchen" })).toBeInTheDocument();
+  });
+});
+
+describe("the reminder on the board", () => {
+  const withReminder = (over: Record<string, unknown> = {}) => ({
+    ...signedIn,
+    [CURRENT]: { status: 200, body: { session: session({ reminderSent: true, ...over }) } },
+    [PREVIEW]: { status: 200, body: preview },
+  });
+
+  it("repeats the reminder for phones that did not get a notification, while the plan is open", async () => {
+    server(withReminder());
+    renderApp();
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Erinnerung: Ihr habt Tage geplant, aber die Einkaufsliste ist noch nicht gefüllt.",
+    );
+  });
+
+  it("is not there before the reminder went out", async () => {
+    server(withReminder({ reminderSent: false }));
+    renderApp();
+    await screen.findByRole("button", { name: "Einkaufsliste füllen" });
+    expect(screen.queryByText(/Erinnerung/)).not.toBeInTheDocument();
+  });
+
+  it("is not there once nothing is planned any more", async () => {
+    server(
+      withReminder({
+        days: [
+          { date: "2026-11-02", status: "open" },
+          { date: "2026-11-03", status: "open" },
+        ],
+      }),
+    );
+    renderApp();
+    await screen.findByRole("heading", { name: "Planung" });
+    expect(screen.queryByText(/Erinnerung/)).not.toBeInTheDocument();
+  });
+
+  it("is gone once the plan is finalized", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: finalized(exportOf({ failure: "refused" })) } },
+    });
+    renderApp();
+    await screen.findByText(/Planer/);
+    expect(screen.queryByText(/Erinnerung/)).not.toBeInTheDocument();
   });
 });
 

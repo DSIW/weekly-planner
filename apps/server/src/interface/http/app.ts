@@ -18,6 +18,8 @@ import type {
   RefreshRecipes,
   ReopenDay,
   RetryExport,
+  SubscribeToPush,
+  UnsubscribeFromPush,
   SignIn,
   StartSession,
   SwapPlannedDays,
@@ -62,6 +64,10 @@ interface AppOptions {
   readonly getFinalizePreview: Pick<GetFinalizePreview, "execute">;
   readonly finalizePlan: Pick<FinalizePlan, "execute">;
   readonly retryExport: Pick<RetryExport, "execute">;
+  readonly subscribeToPush: Pick<SubscribeToPush, "execute">;
+  readonly unsubscribeFromPush: Pick<UnsubscribeFromPush, "execute">;
+  /** The server's VAPID public key: a phone needs it to subscribe to notifications. */
+  readonly pushPublicKey: string;
   /** Recipes longer than this need a day's lead time; the phones flag them. */
   readonly planAheadMinutes: number;
   /** Told about every committed change; returns the way to stop listening. */
@@ -113,6 +119,7 @@ const sessionView = (s: PlanningSession, ahead: number, exported?: FinalizeExpor
   id: s.id,
   status: s.status,
   startedBy: s.startedBy,
+  reminderSent: s.reminderSent,
   days: s.days.map((d) => ({
     date: d.date,
     status: d.status,
@@ -127,6 +134,12 @@ const sessionView = (s: PlanningSession, ahead: number, exported?: FinalizeExpor
     ...(p.decidedBy ? { decidedBy: p.decidedBy } : {}),
   })),
 });
+
+const pushSubscriptionBody = z.object({
+  endpoint: z.string().url().max(1000),
+  keys: z.object({ p256dh: z.string().min(1).max(200), auth: z.string().min(1).max(200) }),
+});
+const pushEndpointBody = z.object({ endpoint: z.string().max(1000) });
 
 const retryBody = z.object({ resendUnconfirmed: z.boolean().optional() }).default({});
 
@@ -258,6 +271,32 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (!member) reply.code(401).send({ error: "not_signed_in" });
     return member;
   };
+
+  app.get(`${api}/push/key`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    return { key: options.pushPublicKey };
+  });
+
+  app.post(`${api}/push/subscription`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = pushSubscriptionBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const { endpoint, keys } = body.data;
+    await options.subscribeToPush.execute({
+      member: memberId(member.id),
+      subscription: { endpoint, p256dh: keys.p256dh, auth: keys.auth },
+    });
+    return reply.code(204).send();
+  });
+
+  app.delete(`${api}/push/subscription`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const body = pushEndpointBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    await options.unsubscribeFromPush.execute({ endpoint: body.data.endpoint });
+    return reply.code(204).send();
+  });
 
   app.get(`${api}/sessions/current`, async (req, reply) => {
     if (!requireMember(req, reply)) return reply;

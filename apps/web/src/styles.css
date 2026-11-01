@@ -346,3 +346,14 @@ li.review {
   border-radius: 14px;
   border: 1px solid var(--primary);
 }
+.banner {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--primary);
+  font-weight: 600;
+}
+.notify {
+  display: grid;
+  gap: 8px;
+}

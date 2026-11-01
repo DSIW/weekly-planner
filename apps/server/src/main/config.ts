@@ -17,6 +17,10 @@ const serverSchema = kitchenowlSchema.extend({
   WEB_DIST: z.string().min(1).default("apps/web/dist"),
   DATABASE_PATH: z.string().min(1).default("data/planner.sqlite"),
   HOUSEHOLD_TIMEZONE: z.string().min(1).default("Europe/Berlin"),
+  VAPID_SUBJECT: z
+    .string()
+    .regex(/^(mailto:[^@\s]+@[^@\s]+|https:\/\/\S+)$/)
+    .default("mailto:planner@example.org"),
   COOKIE_SECURE: z.enum(["true", "false"]).default("true"),
   TRUST_PROXY: z.enum(["true", "false"]).default("true"),
 });
@@ -39,6 +43,8 @@ type ServerConfig = Config & {
   databasePath: string;
   /** Time zone of the household, for "today" and the reminder hour. */
   timezone: string;
+  /** Who the push services can contact about this server: a `mailto:` address or an https URL. */
+  vapidSubject: string;
   cookieSecure: boolean;
   trustProxy: boolean;
 };
@@ -76,6 +82,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     webDist: d.WEB_DIST,
     databasePath: d.DATABASE_PATH,
     timezone: d.HOUSEHOLD_TIMEZONE,
+    vapidSubject: d.VAPID_SUBJECT,
     cookieSecure: d.COOKIE_SECURE === "true",
     trustProxy: d.TRUST_PROXY === "true",
   };

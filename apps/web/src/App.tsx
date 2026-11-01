@@ -32,6 +32,7 @@ import {
 import { ExportStatus } from "./ExportStatus";
 import { FinalizePanel } from "./FinalizePanel";
 import { LoginForm } from "./LoginForm";
+import { Notifications } from "./Notifications";
 import { PlanBoard } from "./PlanBoard";
 import type { Drop } from "./plan-moves";
 import { ProposalCard } from "./ProposalCard";
@@ -248,6 +249,11 @@ function Planning({ meId }: { meId: string }) {
           pending={close.isPending || shape.isPending}
           error={close.isError ? SESSION_MESSAGES.unavailable : messageFor(shape.error)}
         />
+        {session.status === "open" && session.reminderSent && session.days.some((d) => d.status === "planned") && (
+          <p role="status" className="banner">
+            Erinnerung: Ihr habt Tage geplant, aber die Einkaufsliste ist noch nicht gefüllt. Schließt die Planung ab.
+          </p>
+        )}
         {session.status === "open" && canFinalize(session) && <Finalizing session={session} onDone={setExported} />}
         {session.status === "open" && <Proposing session={session} meId={meId} refetch={refetch} />}
         {session.status === "finalized" && <Exporting session={session} onDone={setExported} />}
@@ -311,6 +317,7 @@ export function App() {
           Abmelden hat nicht geklappt. Bitte noch einmal versuchen.
         </p>
       )}
+      <Notifications />
       <Planning meId={me.data.id} />
     </main>
   );

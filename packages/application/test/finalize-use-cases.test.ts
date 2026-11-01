@@ -298,3 +298,47 @@ describe("the current session", () => {
     });
   });
 });
+
+describe("RetryRefusedExports", () => {
+  it("sends again what was refused, without repeating what was written", async () => {
+    const { h, id } = await planned();
+    h.planner.failures.push(new ExportNotApplied("down"));
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: id }));
+    expect(await h.retryRefusedExports.execute()).toBe(1);
+    expect(h.planner.entries.map((e) => e.date)).toEqual([MON, TUE]);
+    expect(h.planner.batches).toHaveLength(1);
+    expect(h.exports.bySession.get(id)?.failure).toBeNull();
+    expect(await h.retryRefusedExports.execute()).toBe(0); // complete: nothing left to try
+  });
+
+  it("tries again on every run while KitchenOwl keeps refusing", async () => {
+    const { h, id } = await planned();
+    h.planner.failures.push(new ExportNotApplied("down"), new ExportNotApplied("down"), new ExportNotApplied("down"));
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: id }));
+    expect(await h.retryRefusedExports.execute()).toBe(1);
+    expect(h.exports.bySession.get(id)?.failure).toBe("refused");
+    expect(await h.retryRefusedExports.execute()).toBe(1);
+    expect(h.planner.entries).toEqual([]);
+    expect(await h.retryRefusedExports.execute()).toBe(1);
+    expect(h.planner.entries).toHaveLength(2);
+  });
+
+  it("never sends a step again that went out without an answer", async () => {
+    const { h, id } = await planned();
+    h.planner.failures.push(new Error("socket hang up"));
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: id }));
+    expect(h.exports.bySession.get(id)?.failure).toBe("unconfirmed");
+    expect(await h.retryRefusedExports.execute()).toBe(0);
+    expect(h.planner.entries).toEqual([]);
+  });
+
+  it("leaves a plan alone that is not finalized, even if an export record says refused", async () => {
+    const { h, id } = await planned();
+    h.planner.failures.push(new ExportNotApplied("down"));
+    ok(await h.finalizePlan.execute({ member: ME, sessionId: id }));
+    ok(await h.closeSession.execute({ member: ME, sessionId: id }));
+    expect(h.sessions.byId.get(id)?.status).toBe("closed");
+    expect(await h.retryRefusedExports.execute()).toBe(0);
+    expect(h.planner.entries).toEqual([]);
+  });
+});

@@ -47,3 +47,27 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+// A reminder from the server: shown even while the app is closed. Tapping it opens the app, or brings it forward.
+self.addEventListener("push", (event) => {
+  const data = event.data ? event.data.json() : {};
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Wochenplan", {
+      body: data.body || "",
+      icon: `${scope}icon-192.png`,
+      tag: "finalize-reminder",
+      data: { url: data.url || scope },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL((event.notification.data && event.notification.data.url) || scope, location.origin).href;
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((open) => {
+      const ours = open.find((c) => new URL(c.url).pathname.startsWith(scope));
+      return ours ? ours.focus() : clients.openWindow(target);
+    }),
+  );
+});

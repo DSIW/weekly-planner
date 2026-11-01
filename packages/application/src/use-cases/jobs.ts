@@ -26,12 +26,19 @@ export class RemindToFinalize {
   async execute(): Promise<number> {
     const { deps } = this;
     let sent = 0;
-    for (const session of await deps.sessions.listAll()) {
-      const outcome = remindToFinalize(session, deps.clock.localNow(), this.config);
-      if (!outcome.ok || outcome.value.events.length === 0) continue;
-      await deps.uow.run(() => deps.sessions.save(outcome.value.state));
-      await deps.notifier.finalizeReminder(outcome.value.state);
-      await deps.events.publish(outcome.value.events);
+    for (const looked of await deps.sessions.listAll()) {
+      // The list is only a first look: the decision is made on the session as it is when the reminder is saved.
+      const reminded = await deps.uow.run(async () => {
+        const session = await deps.sessions.get(looked.id);
+        if (!session) return null;
+        const outcome = remindToFinalize(session, deps.clock.localNow(), this.config);
+        if (!outcome.ok || outcome.value.events.length === 0) return null;
+        await deps.sessions.save(outcome.value.state);
+        return outcome.value;
+      });
+      if (!reminded) continue;
+      await deps.notifier.finalizeReminder(reminded.state);
+      await deps.events.publish(reminded.events);
       sent++;
     }
     return sent;

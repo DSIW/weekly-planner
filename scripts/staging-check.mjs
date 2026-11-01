@@ -28,7 +28,11 @@ export { KitchenOwlPlannerGateway } from "./apps/server/src/infrastructure/kitch
     resolveDir: root,
     loader: "ts",
   },
-  bundle: true, platform: "node", format: "esm", outfile: out, logLevel: "error",
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  outfile: out,
+  logLevel: "error",
 });
 const { KitchenOwlClient, KitchenOwlPlannerGateway } = await import(out);
 
@@ -38,7 +42,11 @@ const get = async (path) => {
   assert.ok(res.ok, `GET ${path} -> ${res.status}`);
   return res.json();
 };
-const client = new KitchenOwlClient({ kitchenowlUrl: url, kitchenowlToken: env.KITCHENOWL_TOKEN, householdId: household });
+const client = new KitchenOwlClient({
+  kitchenowlUrl: url,
+  kitchenowlToken: env.KITCHENOWL_TOKEN,
+  householdId: household,
+});
 const gateway = new KitchenOwlPlannerGateway(client, listId);
 
 const recipe = (await client.listRecipes()).find((r) => r.items.length > 1);
@@ -53,7 +61,9 @@ assert.ok(entry, "the planner entry did not appear");
 console.log("cooking_date stored:", entry.cooking_date, "->", new Date(entry.cooking_date).toISOString());
 assert.equal(new Date(entry.cooking_date).toISOString().slice(0, 10), date, "planner date is on another day");
 
-await gateway.addShoppingListItems(recipe.items.map((i) => ({ id: i.id, name: i.name, description: i.description ?? "", optional: false })));
+await gateway.addShoppingListItems(
+  recipe.items.map((i) => ({ id: i.id, name: i.name, description: i.description ?? "", optional: false })),
+);
 const list = await get(`/shoppinglist/${listId}/items`);
 const names = new Set(list.map((i) => i.name));
 for (const i of recipe.items) assert.ok(names.has(i.name), `list item missing: ${i.name}`);

@@ -97,6 +97,8 @@ export interface PlanSession {
   id: string;
   status: "open" | "finalized" | "closed";
   startedBy: string;
+  /** The reminder to finalize has gone out; the board repeats it for phones without notifications. */
+  reminderSent: boolean;
   days: PlanDay[];
   proposals: Proposal[];
   /** Present on a finalized session. */

@@ -48,6 +48,21 @@ const MIGRATIONS: readonly string[] = [
     export_json text not null
   );
   `,
+  // 5: the phones that asked for notifications (S4b), and small settings the server keeps for itself (the VAPID key
+  // pair that identifies it to the push services; it must stay the same or every subscription stops working).
+  `
+  create table push_subscription (
+    endpoint text primary key,
+    member_id text not null,
+    p256dh text not null,
+    auth text not null,
+    created_at integer not null
+  );
+  create table setting (
+    key text primary key,
+    value text not null
+  );
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

@@ -329,6 +329,19 @@ describe("RemindToFinalize", () => {
     expect(h.events.types).toContain("FinalizeReminderDue");
   });
 
+  it("decides on the session as it is when the reminder is saved, not as it was when the job looked", async () => {
+    const { h, s } = await started();
+    await agree(h, s, MON);
+    h.clock.date = MON;
+    h.clock.hour = 8;
+    const looked = await h.sessions.listAll(); // the job's first look: still open
+    h.sessions.listAll = async () => looked;
+    ok(await h.finalizePlan.execute({ member: AC, sessionId: s.id })); // a member finalizes meanwhile
+    expect(await h.remindToFinalize.execute()).toBe(0);
+    expect(h.sessions.byId.get(s.id)?.status).toBe("finalized");
+    expect(h.notifier.reminders).toEqual([]);
+  });
+
   it("does not remind about a finalized plan", async () => {
     const { h, s } = await started();
     await agree(h, s, MON);

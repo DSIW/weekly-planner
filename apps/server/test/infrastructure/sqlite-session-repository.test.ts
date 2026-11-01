@@ -163,7 +163,7 @@ describe("migrations", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     expect(fresh(path).db.prepare("pragma user_version").get()).toEqual(version);
-    expect(version).toEqual({ user_version: 4 });
+    expect(version).toEqual({ user_version: 5 });
   });
 });
 
@@ -243,11 +243,13 @@ describe("migration 4 and the export repository", () => {
     raw.close();
     const first = fresh(path);
     await first.sessions.save(aSession("keep"));
-    first.db.exec("drop table finalize_export; pragma user_version = 3");
+    first.db.exec(
+      "drop table finalize_export; drop table push_subscription; drop table setting; pragma user_version = 3",
+    );
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     const again = fresh(path);
-    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 4 });
+    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 5 });
     expect((await again.sessions.get(sessionId("keep")))?.id).toBe("keep");
     await new SqliteExportRepository(again.db).save({ ...exported, sessionId: sessionId("keep") });
   });

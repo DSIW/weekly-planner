@@ -58,6 +58,7 @@ config {
     household_size: Integer = 2        -- always cook for two; recipe amounts are scaled to this
     variety_window_days: Integer = 2   -- how many previous days count for base variety
     reminder_offset: Duration = 8.hours   -- after midnight of the first agreed day
+    export_retry_interval: Duration = 15.minutes   -- how often refused export steps are sent again
     vegetarian_share: Decimal = 0.66   -- soft target: at least 2 of 3 dinners
     new_recipes_per_session: Integer = 1   -- soft target
 }
@@ -71,6 +72,7 @@ entity PlanningSession {
     started_at: Timestamp
     status: open | finalized | closed
     reminder_sent: Boolean   -- the finalize reminder fires once per session
+    export_failure: refused | unconfirmed | none   -- how the last failed export step failed; cleared by the next step that succeeds
 
     days: PlanDay with session = this
     proposals: Proposal with session = this
@@ -82,6 +84,7 @@ entity PlanningSession {
     planned_days: days where status = planned
     pending_proposals: proposals where status = pending
     unfinished_export_steps: export_steps where status != done
+    refused_export_steps: export_steps where status = pending and export_failure = refused
 
     -- Derived
     export_complete: status = finalized and unfinished_export_steps.count = 0
@@ -156,6 +159,11 @@ entity ExportStep {
         sending -> pending
         terminal: done
     }
+}
+
+-- The scheduler's clock for sending refused export steps again.
+entity ExportRetrySchedule {
+    next_run_at: Timestamp
 }
 
 -- Passing on a suggestion hides it for the rest of the session, for both
@@ -432,20 +440,42 @@ rule SendExportStep {
 rule ExportStepAnswered {
     when: ExportStepAnswered(step)
     requires: step.status = sending
-    ensures: step.status = done
+    ensures:
+        step.status = done
+        step.session.export_failure = none
 }
 
 -- KitchenOwl refused the request (or was not reached): nothing was written.
 rule ExportStepRefused {
     when: ExportStepRefused(step)
     requires: step.status = sending
-    ensures: step.status = pending
+    ensures:
+        step.status = pending
+        step.session.export_failure = refused
+}
+
+-- A refused step is sent again by itself, because nothing was written and a
+-- repeat cannot duplicate anything. The scheduler looks every
+-- config.export_retry_interval. A step that was sent without an answer is
+-- never part of this: only a member decides about it (ResendUnconfirmedStep).
+rule RetryRefusedExports {
+    when: schedule: ExportRetrySchedule.next_run_at <= now
+    ensures: schedule.next_run_at = now + config.export_retry_interval
+    for session in PlanningSessions where status = finalized and export_failure = refused:
+        for step in session.refused_export_steps:
+            ensures: SendExportStep(member: session.started_by, step: step)
 }
 
 -- No usable answer (a timeout, a server error after which the write may have
 -- happened, the planner stopped): the step stays sending and is not sent
 -- again by itself. A member who has looked at KitchenOwl may send
 -- it once more, knowing it can then appear twice.
+rule ExportStepUnanswered {
+    when: ExportStepUnanswered(step)
+    requires: step.status = sending
+    ensures: step.session.export_failure = unconfirmed
+}
+
 rule ResendUnconfirmedStep {
     when: ResendUnconfirmedStep(member, step)
     requires: step.session.status = finalized
@@ -541,6 +571,8 @@ surface PlanningBoard {
     exposes:
         session.days
         session.open_days
+        session.reminder_sent
+        session.export_failure
         for entry in MealLogEntries where entry.date >= now - config.variety_window_days.days:
             entry.date
             entry.base
@@ -572,6 +604,7 @@ surface PlanningBoard {
 
     timeout:
         RemindToFinalize
+        RetryRefusedExports
 
     @guidance
         -- Both members see the same session. There is one deck for the whole

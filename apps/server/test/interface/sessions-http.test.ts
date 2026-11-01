@@ -21,6 +21,8 @@ import {
   RefreshRecipes,
   ReopenDay,
   RetryExport,
+  SubscribeToPush,
+  UnsubscribeFromPush,
   StartSession,
   SwapPlannedDays,
   VetoProposal,
@@ -37,6 +39,7 @@ import { NoMealsRecordedYet } from "../../src/infrastructure/meal-log/not-record
 import { SystemRandomness, UuidGenerator } from "../../src/infrastructure/system/system-services.js";
 import { SqliteExportRepository } from "../../src/infrastructure/sqlite/sqlite-export-repository.js";
 import { SqliteDinnerCalendar } from "../../src/infrastructure/sqlite/sqlite-dinner-calendar.js";
+import { SqlitePushSubscriptions } from "../../src/infrastructure/sqlite/sqlite-push-subscriptions.js";
 import { SqliteSessionRepository } from "../../src/infrastructure/sqlite/sqlite-session-repository.js";
 import { SqliteUnitOfWork } from "../../src/infrastructure/sqlite/sqlite-unit-of-work.js";
 import { buildApp } from "../../src/interface/http/app.js";
@@ -170,6 +173,9 @@ beforeEach(async () => {
     getFinalizePreview: new GetFinalizePreview({ sessions: deps.sessions, catalog }, defaultPlanningConfig),
     finalizePlan: new FinalizePlan({ ...deps, catalog, exports, exporter }, defaultPlanningConfig),
     retryExport: new RetryExport({ sessions: deps.sessions, exporter }),
+    subscribeToPush: new SubscribeToPush(new SqlitePushSubscriptions(db)),
+    unsubscribeFromPush: new UnsubscribeFromPush(new SqlitePushSubscriptions(db)),
+    pushPublicKey: "public-key-of-the-server",
     startSession: new StartSession({ ...deps, ids, clock }, defaultPlanningConfig),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions: deps.sessions, catalog }, defaultPlanningConfig),
@@ -213,7 +219,7 @@ afterEach(async () => {
 });
 
 const cookieFor = (m: typeof max) => cookies.get(m.id)!;
-const call = (method: "GET" | "POST", url: string, as?: typeof max, payload?: unknown) =>
+const call = (method: "GET" | "POST" | "DELETE", url: string, as?: typeof max, payload?: unknown) =>
   app.inject({
     method,
     url: `/plan/api${url}`,
@@ -831,5 +837,53 @@ describe("finalizing over HTTP", () => {
     expect(logged.some((l) => l.includes("finalize-preview failed: KitchenOwl is down"))).toBe(true);
     expect((await finalize(max, id)).statusCode).toBe(502);
     expect((await call("GET", "/sessions/current", max)).json().session.status).toBe("open");
+  });
+});
+
+describe("notifications over HTTP", () => {
+  const phone = { endpoint: "https://push.example/abc", keys: { p256dh: "pk", auth: "au" } };
+  const stored = () => new SqlitePushSubscriptions(db).all();
+
+  it("needs a signed-in member", async () => {
+    expect((await call("GET", "/push/key")).statusCode).toBe(401);
+    expect((await call("POST", "/push/subscription", undefined, phone)).statusCode).toBe(401);
+    expect((await call("DELETE", "/push/subscription", undefined, { endpoint: phone.endpoint })).statusCode).toBe(401);
+    expect(await stored()).toEqual([]);
+  });
+
+  it("gives the server's public key to subscribe with", async () => {
+    expect((await call("GET", "/push/key", max)).json()).toEqual({ key: "public-key-of-the-server" });
+  });
+
+  it("stores a phone for the member who subscribed and forgets it again", async () => {
+    expect((await call("POST", "/push/subscription", ac, phone)).statusCode).toBe(204);
+    expect(await stored()).toEqual([
+      { member: "3", subscription: { endpoint: phone.endpoint, p256dh: "pk", auth: "au" } },
+    ]);
+    expect((await call("DELETE", "/push/subscription", ac, { endpoint: phone.endpoint })).statusCode).toBe(204);
+    expect(await stored()).toEqual([]);
+  });
+
+  it.each([
+    {},
+    { endpoint: "not a url", keys: { p256dh: "pk", auth: "au" } },
+    { endpoint: phone.endpoint },
+    { endpoint: phone.endpoint, keys: { p256dh: "", auth: "au" } },
+  ])("refuses a subscription that is not one: %j", async (body) => {
+    expect((await call("POST", "/push/subscription", max, body)).statusCode).toBe(400);
+    expect(await stored()).toEqual([]);
+  });
+
+  it("refuses to forget without an endpoint", async () => {
+    expect((await call("DELETE", "/push/subscription", max, {})).statusCode).toBe(400);
+  });
+
+  it("shows on the session whether the reminder went out, for the banner", async () => {
+    const { session } = (await start(max, ["2026-11-02", "2026-11-03"])).json();
+    expect(session.reminderSent).toBe(false);
+    const sessions = new SqliteSessionRepository(db);
+    const saved = (await sessions.listAll())[0]!;
+    await sessions.save({ ...saved, reminderSent: true });
+    expect((await call("GET", "/sessions/current", ac)).json().session.reminderSent).toBe(true);
   });
 });
