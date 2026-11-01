@@ -20,6 +20,7 @@ import {
   needsPlanningAhead,
   suggestRecipes,
   vetoProposal,
+  withdrawProposal,
   markLeftoverDay,
   movePlannedDay,
   reopenDay,
@@ -38,6 +39,7 @@ import {
   aRecipe,
   aSession,
   config,
+  dayOf,
   must,
   plan,
   withProposal,
@@ -96,7 +98,10 @@ describe("day operations while a proposal is pending", () => {
 
   it("a discarded session no longer holds its dates (OneDinnerPerDay)", () => {
     const first = plan(aSession([MON, TUE]), MON, aRecipe());
-    const other = { ...plan(aSession([MON, TUE]), MON, aRecipe()), id: sessionId("other") };
+    const other = {
+      ...plan(aSession([MON, TUE]), MON, aRecipe()),
+      id: sessionId("other"),
+    };
     expect(invariantViolations([first, other]).some((v) => v.startsWith("OneDinnerPerDay"))).toBe(true);
     const closed = must(closeSession(first, { member: AC })).state;
     expect(invariantViolations([closed, other])).toEqual([]);
@@ -135,7 +140,10 @@ describe("rule VetoProposal on a session that is no longer open", () => {
   it("is rejected once the session was closed", () => {
     const { session, id } = withProposal(aSession(), MON, aRecipe(), AC);
     const closed = must(closeSession(session, { member: AC })).state;
-    expect(vetoProposal(closed, { member: ME, proposalId: id })).toEqual({ ok: false, reason: "session_not_open" });
+    expect(vetoProposal(closed, { member: ME, proposalId: id })).toEqual({
+      ok: false,
+      reason: "session_not_open",
+    });
     expect(vetoProposal(session, { member: ME, proposalId: id }).ok).toBe(true);
   });
 });
@@ -192,8 +200,17 @@ describe("recipes that need planning ahead (config.plan_ahead_time)", () => {
   });
 
   it("come last in the deck even when every other preference would put them first", () => {
-    const longButNewAndWanted = aRecipe({ name: "Biga", totalTimeMinutes: 1285, isProven: false, wantsToTry: true });
-    const plain = aRecipe({ name: "plain", totalTimeMinutes: 30, diet: "meat" });
+    const longButNewAndWanted = aRecipe({
+      name: "Biga",
+      totalTimeMinutes: 1285,
+      isProven: false,
+      wantsToTry: true,
+    });
+    const plain = aRecipe({
+      name: "plain",
+      totalTimeMinutes: 30,
+      diet: "meat",
+    });
     const input = {
       session: aSession([SAT, SUN]),
       candidates: [longButNewAndWanted, plain],
@@ -271,12 +288,20 @@ describe("scaleDescription", () => {
     ["0 g", 1, "0 g", true],
   ];
   it.each(table)("%j x %s -> %j (review: %s)", (input, factor, text, needsReview) => {
-    expect(scaleDescription(input, factor)).toMatchObject({ text, needsReview });
+    expect(scaleDescription(input, factor)).toMatchObject({
+      text,
+      needsReview,
+    });
   });
 
   it("flags an amount when the factor is unusable instead of guessing", () => {
-    expect(scaleDescription("2 EL", 0)).toMatchObject({ text: "2 EL", needsReview: true });
-    expect(scaleDescription("2 EL", Number.NaN)).toMatchObject({ needsReview: true });
+    expect(scaleDescription("2 EL", 0)).toMatchObject({
+      text: "2 EL",
+      needsReview: true,
+    });
+    expect(scaleDescription("2 EL", Number.NaN)).toMatchObject({
+      needsReview: true,
+    });
   });
 });
 
@@ -325,7 +350,14 @@ describe("consolidateIngredients", () => {
       [recipe("A", 4, ing("Zwiebel", "2 Stück")), recipe("B", 2, ing("Zwiebel", "1 Stück"))],
       2,
     );
-    expect(items).toEqual([{ name: "Zwiebel", description: "2 Stück", needsReview: false, recipes: ["A", "B"] }]);
+    expect(items).toEqual([
+      {
+        name: "Zwiebel",
+        description: "2 Stück",
+        needsReview: false,
+        recipes: ["A", "B"],
+      },
+    ]);
   });
 
   it("normalises grams and kilograms, millilitres and litres like KitchenOwl", () => {
@@ -371,7 +403,11 @@ describe("consolidateIngredients", () => {
       2,
     );
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ id: 7, name: "Zwiebel", description: "3" });
+    expect(items[0]).toMatchObject({
+      id: 7,
+      name: "Zwiebel",
+      description: "3",
+    });
   });
 
   it("flags what it cannot read, keeps the original text and adds up the rest", () => {
@@ -379,8 +415,14 @@ describe("consolidateIngredients", () => {
       [recipe("A", 2, ing("Salz", "etwas"), ing("Butter", "50 g")), recipe("B", 2, ing("Butter", "nach Geschmack"))],
       2,
     );
-    expect(one(items, "Salz")).toMatchObject({ description: "etwas", needsReview: true });
-    expect(one(items, "Butter")).toMatchObject({ description: "50 g, nach Geschmack", needsReview: true });
+    expect(one(items, "Salz")).toMatchObject({
+      description: "etwas",
+      needsReview: true,
+    });
+    expect(one(items, "Butter")).toMatchObject({
+      description: "50 g, nach Geschmack",
+      needsReview: true,
+    });
   });
 
   it("sends no description for an ingredient without an amount, and skips optional ones", () => {
@@ -415,7 +457,10 @@ describe("the export of a finalized plan", () => {
     const e = fresh();
     expect(e.days.map((d) => d.status)).toEqual(["pending", "pending"]);
     expect(nextStep(e)).toEqual({ kind: "planner", date: MON });
-    const afterDays = step(step(e, { kind: "planner", date: MON }), { kind: "planner", date: TUE });
+    const afterDays = step(step(e, { kind: "planner", date: MON }), {
+      kind: "planner",
+      date: TUE,
+    });
     expect(nextStep(afterDays)).toEqual({ kind: "list" });
     expect(exportComplete(afterDays)).toBe(false);
     const all = step(afterDays, { kind: "list" });
@@ -443,7 +488,12 @@ describe("the export of a finalized plan", () => {
     expect(failed.state.days[0]?.status).toBe("pending");
     expect(failed.state.failure).toBe("refused");
     expect(failed.events).toEqual([
-      { type: "ExportProgressed", sessionId: sessionId("s1"), complete: false, failure: "refused" },
+      {
+        type: "ExportProgressed",
+        sessionId: sessionId("s1"),
+        complete: false,
+        failure: "refused",
+      },
     ]);
     expect(beginStep(failed.state, { kind: "planner", date: MON }, { resendUnconfirmed: false }).ok).toBe(true);
   });
@@ -480,19 +530,71 @@ describe("the export of a finalized plan", () => {
     const e = { ...fresh(), failure: "refused" as const };
     const begun = must(beginStep(e, { kind: "planner", date: MON }, { resendUnconfirmed: false })).state;
     expect(must(completeStep(begun, { kind: "planner", date: MON })).state.failure).toBeNull();
-    const last = step(step(step(fresh(), { kind: "planner", date: MON }), { kind: "planner", date: TUE }), {
-      kind: "list",
-    });
+    const last = step(
+      step(step(fresh(), { kind: "planner", date: MON }), {
+        kind: "planner",
+        date: TUE,
+      }),
+      {
+        kind: "list",
+      },
+    );
     const again = must(
       beginStep({ ...last, list: { ...last.list, status: "pending" } }, { kind: "list" }, { resendUnconfirmed: false }),
     ).state;
     expect(must(completeStep(again, { kind: "list" })).events).toEqual([
-      { type: "ExportProgressed", sessionId: sessionId("s1"), complete: true, failure: null },
+      {
+        type: "ExportProgressed",
+        sessionId: sessionId("s1"),
+        complete: true,
+        failure: null,
+      },
     ]);
   });
 
   it("only completes or fails a step that is sending", () => {
-    expect(completeStep(fresh(), { kind: "list" })).toEqual({ ok: false, reason: "step_not_sending" });
-    expect(failStep(fresh(), { kind: "list" }, "refused")).toEqual({ ok: false, reason: "step_not_sending" });
+    expect(completeStep(fresh(), { kind: "list" })).toEqual({
+      ok: false,
+      reason: "step_not_sending",
+    });
+    expect(failStep(fresh(), { kind: "list" }, "refused")).toEqual({
+      ok: false,
+      reason: "step_not_sending",
+    });
+  });
+});
+
+// Added with the S1-S4b feedback round: rule WithdrawProposal. A withdrawn proposal holds nothing: not the day,
+// not the recipe (unlike a veto) and not the one pending vote of the session.
+describe("rule WithdrawProposal", () => {
+  it("leaves the day open, keeps the dish proposable and frees the vote", () => {
+    const r = aRecipe();
+    const { session, id } = withProposal(aSession([MON, TUE]), MON, r, AC);
+    expect(withdrawProposal(session, { member: ME, proposalId: id })).toEqual({
+      ok: false,
+      reason: "not_your_proposal",
+    });
+    const back = must(withdrawProposal(session, { member: AC, proposalId: id })).state;
+    expect(back.proposals[0]?.status).toBe("withdrawn");
+    expect(back.proposals[0]?.decidedBy).toBeUndefined();
+    expect(dayOf(back, MON).status).toBe("open");
+    expect(invariantViolations([back])).toEqual([]);
+    expect(withdrawProposal(back, { member: AC, proposalId: id })).toEqual({
+      ok: false,
+      reason: "proposal_not_pending",
+    });
+    expect(must(markLeftoverDay(back, { member: AC, date: MON })).state.days[0]?.status).toBe("leftovers");
+    const again = withProposal(back, MON, r, ME).session;
+    expect(again.proposals.filter((p) => p.status === "pending")).toHaveLength(1);
+    expect(invariantViolations([again])).toEqual([]);
+  });
+
+  it("is refused once the session is no longer open", () => {
+    const { session, id } = withProposal(aSession([MON, TUE]), MON, aRecipe(), AC);
+    const closed = must(closeSession(session, { member: AC })).state;
+    expect(withdrawProposal(closed, { member: AC, proposalId: id })).toEqual({
+      ok: false,
+      reason: "session_not_open",
+    });
   });
 });
