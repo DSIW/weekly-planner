@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.10...weekly-planner-v0.1.11) (2026-11-01)
+
+
+### Features
+
+* phone feedback round 1 (withdraw a proposal, leave ingredients off the list, ingredient grid, card stack, pictures, tags, bell) ([c32585d](https://github.com/DSIW/weekly-planner/commit/c32585d9600c94d9510ff6d85f967561bd62c9a2))
+
 ## [0.1.10](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.9...weekly-planner-v0.1.10) (2026-11-01)
 
 
