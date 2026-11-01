@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.9](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.8...weekly-planner-v0.1.9) (2026-11-01)
+
+
+### Features
+
+* finalize saga, retry, finalize preview and current session use cases ([b54788c](https://github.com/DSIW/weekly-planner/commit/b54788cb05ce741d7dc6002eef1287627b694e3d))
+* finalize screen with the list preview, export status and retry ([b972d4f](https://github.com/DSIW/weekly-planner/commit/b972d4f7b76f9f84a30d6e3dfd6933484de0570a))
+* finalize, finalize preview and export retry over HTTP ([1354835](https://github.com/DSIW/weekly-planner/commit/1354835eb56c273f1fabccee5b0e0c3559c11a7c))
+* KitchenOwl planner gateway, export state in SQLite and ingredients in the catalog ([57fed9b](https://github.com/DSIW/weekly-planner/commit/57fed9b6c6bf6bad68a540b7ac2b6cebe935ff4e))
+* refuse finalizing while a vote is pending ([0e2d168](https://github.com/DSIW/weekly-planner/commit/0e2d1680fea802192c5bd57a2f98bbdb34e28d88))
+* scale and consolidate ingredients and track the export of a finalized plan ([b2dc17d](https://github.com/DSIW/weekly-planner/commit/b2dc17de03254076eda8053f3cecbfa3a210ed1b))
+
 ## [0.1.8](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.7...weekly-planner-v0.1.8) (2026-11-01)
 
 
