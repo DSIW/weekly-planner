@@ -45,6 +45,17 @@ describe("loadServerConfig", () => {
     expect(() => loadServerConfig({ ...base, VAPID_SUBJECT: "http://home.example" })).toThrow(/VAPID_SUBJECT/);
   });
 
+  it("refuses a VAPID_SUBJECT that only contains a contact, or a mailto: without an address", () => {
+    for (const subject of [
+      "mailto:nobody",
+      "xmailto:me@home.example",
+      "https://home.example and more",
+      "see https://home.example",
+    ]) {
+      expect(() => loadServerConfig({ ...base, VAPID_SUBJECT: subject })).toThrow(/VAPID_SUBJECT/);
+    }
+  });
+
   it("fills the shopping list with id 2 unless SHOPPING_LIST_ID says otherwise", () => {
     expect(loadServerConfig(base).shoppingListId).toBe(2);
     expect(loadServerConfig({ ...base, SHOPPING_LIST_ID: "3" }).shoppingListId).toBe(3);

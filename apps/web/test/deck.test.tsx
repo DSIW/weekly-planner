@@ -329,6 +329,120 @@ describe("the card stack, pictures and tags", () => {
   });
 });
 
+/** Holds back the reply to `key` until `release` is called, so the app can be watched while the request runs. */
+const holdBack = (key: string) => {
+  const reply = vi.mocked(fetch);
+  const original = reply.getMockImplementation()!;
+  let release: () => void = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  reply.mockImplementation(async (url, init) => {
+    if (`${init?.method ?? "GET"} ${String(url)}` === key) await gate;
+    return original(url, init);
+  });
+  return () => release();
+};
+
+describe("the card stack, pictures and tags (witness)", () => {
+  it("shows a picture that is already in the cache without waiting for a load event", async () => {
+    const complete = vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
+    const width = vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(320);
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")) });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    await waitFor(() => expect(article.querySelector(".photo")).toHaveAttribute("data-state", "loaded"));
+    expect(within(article).queryByRole("status")).not.toBeInTheDocument();
+    complete.mockRestore();
+    width.mockRestore();
+  });
+
+  it("keeps the spinner for a cached image that has no picture in it", async () => {
+    const complete = vi.spyOn(HTMLImageElement.prototype, "complete", "get").mockReturnValue(true);
+    const width = vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(0);
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")) });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(article.querySelector(".photo")).toHaveAttribute("data-state", "loading");
+    complete.mockRestore();
+    width.mockRestore();
+  });
+
+  it("falls back to base and diet when the recipe's tag list is empty", async () => {
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta", { tags: [] })) });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    expect([...article.querySelectorAll(".badge")].map((b) => b.textContent)).toEqual(["Pasta", "Vegetarisch"]);
+  });
+
+  it("shows the missing-time hint only on the top card, and only when its time is missing", async () => {
+    server({
+      ...signedIn,
+      ...current,
+      [DECK]: deckOf(card(1, "Pasta"), card(2, "Ohne Zeit", { minutes: null, needsTime: true })),
+    });
+    renderApp();
+    await screen.findByRole("article", { name: "Pasta" });
+    expect(document.querySelector(".deck-card.behind h3")).toHaveTextContent("Ohne Zeit");
+    expect(screen.queryByText(/bitte in KitchenOwl eintragen/)).not.toBeInTheDocument();
+  });
+
+  it("flies a card swiped to the left off to the left", async () => {
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")), [PASS]: { status: 500, body: {} } });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    drag(article, -160);
+    expect(article.style.transform).toContain("translateX(-700px)");
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
+    expect(article.style.transform).toContain("translateX(-700px)"); // it waits a moment before coming back
+    await waitFor(() => expect(article.style.transform).toContain("translateX(0px)"));
+  });
+
+  it("keeps the decided card off while the request runs, and takes no swipe while a request runs", async () => {
+    const calls = server({
+      ...signedIn,
+      ...current,
+      [DECK]: deckOf(card(1, "Pasta")),
+      [PROPOSE]: { status: 500, body: {} },
+      [PASS]: { status: 200, body: { session } },
+    });
+    const release = holdBack(PROPOSE);
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    drag(article, 160);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(article.style.transform).toContain("translateX(700px)");
+    release();
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
+    await waitFor(() => expect(article.style.transform).toContain("translateX(0px)"));
+
+    const release2 = holdBack(PROPOSE);
+    await userEvent.click(screen.getByRole("button", { name: "Vorschlagen" }));
+    drag(article, -160); // the request from the button still runs
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls.some((c) => c.key === PASS)).toBe(false);
+    release2();
+  });
+
+  it("starts the next card in place, not where the decided one flew to", async () => {
+    let cards = [card(1, "Pasta"), card(2, "Curry")];
+    server({
+      ...signedIn,
+      ...current,
+      [DECK]: () => deckOf(...cards),
+      [PASS]: () => {
+        cards = cards.slice(1);
+        return { status: 200, body: { session } };
+      },
+    });
+    renderApp();
+    drag(await screen.findByRole("article", { name: "Pasta" }), -160);
+    const next = await screen.findByRole("article", { name: "Curry" });
+    expect(next.style.transform).toContain("translateX(0px)");
+  });
+});
+
 describe("failed actions on the deck are visible", () => {
   it("passing", async () => {
     server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")), [PASS]: { status: 500, body: {} } });

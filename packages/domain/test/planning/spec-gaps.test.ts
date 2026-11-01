@@ -336,6 +336,17 @@ describe("consolidateIngredients", () => {
     expect("category" in one(consolidateIngredients([recipe("A", 2, ing("Mehl", "1 kg"))], 2), "Mehl")).toBe(false);
   });
 
+  it("does not take an empty category as the one named", () => {
+    const items = consolidateIngredients(
+      [
+        recipe("A", 2, ing("Butter", "30 g", { category: "" })),
+        recipe("B", 2, ing("Butter", "20 g", { category: "Kühlregal" })),
+      ],
+      2,
+    );
+    expect(one(items, "Butter").category).toBe("Kühlregal");
+  });
+
   it("leaves out what is in stock, by name and whatever the case, and ignores names that are not on the list", () => {
     const items = consolidateIngredients(
       [recipe("A", 2, ing("Butter", "30 g"), ing("Salz", ""), ing("Mehl", "200 g"))],
@@ -587,6 +598,22 @@ describe("rule WithdrawProposal", () => {
     const again = withProposal(back, MON, r, ME).session;
     expect(again.proposals.filter((p) => p.status === "pending")).toHaveLength(1);
     expect(invariantViolations([again])).toEqual([]);
+  });
+
+  it("announces the withdrawn proposal with its session, day and dish", () => {
+    const r = aRecipe();
+    const { session, id } = withProposal(plan(aSession([MON, TUE, SAT]), MON, aRecipe()), TUE, r, AC);
+    expect(must(withdrawProposal(session, { member: AC, proposalId: id })).events).toEqual([
+      { type: "ProposalWithdrawn", sessionId: session.id, proposalId: id, date: TUE, recipeId: r.id },
+    ]);
+  });
+
+  it("frees the session for day operations that wait on a pending vote", () => {
+    const { session, id } = withProposal(plan(aSession([MON, TUE, SAT]), MON, aRecipe()), TUE, aRecipe(), AC);
+    const back = must(withdrawProposal(session, { member: AC, proposalId: id })).state;
+    expect(reopenDay(back, { member: ME, date: MON }).ok).toBe(true);
+    expect(movePlannedDay(back, { member: ME, from: MON, to: TUE }, config).ok).toBe(true);
+    expect(finalizePlan(back, { member: ME }, config).ok).toBe(true);
   });
 
   it("is refused once the session is no longer open", () => {

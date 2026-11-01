@@ -162,4 +162,29 @@ describe("notifications switch", () => {
       expect(calls.find((c) => c.key === UNSUBSCRIBE)?.body).toEqual({ endpoint: subscriptionJson.endpoint }),
     );
   });
+
+  it("still turns on when the test message does not even reach the server", async () => {
+    phone(false);
+    server({ ...base, [KEY]: { status: 200, body: { key: "AQID" } }, [SUBSCRIBE]: { status: 204 } });
+    const reply = vi.mocked(fetch);
+    const original = reply.getMockImplementation()!;
+    reply.mockImplementation(async (url, init) => {
+      if (`${init?.method ?? "GET"} ${String(url)}` === TEST) throw new TypeError("Failed to fetch");
+      return original(url, init);
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Benachrichtigungen an" }));
+    expect(await screen.findByRole("button", { name: "Benachrichtigungen aus" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("sends no test message when turning off", async () => {
+    phone(true);
+    const calls = server({ ...base, [UNSUBSCRIBE]: { status: 204 }, [TEST]: { status: 200, body: { reached: 1 } } });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Benachrichtigungen aus" }));
+    expect(await screen.findByRole("button", { name: "Benachrichtigungen an" })).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((c) => c.key === UNSUBSCRIBE)).toBe(true));
+    expect(calls.some((c) => c.key === TEST)).toBe(false);
+  });
 });

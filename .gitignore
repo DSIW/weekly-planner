@@ -25,3 +25,6 @@ __pycache__/
 
 # allium loop state (ledger, witness record, trace)
 .allium-loop/
+
+# Claude Code worktrees of parallel agent runs
+.claude/worktrees/

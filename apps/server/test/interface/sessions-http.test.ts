@@ -904,6 +904,34 @@ describe("finalizing over HTTP", () => {
     expect((await finalize(max, id)).statusCode).toBe(502);
     expect((await call("GET", "/sessions/current", max)).json().session.status).toBe("open");
   });
+
+  it("gives each line the leading emoji of its category, in the preview and in the export", async () => {
+    const original = pasta.ingredients;
+    (pasta as { ingredients?: Recipe["ingredients"] }).ingredients = [
+      { name: "Eis", description: "1 Packung", optional: false, category: "❄️ Tiefkühl" },
+      { name: "Brötchen", description: "4 Stück", optional: false, category: "🧑‍🍳 Bäckerei" },
+      { name: "Kuchen", description: "1 Stück", optional: false, category: "Backen 🍰" },
+      { name: "Senf", description: "etwas", optional: false, category: "  🌭 Würzen" },
+    ];
+    try {
+      const id = await planned();
+      const icons = (items: { name: string; icon: string | null }[]) =>
+        Object.fromEntries(items.map((i) => [i.name, i.icon]));
+      const expected = { Eis: "❄️", Brötchen: "🧑‍🍳", Kuchen: null, Senf: "🌭", Zwiebel: "🥬", Salz: null };
+      expect(icons((await preview(max, id)).json().items)).toEqual(expected);
+      expect(icons((await finalize(ac, id)).json().session.export.list.items)).toEqual(expected);
+    } finally {
+      (pasta as { ingredients?: Recipe["ingredients"] }).ingredients = original;
+    }
+  });
+
+  it("refuses a skip list that is too long or names something too long", async () => {
+    const id = await planned();
+    expect((await finalize(ac, id, { skip: Array.from({ length: 301 }, (_, n) => `x${n}`) })).statusCode).toBe(400);
+    expect((await finalize(ac, id, { skip: ["x".repeat(201)] })).statusCode).toBe(400);
+    expect((await sessionOf(ac)).status).toBe("open");
+    expect((await finalize(ac, id, { skip: Array.from({ length: 300 }, () => "x".repeat(200)) })).statusCode).toBe(200);
+  });
 });
 
 describe("notifications over HTTP", () => {
@@ -961,5 +989,13 @@ describe("notifications over HTTP", () => {
     const saved = (await sessions.listAll())[0]!;
     await sessions.save({ ...saved, reminderSent: true });
     expect((await call("GET", "/sessions/current", ac)).json().session.reminderSent).toBe(true);
+  });
+
+  it("asks no phone without a signed-in member, and hands the phone count on as it is", async () => {
+    tested.length = 0;
+    expect((await call("POST", "/push/test")).statusCode).toBe(401);
+    expect(tested).toEqual([]);
+    expect((await call("POST", "/push/test", ac)).json()).toEqual({ reached: 1 });
+    expect((await call("POST", "/push/test", ac)).json()).toEqual({ reached: 2 });
   });
 });

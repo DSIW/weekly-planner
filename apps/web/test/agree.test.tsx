@@ -187,6 +187,54 @@ describe("choosing a dinner for the next open day", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Darüber ist schon entschieden.");
   });
 
+  it("says so when the proposal to take back is not the member's own", async () => {
+    server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal()] }) } },
+      [WITHDRAW]: { status: 403, body: { error: "not_your_proposal" } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Zurückziehen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Das ist nicht dein Vorschlag.");
+  });
+
+  it("disables taking back while the request runs", async () => {
+    server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal()] }) } },
+    });
+    const reply = vi.mocked(fetch);
+    const original = reply.getMockImplementation()!;
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    reply.mockImplementation(async (url, init) => {
+      if (`${init?.method ?? "GET"} ${String(url)}` === WITHDRAW) await gate;
+      return original(url, init);
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Zurückziehen" }));
+    expect(screen.getByRole("button", { name: "Zurückziehen" })).toBeDisabled();
+    release();
+  });
+
+  it("starts a new proposal's picture fresh, never with the picture of the proposal before", async () => {
+    let current: unknown = session({ proposals: [proposal("pending", "3")] });
+    server({ ...as(max), [CURRENT]: () => ({ status: 200, body: { session: current } }) });
+    renderApp();
+    const first = await screen.findByRole("article", { name: "Pasta" });
+    fireEvent.load(first.querySelector("img")!);
+    await waitFor(() => expect(first.querySelector(".photo")).toHaveAttribute("data-state", "loaded"));
+    current = session({
+      proposals: [proposal("vetoed", "3"), { ...proposal("pending", "3"), id: "p2", recipe: curry }],
+    });
+    FakeEventSource.instances[0]!.emit("changed");
+    const next = await screen.findByRole("article", { name: "Curry" });
+    expect(next.querySelector("img")).toHaveAttribute("src", `${api}/recipes/2/photo`);
+    expect(next.querySelector(".photo")).toHaveAttribute("data-state", "loading");
+  });
+
   it("explains that the other member was faster and shows their proposal to decide on", async () => {
     let current = session();
     server({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isVegetarian, needsTime } from "@weekly-planner/domain";
 import { deriveRecipe, toCatalogEntry } from "../../src/infrastructure/kitchenowl/recipe-translator.js";
-import type { RawRecipe } from "../../src/infrastructure/kitchenowl/schemas.js";
+import { rawRecipeListSchema, type RawRecipe } from "../../src/infrastructure/kitchenowl/schemas.js";
 
 const raw = (tags: string[], over: Partial<RawRecipe> = {}): RawRecipe => ({
   id: 1,
@@ -113,6 +113,28 @@ describe("tags to show", () => {
   it("recognises the hidden tags whatever the emoji variation selector", () => {
     const { recipe } = deriveRecipe(raw(["🍽 Hauptgericht", "🥬 Vegetarisch", "✅ Erprobt"]));
     expect(recipe?.tags).toEqual(["🥬 Vegetarisch"]);
+  });
+
+  it("drops blank tags", () => {
+    const { recipe } = deriveRecipe(raw(["🍽️ Hauptgericht", "", "   ", "🥬 Vegetarisch"]));
+    expect(recipe?.tags).toEqual(["🥬 Vegetarisch"]);
+  });
+});
+
+describe("reading KitchenOwl's recipe list", () => {
+  it("keeps the category of an item, and accepts an item without one", () => {
+    const [recipe] = rawRecipeListSchema.parse([
+      {
+        id: 1,
+        name: "Brot",
+        items: [
+          { id: 5, name: "Butter", category: { name: "🧈 Aufstriche" } },
+          { id: 6, name: "Salz", category: null },
+          { id: 7, name: "Mehl" },
+        ],
+      },
+    ]);
+    expect(recipe?.items.map((i) => i.category)).toEqual([{ name: "🧈 Aufstriche" }, null, undefined]);
   });
 });
 
