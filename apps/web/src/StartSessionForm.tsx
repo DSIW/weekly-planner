@@ -25,7 +25,7 @@ function PlannedName({ taken }: { taken: TakenDate }) {
       {taken.recipeName}
     </a>
   ) : (
-    <>{taken.recipeName}</>
+    taken.recipeName
   );
 }
 

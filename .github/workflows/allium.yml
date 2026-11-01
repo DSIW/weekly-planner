@@ -33,7 +33,8 @@ jobs:
         run: |
           set -euo pipefail
           allium check spec | tee allium-check.json || true
-          errors=$(jq '[.diagnostics[] | select(.severity == "error")] | length' allium-check.json)
+          # One JSON document per spec file, so they are read together (`-s`).
+          errors=$(jq -s '[.[].diagnostics[] | select(.severity == "error")] | length' allium-check.json)
           test "$errors" -eq 0
       - name: Analyse specs
         run: allium analyse spec

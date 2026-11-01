@@ -113,7 +113,7 @@ export function ImportPanel() {
         <ul className="plain import-ingredients" aria-label="Zutaten">
           {draft.ingredients.map((i) => (
             <li key={i.name}>
-              <span className="tile-name">{i.name}</span>
+              <span className="import-name">{i.name}</span>
               <span className="tile-amount">{i.amount || "ohne Menge"}</span>
               {i.isNewItem && <span className="badge">neu</span>}
               {i.optional && <span className="badge">optional</span>}

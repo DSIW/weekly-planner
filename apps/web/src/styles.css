@@ -904,8 +904,10 @@ textarea {
   align-items: center;
   gap: 8px;
 }
-.import-ingredients .tile-name {
+.import-name {
   flex: 1;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .import-steps {
   margin: 0;
