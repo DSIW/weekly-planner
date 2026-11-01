@@ -76,7 +76,7 @@ Status: `weed` clean and `witness` PASS (a mutation sweep closed six test gaps);
 - Backend: `MarkLeftoverDay`, `ReopenDay`, `SwapPlannedDays`, `MovePlannedDay` over HTTP.
 - Frontend: leftover marker, reopen, drag and drop between days (swap onto an agreed day, move onto an open day), clear message when the weekday limit forbids a move.
 - Decided (D21): a day never changes under a vote. Leftovers, reopen and move are refused while a proposal is pending (leftovers only for the day that holds it), and one pending proposal per session is now an invariant (`OnePendingProposalPerSession`).
-Status: built, tests green; `weed` and `witness` pending; not released or verified on a phone yet.
+Status: `weed` clean; `witness` found one gap (the data step of migration 3 was untested), closed with an upgrade test and re-checked by hand mutation; not verified on a phone yet. Also shipped here: swipe stamps and swipe voting (found on the S2b phone check), and discarded plans freeing their dates (D22, found when accepting failed).
 - Verify by hand: drag a long recipe onto a weekday and see it refused with the reason; drag between weekend days and see it accepted; mark a day as leftovers and reopen it, and reopen an agreed day so the deck offers it again; the second client follows each change.
 
 ### S4: Finalize into KitchenOwl

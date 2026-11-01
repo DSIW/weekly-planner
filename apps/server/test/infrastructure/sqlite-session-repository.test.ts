@@ -1,4 +1,5 @@
 import { mkdtempSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@weekly-planner/domain";
 import { DateTakenConflict, OpenSessionConflict } from "@weekly-planner/application";
 import { afterEach, describe, expect, it } from "vitest";
+import { migrate } from "../../src/infrastructure/sqlite/migrations.js";
 import { openDatabase, type Database } from "../../src/infrastructure/sqlite/database.js";
 import { SqliteSessionRepository } from "../../src/infrastructure/sqlite/sqlite-session-repository.js";
 import { SqliteDinnerCalendar } from "../../src/infrastructure/sqlite/sqlite-dinner-calendar.js";
@@ -160,6 +162,41 @@ describe("migrations", () => {
     open.splice(open.indexOf(first.db), 1);
     expect(fresh(path).db.prepare("pragma user_version").get()).toEqual(version);
     expect(version).toEqual({ user_version: 3 });
+  });
+});
+
+describe("migration 3 on a database that already holds sessions", () => {
+  it("frees the dates of discarded sessions and keeps those of open and finalized ones", async () => {
+    const raw = new DatabaseSync(":memory:");
+    // The schema as released in v0.1.7 (migrations 1 and 2), with one session of each status.
+    raw.exec(`
+      create table planning_session (id text primary key, status text not null check (status in ('open', 'finalized', 'closed')),
+        started_by text not null, started_at integer not null, reminder_sent integer not null default 0,
+        proposals_json text not null default '[]', passes_json text not null default '[]');
+      create unique index one_open_session on planning_session (status) where status = 'open';
+      create table plan_day (session_id text not null references planning_session (id) on delete cascade, date text not null,
+        status text not null check (status in ('open', 'planned', 'leftovers')), recipe_json text, primary key (session_id, date));
+      create unique index one_dinner_per_date on plan_day (date) where status = 'planned';
+      pragma user_version = 2;
+      insert into planning_session (id, status, started_by, started_at) values ('old', 'closed', '3', 1), ('fin', 'finalized', '3', 1), ('now', 'open', '3', 1);
+      insert into plan_day (session_id, date, status, recipe_json) values
+        ('old', '2026-11-02', 'planned', '{}'), ('fin', '2026-11-03', 'planned', '{}'), ('now', '2026-11-04', 'planned', '{}');
+    `);
+    migrate(raw);
+    const calendar = new SqliteDinnerCalendar(raw as unknown as Database);
+    expect(await calendar.isDateTaken(MON, sessionId("x"))).toBe(false); // discarded
+    expect(await calendar.isDateTaken(TUE, sessionId("x"))).toBe(true); // finalized
+    expect(await calendar.isDateTaken(planDate("2026-11-04"), sessionId("x"))).toBe(true); // open
+    expect(() =>
+      raw.exec(
+        "insert into plan_day (session_id, date, status, blocks_date) values ('now', '2026-11-02', 'planned', 1)",
+      ),
+    ).not.toThrow();
+    expect(() =>
+      raw.exec(
+        "insert into plan_day (session_id, date, status, blocks_date) values ('fin', '2026-11-04', 'planned', 1)",
+      ),
+    ).toThrow(/UNIQUE/);
   });
 });
 
