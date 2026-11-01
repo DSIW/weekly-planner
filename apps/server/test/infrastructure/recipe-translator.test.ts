@@ -93,6 +93,29 @@ describe("toCatalogEntry", () => {
   });
 });
 
+describe("tags to show", () => {
+  it("keeps the tags a card can show, emoji included and in KitchenOwl's order, without the ones that steer the rules", () => {
+    const { recipe } = deriveRecipe(
+      raw([
+        "🍳 Kptncook",
+        "🍽️ Hauptgericht",
+        "🍝 Pasta",
+        "🥬 Vegetarisch",
+        "✅ Erprobt",
+        "🆕 Neu",
+        "⭐ Ausprobieren",
+        " 🧄 Knoblauch ",
+      ]),
+    );
+    expect(recipe?.tags).toEqual(["🍳 Kptncook", "🍝 Pasta", "🥬 Vegetarisch", "🧄 Knoblauch"]);
+  });
+
+  it("recognises the hidden tags whatever the emoji variation selector", () => {
+    const { recipe } = deriveRecipe(raw(["🍽 Hauptgericht", "🥬 Vegetarisch", "✅ Erprobt"]));
+    expect(recipe?.tags).toEqual(["🥬 Vegetarisch"]);
+  });
+});
+
 describe("ingredients", () => {
   const tags = ["🍽️ Hauptgericht", "🥬 Vegetarisch", "✅ Erprobt"];
 
@@ -108,6 +131,21 @@ describe("ingredients", () => {
     expect(recipe?.ingredients).toEqual([
       { id: 5, name: "Zwiebel", description: "2 Stück", optional: false },
       { id: 6, name: "Petersilie", description: "", optional: true },
+    ]);
+  });
+
+  it("carry the name of their category, when the source has one", () => {
+    const { recipe } = deriveRecipe(
+      raw(tags, {
+        items: [
+          { id: 5, name: "Butter", description: "30 g", optional: false, category: { name: "🧈 Aufstriche" } },
+          { id: 6, name: "Salz", description: "", optional: false, category: null },
+        ],
+      }),
+    );
+    expect(recipe?.ingredients).toEqual([
+      { id: 5, name: "Butter", description: "30 g", optional: false, category: "🧈 Aufstriche" },
+      { id: 6, name: "Salz", description: "", optional: false },
     ]);
   });
 

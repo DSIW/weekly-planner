@@ -9,6 +9,7 @@ const RECIPES = `GET ${api}/sessions/s1/recipes`;
 const PROPOSE = `POST ${api}/sessions/s1/proposals`;
 const ACCEPT = `POST ${api}/sessions/s1/proposals/p1/accept`;
 const VETO = `POST ${api}/sessions/s1/proposals/p1/veto`;
+const WITHDRAW = `POST ${api}/sessions/s1/proposals/p1/withdraw`;
 const REFRESH = `POST ${api}/recipes/refresh`;
 const DECK = `GET ${api}/sessions/s1/deck`;
 const max = { id: "2", name: "Max" };
@@ -127,6 +128,65 @@ describe("choosing a dinner for the next open day", () => {
     expect(screen.queryByRole("button", { name: "Passt" })).not.toBeInTheDocument();
   });
 
+  it("shows the proposal as a card with the recipe's picture and tags, for the one who decides and the one who waits", async () => {
+    const withTags = { ...pasta, tags: ["🍝 Pasta", "🥬 Vegetarisch"] };
+    for (const [member, role] of [
+      [ac, "article"],
+      [max, null],
+    ] as const) {
+      server({
+        ...as(member),
+        [CURRENT]: { status: 200, body: { session: session({ proposals: [{ ...proposal(), recipe: withTags }] }) } },
+      });
+      const view = renderApp();
+      const name = await screen.findByRole("heading", { name: "Pasta" });
+      const card = role ? screen.getByRole(role, { name: "Pasta" }) : name.closest(".proposal-card")!;
+      expect(card.querySelector("img")).toHaveAttribute("src", `${api}/recipes/1/photo`);
+      expect(within(card as HTMLElement).getByRole("status", { name: "Bild wird geladen" })).toBeInTheDocument();
+      expect([...card.querySelectorAll(".badge")].map((b) => b.textContent)).toEqual(["🍝 Pasta", "🥬 Vegetarisch"]);
+      view.unmount();
+    }
+  });
+
+  it("lets the proposer take the proposal back without waiting for the answer", async () => {
+    let current = session({ proposals: [proposal()] });
+    const calls = server({
+      ...as(max), // the proposal in these fixtures was made by Max
+      [CURRENT]: () => ({ status: 200, body: { session: current } }),
+      [DECK]: { status: 200, body: { date: "2026-11-02", cards: [] } },
+      [WITHDRAW]: () => {
+        current = session({ proposals: [proposal("withdrawn")] });
+        return { status: 200, body: { session: current } };
+      },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Zurückziehen" }));
+    await waitFor(() => expect(calls.some((c) => c.key === WITHDRAW)).toBe(true));
+    expect(await screen.findByText(/Keine Vorschläge mehr/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zurückziehen" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer to take back a proposal that is not yours", async () => {
+    server({
+      ...as(ac),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal()] }) } },
+    });
+    renderApp();
+    await screen.findByRole("button", { name: "Passt" });
+    expect(screen.queryByRole("button", { name: "Zurückziehen" })).not.toBeInTheDocument();
+  });
+
+  it("tells the proposer when taking back failed", async () => {
+    server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal()] }) } },
+      [WITHDRAW]: { status: 409, body: { error: "proposal_not_pending" } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Zurückziehen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Darüber ist schon entschieden.");
+  });
+
   it("explains that the other member was faster and shows their proposal to decide on", async () => {
     let current = session();
     server({
@@ -142,7 +202,7 @@ describe("choosing a dinner for the next open day", () => {
     await showList();
     await userEvent.click(await screen.findByRole("button", { name: /Curry/ }));
     expect(await screen.findByRole("button", { name: "Passt" })).toBeInTheDocument();
-    expect(screen.getByText("Pasta")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pasta" })).toBeInTheDocument();
   });
 
   it("refreshes the recipes from KitchenOwl and shows what is new", async () => {
@@ -207,6 +267,7 @@ describe("deciding on the other member's proposal", () => {
     expect(el.querySelector(".stamp-right")).toHaveTextContent("Passt");
     at("pointerup", 320);
     await waitFor(() => expect(calls.some((c) => c.key === ACCEPT)).toBe(true));
+    await waitFor(() => expect(el.querySelector(".stamp")).toBeNull()); // nothing changed: the card is back
     at("pointerdown", 200);
     at("pointermove", 80);
     expect(el.querySelector(".stamp-left")).toHaveTextContent("Nein");
@@ -220,7 +281,7 @@ describe("deciding on the other member's proposal", () => {
       [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal("pending", "2")] }) } },
     });
     renderApp();
-    const el = await screen.findByText("Pasta");
+    const el = await screen.findByRole("heading", { name: "Pasta" });
     fireEvent(el, new MouseEvent("pointerdown", { clientX: 200, bubbles: true }));
     fireEvent(el, new MouseEvent("pointermove", { clientX: 400, bubbles: true }));
     fireEvent(el, new MouseEvent("pointerup", { clientX: 400, bubbles: true }));

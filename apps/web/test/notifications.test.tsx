@@ -7,6 +7,7 @@ const ME = `GET ${api}/me`;
 const CURRENT = `GET ${api}/sessions/current`;
 const KEY = `GET ${api}/push/key`;
 const SUBSCRIBE = `POST ${api}/push/subscription`;
+const TEST = `POST ${api}/push/test`;
 const UNSUBSCRIBE = `DELETE ${api}/push/subscription`;
 const base = {
   [ME]: { status: 200, body: { member: { id: "2", name: "Max" } } },
@@ -82,6 +83,7 @@ describe("notifications switch", () => {
       ...base,
       [KEY]: { status: 200, body: { key: "-_8" } }, // base64url for the two bytes 251, 255
       [SUBSCRIBE]: { status: 204 },
+      [TEST]: { status: 200, body: { reached: 1 } },
     });
     renderApp();
     await userEvent.click(await screen.findByRole("button", { name: "Benachrichtigungen an" }));
@@ -93,6 +95,31 @@ describe("notifications switch", () => {
     expect(options.userVisibleOnly).toBe(true);
     expect(Array.from(options.applicationServerKey)).toEqual([251, 255]);
     expect(calls.find((c) => c.key === SUBSCRIBE)?.body).toEqual(subscriptionJson);
+    expect(calls.map((c) => c.key).filter((k) => k === TEST || k === SUBSCRIBE)).toEqual([SUBSCRIBE, TEST]); // test after
+  });
+
+  it("still turns on when the test message cannot be sent", async () => {
+    phone(false);
+    server({
+      ...base,
+      [KEY]: { status: 200, body: { key: "AQID" } },
+      [SUBSCRIBE]: { status: 204 },
+      [TEST]: { status: 500 },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Benachrichtigungen an" }));
+    expect(await screen.findByRole("button", { name: "Benachrichtigungen aus" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("is a bell in the header, not a labelled button in the page", async () => {
+    phone(true);
+    server(base);
+    renderApp();
+    const bell = await screen.findByRole("button", { name: "Benachrichtigungen aus" });
+    expect(bell.closest("header")).not.toBeNull();
+    expect(bell).toHaveTextContent("🔔");
+    expect(bell).not.toHaveTextContent("Benachrichtigungen");
   });
 
   it("does not subscribe when the member refuses permission, and says how to allow it", async () => {

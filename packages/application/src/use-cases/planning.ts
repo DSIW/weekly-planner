@@ -14,6 +14,7 @@ import {
   startSession,
   swapPlannedDays,
   vetoProposal,
+  withdrawProposal,
   type MemberId,
   type Outcome,
   type PlanningEvent,
@@ -152,6 +153,15 @@ export class VetoProposal {
 
   execute(cmd: { member: MemberId; sessionId: SessionId; proposalId: ProposalId }): Promise<CommandResult> {
     return changeSession(this.deps, cmd.sessionId, async (s) => vetoProposal(s, cmd));
+  }
+}
+
+/** rule WithdrawProposal */
+export class WithdrawProposal {
+  constructor(private readonly deps: SessionDeps) {}
+
+  execute(cmd: { member: MemberId; sessionId: SessionId; proposalId: ProposalId }): Promise<CommandResult> {
+    return changeSession(this.deps, cmd.sessionId, async (s) => withdrawProposal(s, cmd));
   }
 }
 

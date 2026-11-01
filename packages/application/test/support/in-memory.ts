@@ -152,6 +152,9 @@ export class RecordingPublisher implements EventPublisher {
 
 export class RecordingNotifier implements Notifier {
   readonly reminders: SessionId[] = [];
+  async test() {
+    return 0;
+  }
   async finalizeReminder(s: PlanningSession) {
     this.reminders.push(s.id);
   }

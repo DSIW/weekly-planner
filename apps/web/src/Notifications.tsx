@@ -25,8 +25,15 @@ export function Notifications() {
         : null;
   return (
     <div className="notify">
-      <button type="button" className="secondary" disabled={toggle.isPending} onClick={() => toggle.mutate(!on.data)}>
-        {on.data ? "Benachrichtigungen aus" : "Benachrichtigungen an"}
+      <button
+        type="button"
+        className="icon-button"
+        disabled={toggle.isPending}
+        onClick={() => toggle.mutate(!on.data)}
+        aria-label={on.data ? "Benachrichtigungen aus" : "Benachrichtigungen an"}
+        title={on.data ? "Benachrichtigungen sind an" : "Benachrichtigungen einschalten"}
+      >
+        <span aria-hidden="true">{on.data ? "🔔" : "🔕"}</span>
       </button>
       {message && (
         <p role="alert" className="error">

@@ -8,7 +8,7 @@ import type { PlanningEvent } from "./events.js";
 
 export type SessionStatus = "open" | "finalized" | "closed";
 export type DayStatus = "open" | "planned" | "leftovers";
-export type ProposalStatus = "pending" | "accepted" | "vetoed";
+export type ProposalStatus = "pending" | "accepted" | "vetoed" | "withdrawn";
 
 /** One date of a session. `recipe` is present exactly while the day is planned. */
 export interface PlanDay {
@@ -230,6 +230,25 @@ export function vetoProposal(s: PlanningSession, cmd: { member: MemberId; propos
     recipeId: proposal.recipe.id,
     decidedBy: cmd.member,
   });
+}
+
+/** rule WithdrawProposal: only the proposer, only while nobody has decided; the day stays open and the dish may return. */
+export function withdrawProposal(s: PlanningSession, cmd: { member: MemberId; proposalId: ProposalId }): Done {
+  const proposal = s.proposals.find((p) => p.id === cmd.proposalId);
+  if (!proposal) return reject("unknown_proposal");
+  if (proposal.status !== "pending") return reject("proposal_not_pending");
+  if (s.status !== "open") return reject("session_not_open");
+  if (cmd.member !== proposal.proposedBy) return reject("not_your_proposal");
+  return done(
+    { ...s, proposals: s.proposals.map((x) => (x.id === proposal.id ? { ...x, status: "withdrawn" as const } : x)) },
+    {
+      type: "ProposalWithdrawn",
+      sessionId: s.id,
+      proposalId: proposal.id,
+      date: proposal.date,
+      recipeId: proposal.recipe.id,
+    },
+  );
 }
 
 /** rule MarkLeftoverDay */

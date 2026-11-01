@@ -21,11 +21,13 @@ import {
   RefreshRecipes,
   ReopenDay,
   RetryExport,
+  SendTestNotification,
   SubscribeToPush,
   UnsubscribeFromPush,
   StartSession,
   SwapPlannedDays,
   VetoProposal,
+  WithdrawProposal,
   type PlannerEntry,
   type PlannerGateway,
   type RecipeCatalog,
@@ -64,16 +66,17 @@ const aRecipe = (id: number, name: string, over: Partial<Recipe> = {}): Recipe =
   ...over,
 });
 const pasta = aRecipe(1, "Pasta", {
+  tags: ["🍝 Pasta", "🥬 Vegetarisch"],
   ingredients: [
-    { id: 11, name: "Zwiebel", description: "2 Stück, gehackt", optional: false },
-    { name: "Mehl", description: "400 g", optional: false },
+    { id: 11, name: "Zwiebel", description: "2 Stück, gehackt", optional: false, category: "🥬 Obst & Gemüse" },
+    { name: "Mehl", description: "400 g", optional: false, category: "Backen" },
   ],
 });
 const risotto = aRecipe(2, "Risotto");
 const curry = aRecipe(3, "Curry", {
   yields: 4,
   ingredients: [
-    { id: 11, name: "Zwiebel", description: "2 Stück", optional: false },
+    { id: 11, name: "Zwiebel", description: "2 Stück", optional: false, category: "🥬 Obst & Gemüse" },
     { name: "Salz", description: "etwas", optional: false },
   ],
 });
@@ -124,6 +127,7 @@ const planner: PlannerGateway = {
   },
 };
 
+const tested: string[] = [];
 let db: Database;
 let app: Awaited<ReturnType<typeof buildApp>>;
 beforeEach(async () => {
@@ -174,6 +178,7 @@ beforeEach(async () => {
     finalizePlan: new FinalizePlan({ ...deps, catalog, exports, exporter }, defaultPlanningConfig),
     retryExport: new RetryExport({ sessions: deps.sessions, exporter }),
     subscribeToPush: new SubscribeToPush(new SqlitePushSubscriptions(db)),
+    sendTestNotification: new SendTestNotification({ test: async (member) => (tested.push(member), tested.length) }),
     unsubscribeFromPush: new UnsubscribeFromPush(new SqlitePushSubscriptions(db)),
     pushPublicKey: "public-key-of-the-server",
     startSession: new StartSession({ ...deps, ids, clock }, defaultPlanningConfig),
@@ -182,6 +187,7 @@ beforeEach(async () => {
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, defaultPlanningConfig),
     acceptProposal: new AcceptProposal({ ...deps, calendar }, defaultPlanningConfig),
     vetoProposal: new VetoProposal(deps),
+    withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
     getDeck: new GetDeck({ sessions: deps.sessions, experience: noMeals, suggest }),
     passSuggestion: new PassSuggestion({ ...deps, catalog }),
@@ -343,7 +349,7 @@ const sessionOf = async (as: typeof max) => (await call("GET", "/sessions/curren
 const eligible = async (as: typeof max, id: string) => (await call("GET", `/sessions/${id}/recipes`, as)).json();
 const propose = (as: typeof max, id: string, date: string, recipe: Recipe) =>
   call("POST", `/sessions/${id}/proposals`, as, { date, recipeId: recipe.id });
-const decide = (as: typeof max, id: string, proposalId: string, what: "accept" | "veto") =>
+const decide = (as: typeof max, id: string, proposalId: string, what: "accept" | "veto" | "withdraw") =>
   call("POST", `/sessions/${id}/proposals/${proposalId}/${what}`, as);
 const pending = (session: { proposals: { id: string; status: string }[] }) =>
   session.proposals.filter((p) => p.status === "pending");
@@ -366,13 +372,23 @@ describe("agreeing a dinner over HTTP", () => {
     expect(await eligible(ac, session.id)).toEqual({
       date: MON,
       recipes: [
-        { id: 3, name: "Curry", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
+        {
+          id: 3,
+          name: "Curry",
+          minutes: 30,
+          base: "pasta",
+          diet: "vegetarian",
+          tags: [],
+          needsTime: false,
+          planAhead: false,
+        },
         {
           id: 7,
           name: "Kürbissuppe",
           minutes: 30,
           base: "pasta",
           diet: "vegetarian",
+          tags: [],
           needsTime: false,
           planAhead: false,
         },
@@ -382,11 +398,30 @@ describe("agreeing a dinner over HTTP", () => {
           minutes: null,
           base: "pasta",
           diet: "vegetarian",
+          tags: [],
           needsTime: true,
           planAhead: false,
         },
-        { id: 1, name: "Pasta", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
-        { id: 2, name: "Risotto", minutes: 30, base: "pasta", diet: "vegetarian", needsTime: false, planAhead: false },
+        {
+          id: 1,
+          name: "Pasta",
+          minutes: 30,
+          base: "pasta",
+          diet: "vegetarian",
+          tags: ["🍝 Pasta", "🥬 Vegetarisch"],
+          needsTime: false,
+          planAhead: false,
+        },
+        {
+          id: 2,
+          name: "Risotto",
+          minutes: 30,
+          base: "pasta",
+          diet: "vegetarian",
+          tags: [],
+          needsTime: false,
+          planAhead: false,
+        },
       ],
     });
   });
@@ -437,6 +472,20 @@ describe("agreeing a dinner over HTTP", () => {
     await call("POST", `/sessions/${session.id}/close`, max);
     const { session: later } = (await start(max, [MON, TUE])).json();
     expect((await eligible(max, later.id)).recipes.map((r: { name: string }) => r.name)).toContain("Pasta");
+  });
+
+  it("lets the proposer withdraw, and nobody else; the day is open for a new proposal", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    const proposal = pending((await propose(max, session.id, MON, pasta)).json().session)[0]!;
+    const other = await decide(ac, session.id, proposal.id, "withdraw");
+    expect(other.statusCode).toBe(403);
+    expect(other.json()).toEqual({ error: "not_your_proposal" });
+    const done = await decide(max, session.id, proposal.id, "withdraw");
+    expect(done.statusCode).toBe(200);
+    expect(done.json().session.proposals[0].status).toBe("withdrawn");
+    expect(pending(done.json().session)).toHaveLength(0);
+    expect((await propose(ac, session.id, MON, pasta)).statusCode).toBe(201);
+    expect((await decide(max, session.id, proposal.id, "withdraw")).statusCode).toBe(409);
   });
 
   it("lets exactly one of two simultaneous proposals through; the other member votes on it", async () => {
@@ -523,6 +572,7 @@ describe("the ranked deck over HTTP", () => {
       minutes: 30,
       base: "pasta",
       diet: "vegetarian",
+      tags: ["🍝 Pasta", "🥬 Vegetarisch"],
       needsTime: false,
       planAhead: false,
       isNew: false,
@@ -715,7 +765,8 @@ describe("shaping the plan over HTTP", () => {
 });
 
 describe("finalizing over HTTP", () => {
-  const finalize = (as: typeof max | undefined, id: string) => call("POST", `/sessions/${id}/finalize`, as);
+  const finalize = (as: typeof max | undefined, id: string, payload?: unknown) =>
+    call("POST", `/sessions/${id}/finalize`, as, payload);
   const retry = (as: typeof max | undefined, id: string, payload?: unknown) =>
     call("POST", `/sessions/${id}/export/retry`, as, payload);
   const preview = (as: typeof max | undefined, id: string) => call("GET", `/sessions/${id}/finalize-preview`, as);
@@ -750,12 +801,27 @@ describe("finalizing over HTTP", () => {
         { date: TUE, recipeName: "Curry" },
       ],
       items: [
-        { name: "Zwiebel", description: "3 Stück", needsReview: false, recipes: ["Pasta", "Curry"] },
-        { name: "Mehl", description: "400 g", needsReview: false, recipes: ["Pasta"] },
-        { name: "Salz", description: "etwas", needsReview: true, recipes: ["Curry"] },
+        { name: "Zwiebel", icon: "🥬", description: "3 Stück", needsReview: false, recipes: ["Pasta", "Curry"] },
+        { name: "Mehl", icon: null, description: "400 g", needsReview: false, recipes: ["Pasta"] },
+        { name: "Salz", icon: null, description: "etwas", needsReview: true, recipes: ["Curry"] },
       ],
     });
     expect(sent.entries).toEqual([]);
+  });
+
+  it("leaves the ingredients the members have in stock off the list that is sent", async () => {
+    const id = await planned();
+    const res = await finalize(ac, id, { skip: ["zwiebel", "Unbekannt"] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().session.export.list.items.map((i: { name: string }) => i.name)).toEqual(["Mehl", "Salz"]);
+    expect(sent.batches.flat().map((i) => i.name)).toEqual(["Mehl", "Salz"]);
+  });
+
+  it("refuses a skip list that is not a list of names", async () => {
+    const id = await planned();
+    expect((await finalize(ac, id, { skip: "Zwiebel" })).statusCode).toBe(400);
+    expect((await finalize(ac, id, { skip: [1] })).statusCode).toBe(400);
+    expect((await sessionOf(ac)).status).toBe("open");
   });
 
   it("finalizes: both phones see the finished export, and the session leaves the board", async () => {
@@ -877,6 +943,15 @@ describe("notifications over HTTP", () => {
 
   it("refuses to forget without an endpoint", async () => {
     expect((await call("DELETE", "/push/subscription", max, {})).statusCode).toBe(400);
+  });
+
+  it("sends a test message to the member who asked, and says how many phones took it", async () => {
+    expect((await call("POST", "/push/test")).statusCode).toBe(401);
+    tested.length = 0;
+    const res = await call("POST", "/push/test", ac);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ reached: 1 });
+    expect(tested).toEqual(["3"]);
   });
 
   it("shows on the session whether the reminder went out, for the banner", async () => {

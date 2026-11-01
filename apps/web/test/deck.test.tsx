@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, renderApp, server } from "./helpers";
@@ -152,8 +152,10 @@ describe("the swipe deck", () => {
       [PASS]: { status: 200, body: { session } },
     });
     renderApp();
-    drag(await screen.findByRole("article", { name: "Pasta" }), 160);
+    const first = await screen.findByRole("article", { name: "Pasta" });
+    drag(first, 160);
     await waitFor(() => expect(calls.some((c) => c.key === PROPOSE)).toBe(true));
+    await waitFor(() => expect(first.querySelector(".stamp")).toBeNull()); // the card came back: nothing removed it
     drag(await screen.findByRole("article", { name: "Pasta" }), -160);
     await waitFor(() => expect(calls.some((c) => c.key === PASS)).toBe(true));
   });
@@ -217,6 +219,113 @@ describe("the swipe deck", () => {
     FakeEventSource.instances[0]!.emit("changed");
     expect(await screen.findByRole("article", { name: "Curry" })).toBeInTheDocument();
     expect(screen.queryByRole("article", { name: "Pasta" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the card stack, pictures and tags", () => {
+  it("shows a spinner while the picture loads and no spinner once it did", async () => {
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")) });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    expect(within(article).getByRole("status", { name: "Bild wird geladen" })).toBeInTheDocument();
+    fireEvent.load(article.querySelector("img")!);
+    await waitFor(() => expect(within(article).queryByRole("status")).not.toBeInTheDocument());
+    expect(article.querySelector(".photo")).toHaveAttribute("data-state", "loaded");
+  });
+
+  it("shows a placeholder instead of a picture when the recipe has none, and no spinner", async () => {
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Ohne Bild")) });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Ohne Bild" });
+    fireEvent.error(article.querySelector("img")!);
+    await waitFor(() => expect(article.querySelector(".photo-placeholder")).toHaveTextContent("🍽️"));
+    expect(within(article).queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("starts the next recipe with a spinner, never with the picture of the one before", async () => {
+    let cards = [card(1, "Pasta"), card(2, "Curry")];
+    server({
+      ...signedIn,
+      ...current,
+      [DECK]: () => deckOf(...cards),
+      [PASS]: () => {
+        cards = cards.slice(1);
+        return { status: 200, body: { session } };
+      },
+    });
+    renderApp();
+    const first = await screen.findByRole("article", { name: "Pasta" });
+    fireEvent.load(first.querySelector("img")!);
+    await userEvent.click(screen.getByRole("button", { name: "Überspringen" }));
+    const next = await screen.findByRole("article", { name: "Curry" });
+    expect(next.querySelector("img")).toHaveAttribute("src", `${api}/recipes/2/photo`);
+    expect(next.querySelector(".photo")).toHaveAttribute("data-state", "loading");
+    expect(within(next).getByRole("status")).toBeInTheDocument();
+  });
+
+  it("lets the next two cards wait visibly behind the top one, already loading their pictures", async () => {
+    server({
+      ...signedIn,
+      ...current,
+      [DECK]: deckOf(card(1, "Pasta"), card(2, "Curry"), card(3, "Risotto"), card(4, "Suppe")),
+    });
+    renderApp();
+    await screen.findByRole("article", { name: "Pasta" });
+    const behind = [...document.querySelectorAll(".deck-card.behind")];
+    expect(behind.map((b) => b.querySelector("h3")?.textContent)).toEqual(["Curry", "Risotto"]);
+    expect(behind.every((b) => b.getAttribute("aria-hidden") === "true")).toBe(true);
+    expect(behind[0]).toHaveClass("behind-1");
+    expect(behind[1]).toHaveClass("behind-2");
+    expect(behind[0]?.querySelector("img")).toHaveAttribute("src", `${api}/recipes/2/photo`);
+    expect(screen.queryByRole("article", { name: "Curry" })).not.toBeInTheDocument(); // only the top one is a card
+  });
+
+  it("shows no card behind the last one", async () => {
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")) });
+    renderApp();
+    await screen.findByRole("article", { name: "Pasta" });
+    expect(document.querySelector(".deck-card.behind")).toBeNull();
+  });
+
+  it("shows KitchenOwl's tags with their emoji instead of the derived base and diet", async () => {
+    server({
+      ...signedIn,
+      ...current,
+      [DECK]: deckOf(card(1, "Pasta", { tags: ["🍝 Pasta", "🥬 Vegetarisch", "🧄 Knoblauch"] })),
+    });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    expect([...article.querySelectorAll(".badge")].map((b) => b.textContent)).toEqual([
+      "🍝 Pasta",
+      "🥬 Vegetarisch",
+      "🧄 Knoblauch",
+    ]);
+  });
+
+  it("flies a decided card off, and brings it back when the action failed", async () => {
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")), [PROPOSE]: { status: 500, body: {} } });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    drag(article, 160);
+    expect(article.style.transform).toContain("translateX(700px)");
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
+    await waitFor(() => expect(article.style.transform).toContain("translateX(0px)"));
+  });
+
+  it("does not take a second drag while the decided card is leaving", async () => {
+    const calls = server({
+      ...signedIn,
+      ...current,
+      [DECK]: deckOf(card(1, "Pasta")),
+      [PROPOSE]: { status: 201, body: { session } },
+      [PASS]: { status: 200, body: { session } },
+    });
+    renderApp();
+    const article = await screen.findByRole("article", { name: "Pasta" });
+    drag(article, 160);
+    drag(article, -160);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls.filter((c) => c.key === PROPOSE || c.key === PASS).map((c) => c.key)).toEqual([PROPOSE]);
   });
 });
 

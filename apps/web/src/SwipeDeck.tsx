@@ -1,18 +1,10 @@
-import { useState } from "react";
-import { photoUrl, type DeckCard } from "./api";
+import type { DeckCard } from "./api";
 import { dayLabel } from "./dates";
-import { timeLabel } from "./recipe-time";
+import { RecipeCardBody } from "./RecipeCardBody";
 import { Swipeable } from "./Swipeable";
 
-const BASES: Record<string, string> = {
-  pasta: "Pasta",
-  rice: "Reis",
-  potatoes: "Kartoffeln",
-  grains: "Getreide",
-  bread: "Brot",
-  other: "Sonstiges",
-};
-const DIETS: Record<string, string> = { vegan: "Vegan", vegetarian: "Vegetarisch", fish: "Fisch", meat: "Fleisch" };
+/** How many cards wait visibly behind the top one; they also load their pictures early. */
+const BEHIND = 2;
 
 interface Props {
   date: string;
@@ -25,7 +17,7 @@ interface Props {
 
 export function SwipeDeck({ date, cards, onPropose, onPass, pending, error }: Props) {
   const card = cards[0];
-  const [noPhoto, setNoPhoto] = useState<number[]>([]);
+  const behind = cards.slice(1, 1 + BEHIND);
 
   return (
     <section className="card">
@@ -37,33 +29,25 @@ export function SwipeDeck({ date, cards, onPropose, onPass, pending, error }: Pr
       )}
       {card ? (
         <>
-          <Swipeable
-            className="deck-card"
-            label={card.name}
-            right="Vorschlagen"
-            left="Überspringen"
-            onRight={() => onPropose(card)}
-            onLeft={() => onPass(card)}
-            disabled={pending}
-          >
-            {!noPhoto.includes(card.id) && (
-              <img
-                className="deck-photo"
-                src={photoUrl(card.id)}
-                alt=""
-                draggable={false}
-                onError={() => setNoPhoto((ids) => [...ids, card.id])}
-              />
-            )}
-            <h3>{card.name}</h3>
-            <p className="muted">{timeLabel(card)}</p>
-            <p className="badges">
-              <span className="badge">{BASES[card.base] ?? card.base}</span>
-              <span className="badge">{DIETS[card.diet] ?? card.diet}</span>
-              {card.isNew && <span className="badge new">Neu</span>}
-            </p>
-            {card.needsTime && <p className="hint">Zeit fehlt: bitte in KitchenOwl eintragen.</p>}
-          </Swipeable>
+          <div className="deck-stack">
+            {behind.map((c, i) => (
+              <div key={c.id} className={`deck-card behind behind-${i + 1}`} aria-hidden="true">
+                <RecipeCardBody recipe={c} hint={false} />
+              </div>
+            ))}
+            <Swipeable
+              key={card.id}
+              className="deck-card"
+              label={card.name}
+              right="Vorschlagen"
+              left="Überspringen"
+              onRight={() => onPropose(card)}
+              onLeft={() => onPass(card)}
+              disabled={pending}
+            >
+              <RecipeCardBody recipe={card} />
+            </Swipeable>
+          </div>
           <div className="actions">
             <button type="button" className="secondary" disabled={pending} onClick={() => onPass(card)}>
               Überspringen

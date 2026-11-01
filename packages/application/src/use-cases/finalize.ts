@@ -5,6 +5,7 @@ import {
   exportComplete,
   failStep,
   finalizePlan,
+  leaveOut,
   newExport,
   nextStep,
   plannedDays,
@@ -192,6 +193,8 @@ export class FinalizePlan {
   async execute(cmd: {
     member: MemberId;
     sessionId: SessionId;
+    /** Ingredients the household has in stock, by name: they stay off the shopping list. */
+    skip?: readonly string[];
   }): Promise<Result<{ session: PlanningSession; export: FinalizeExport }>> {
     const { deps } = this;
     const before = await deps.sessions.get(cmd.sessionId);
@@ -203,7 +206,7 @@ export class FinalizePlan {
       if (!outcome.ok) return outcome;
       const event = outcome.value.events[0];
       if (event?.type !== "PlanFinalized") return { ok: false, reason: "unexpected_event" };
-      started = newExport(s.id, event.dinners, previewFor(s, recipes, this.config).items);
+      started = newExport(s.id, event.dinners, leaveOut(previewFor(s, recipes, this.config).items, cmd.skip ?? []));
       await deps.exports.save(started);
       return outcome;
     });

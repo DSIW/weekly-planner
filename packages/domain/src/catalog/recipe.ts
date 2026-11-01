@@ -20,6 +20,8 @@ export interface Ingredient {
   readonly name: string;
   readonly description: string;
   readonly optional: boolean;
+  /** The source's category of the item, as named there ("🧈 Aufstriche & Vurst"): a shopping list groups by it. */
+  readonly category?: string;
 }
 
 export interface Recipe {
@@ -35,6 +37,12 @@ export interface Recipe {
   readonly wantsToTry: boolean;
   /** Portions the recipe amounts are written for. */
   readonly yields: number;
+  /**
+   * The source's tags worth showing on a card ("🍝 Pasta", "🥬 Vegetarisch"), as named there, emoji included. The tags
+   * the rules use for meal type, proven and new are left out. Absent on a recipe copied into a session before tags
+   * were kept.
+   */
+  readonly tags?: readonly string[];
   /**
    * What the recipe needs, as read from the catalogue. Absent on a recipe copied into a session before ingredients
    * were read; finalizing then looks them up again.

@@ -30,6 +30,9 @@ const TAG = {
   wants: "⭐ Ausprobieren",
 };
 
+/** Tags that only steer the rules (meal type, proven, new, wants to try); a card does not show them. */
+const hiddenTags = new Set([...Object.keys(MEAL_TAGS), TAG.proven, TAG.isNew, TAG.wants].map(canon));
+
 const lookup = <T>(table: Record<string, T>): Map<string, T> =>
   new Map(Object.entries(table).map(([k, v]) => [canon(k), v]));
 const mealByTag = lookup(MEAL_TAGS);
@@ -89,11 +92,13 @@ export function deriveRecipe(raw: RawRecipe): DerivedRecipe {
           isProven: proven,
           wantsToTry: has(TAG.wants),
           yields: raw.yields && raw.yields > 0 ? raw.yields : 2,
+          tags: raw.tags.map((t) => t.name.trim()).filter((n) => n !== "" && !hiddenTags.has(canon(n))),
           ingredients: raw.items.map((i) => ({
             id: i.id,
             name: i.name,
             description: i.description,
             optional: i.optional,
+            ...(i.category?.name ? { category: i.category.name } : {}),
           })),
         }
       : null;

@@ -91,6 +91,14 @@ Status S4a (finalize, built 2026-11-01): the whole local pipeline is green, incl
 Status S4b (built 2026-11-01): `RemindToFinalize` now decides on the session as it is when the reminder is saved (found by `weed` on S1b), the server runs its jobs itself (`startScheduler`), Web Push with an on/off switch and an in-app banner as the fallback, and `RetryRefusedExports` every 15 minutes. Decided: D26, D27. Spec: `RetryRefusedExports`, `ExportRetrySchedule`, `PlanningSession.export_failure`, `ExportStepUnanswered`, and the board exposes `reminder_sent`. Needs `VAPID_SUBJECT` in the environment for production (a real `mailto:` address; some push services reject the placeholder). **Not verified on a phone**: the first real push is the check (install the app, switch notifications on, and temporarily set the reminder due, for example by planning a day for today and restarting after 08:00).
 - Verify by hand: finalize a real plan and check the planner and the shopping list in KitchenOwl (amounts scaled, items merged); kill the server mid-export and see the retry finish without duplicates; the reminder arrives on the phone at 08:00 on the first agreed day.
 
+### S4c: First phone feedback (2026-11-01)
+
+*The first real use of S1 to S4b, answered before S5.*
+
+- Done: withdraw a proposal (D28), leave ingredients off the shopping list and show it as a grid with icons (D28, D29), the confirmation as a card with picture, a spinner and a placeholder for pictures, KitchenOwl's tags with their emoji, a card stack with the next cards behind the top one, a bell in the header with a test message on switching on (D29).
+- Not received on the phone: the notification. The reminder only fires on the morning of the first agreed day, and a plan for later days sends nothing before; the bell now sends a test message so the push path can be checked at once. If the test does not arrive either, look at the server log for `push to a phone failed` and at `VAPID_SUBJECT`.
+- For later (not MVP): a proper logo; adding custom recipe ideas, or having an LLM search for some.
+
 ### S5: Cook and learn
 
 *The day after, one tap says "we cooked it"; what was really eaten shapes the next suggestions.*

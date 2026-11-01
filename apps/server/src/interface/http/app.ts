@@ -18,12 +18,14 @@ import type {
   RefreshRecipes,
   ReopenDay,
   RetryExport,
+  SendTestNotification,
   SubscribeToPush,
   UnsubscribeFromPush,
   SignIn,
   StartSession,
   SwapPlannedDays,
   VetoProposal,
+  WithdrawProposal,
 } from "@weekly-planner/application";
 import {
   memberId,
@@ -35,6 +37,7 @@ import {
   recipeId,
   sessionId,
   type FinalizeExport,
+  type ListItem,
   type PlanningSession,
   type Recipe,
 } from "@weekly-planner/domain";
@@ -52,6 +55,7 @@ interface AppOptions {
   readonly proposeRecipe: Pick<ProposeRecipe, "execute">;
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
   readonly vetoProposal: Pick<VetoProposal, "execute">;
+  readonly withdrawProposal: Pick<WithdrawProposal, "execute">;
   readonly refreshRecipes: Pick<RefreshRecipes, "execute">;
   readonly getDeck: Pick<GetDeck, "execute">;
   readonly passSuggestion: Pick<PassSuggestion, "execute">;
@@ -65,6 +69,7 @@ interface AppOptions {
   readonly finalizePlan: Pick<FinalizePlan, "execute">;
   readonly retryExport: Pick<RetryExport, "execute">;
   readonly subscribeToPush: Pick<SubscribeToPush, "execute">;
+  readonly sendTestNotification: Pick<SendTestNotification, "execute">;
   readonly unsubscribeFromPush: Pick<UnsubscribeFromPush, "execute">;
   /** The server's VAPID public key: a phone needs it to subscribe to notifications. */
   readonly pushPublicKey: string;
@@ -93,8 +98,21 @@ const recipeView = (r: Recipe, planAheadMinutes: number) => ({
   minutes: r.totalTimeMinutes,
   base: r.base,
   diet: r.diet,
+  tags: r.tags ?? [],
   needsTime: needsTime(r),
   planAhead: needsPlanningAhead(r, { planAheadMinutes }),
+});
+
+/** A category is named like "🧈 Aufstriche & Vurst"; its leading emoji is the icon of every item in it. */
+const EMOJI = /^\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic}|\p{Emoji_Modifier})*/u;
+const iconOf = (category: string | undefined): string | null => category?.trim().match(EMOJI)?.[0] ?? null;
+
+const listLineView = (i: ListItem) => ({
+  name: i.name,
+  icon: iconOf(i.category),
+  description: i.description,
+  needsReview: i.needsReview,
+  recipes: i.recipes,
 });
 
 /** How far the export to KitchenOwl has come, for the finalize screen. */
@@ -104,12 +122,7 @@ const exportView = (e: FinalizeExport) => ({
   days: e.days.map((d) => ({ date: d.date, recipeName: d.recipeName, status: d.status })),
   list: {
     status: e.list.status,
-    items: e.list.items.map((i) => ({
-      name: i.name,
-      description: i.description,
-      needsReview: i.needsReview,
-      recipes: i.recipes,
-    })),
+    items: e.list.items.map(listLineView),
   },
 });
 
@@ -141,6 +154,8 @@ const pushSubscriptionBody = z.object({
 });
 const pushEndpointBody = z.object({ endpoint: z.string().max(1000) });
 
+const finalizeBody = z.object({ skip: z.array(z.string().max(200)).max(300).default([]) }).default({ skip: [] });
+
 const retryBody = z.object({ resendUnconfirmed: z.boolean().optional() }).default({});
 
 const passBody = z.object({ recipeId: z.number().int() });
@@ -165,6 +180,7 @@ const COMMAND_REJECTIONS: Record<string, number> = {
   unknown_proposal: 404,
   unknown_day: 404,
   own_proposal: 403,
+  not_your_proposal: 403,
   not_next_open_day: 409,
   proposal_already_pending: 409,
   proposal_not_pending: 409,
@@ -290,6 +306,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return reply.code(204).send();
   });
 
+  // Answers how many phones took the message, so the app can say when none did.
+  app.post(`${api}/push/test`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    return { reached: await options.sendTestNotification.execute({ member: memberId(member.id) }) };
+  });
+
   app.delete(`${api}/push/subscription`, async (req, reply) => {
     if (!requireMember(req, reply)) return reply;
     const body = pushEndpointBody.safeParse(req.body);
@@ -339,12 +362,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
     return {
       dinners: result.value.dinners,
-      items: result.value.items.map((i) => ({
-        name: i.name,
-        description: i.description,
-        needsReview: i.needsReview,
-        recipes: i.recipes,
-      })),
+      items: result.value.items.map(listLineView),
     };
   });
 
@@ -352,9 +370,12 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.post<{ Params: { id: string } }>(`${api}/sessions/:id/finalize`, async (req, reply) => {
     const member = requireMember(req, reply);
     if (!member) return reply;
+    const body = finalizeBody.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
     const result = await options.finalizePlan.execute({
       member: memberId(member.id),
       sessionId: sessionId(req.params.id),
+      skip: body.data.skip,
     });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
     return { session: sessionView(result.value.session, options.planAheadMinutes, result.value.export) };
@@ -403,6 +424,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   for (const [verb, useCase] of [
     ["accept", options.acceptProposal],
     ["veto", options.vetoProposal],
+    ["withdraw", options.withdrawProposal],
   ] as const) {
     app.post<{ Params: { id: string; proposalId: string } }>(
       `${api}/sessions/:id/proposals/:proposalId/${verb}`,

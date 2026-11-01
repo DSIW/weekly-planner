@@ -37,6 +37,13 @@ export type PlanningEvent =
       readonly decidedBy: MemberId;
     }
   | {
+      readonly type: "ProposalWithdrawn";
+      readonly sessionId: SessionId;
+      readonly proposalId: ProposalId;
+      readonly date: PlanDate;
+      readonly recipeId: RecipeId;
+    }
+  | {
       readonly type: "ProposalVetoed";
       readonly sessionId: SessionId;
       readonly proposalId: ProposalId;

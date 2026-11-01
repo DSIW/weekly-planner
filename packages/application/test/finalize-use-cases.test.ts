@@ -121,6 +121,28 @@ describe("FinalizePlan", () => {
   });
 });
 
+describe("FinalizePlan with ingredients in stock", () => {
+  it("sends the list without them, and a retry sends the same list", async () => {
+    const { h, id } = await planned();
+    h.planner.failures.push(new ExportNotApplied("down"), new ExportNotApplied("down"));
+    const first = ok(await h.finalizePlan.execute({ member: ME, sessionId: id, skip: ["mehl", "Unbekannt"] }));
+    expect(first.export.list.items.map((i) => i.name)).toEqual(["Zwiebel", "Salz"]);
+    expect(first.export.failure).toBe("refused");
+    ok(await h.retryExport.execute({ sessionId: id, resendUnconfirmed: false }));
+    ok(await h.retryExport.execute({ sessionId: id, resendUnconfirmed: false }));
+    expect(h.planner.batches.map((b) => b.map((i) => i.name))).toEqual([["Zwiebel", "Salz"]]);
+  });
+
+  it("writes no list request when everything is in stock, and still finishes the export", async () => {
+    const { h, id } = await planned();
+    const done = ok(await h.finalizePlan.execute({ member: ME, sessionId: id, skip: ["Zwiebel", "Mehl", "Salz"] }));
+    expect(done.export.list.items).toEqual([]);
+    expect(h.planner.batches).toEqual([]);
+    expect(h.planner.entries).toHaveLength(2);
+    expect(h.exports.bySession.get(id)?.list.status).toBe("done");
+  });
+});
+
 describe("the export saga", () => {
   it("records a step as sending before the request and done after it", async () => {
     const { h, id } = await planned();

@@ -63,6 +63,8 @@ export async function enablePush(): Promise<void> {
   } catch {
     throw new PushFailed("unavailable");
   }
+  // A first message right away shows that it works; if it does not arrive, nothing is lost by trying.
+  await send("POST", "/push/test", {}).catch(() => undefined);
 }
 
 /** Unsubscribes this phone and tells the server to forget it. */

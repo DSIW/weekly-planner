@@ -16,6 +16,7 @@ import {
   type FinalizeExport,
   invariantViolations,
   isNewRecipe,
+  leaveOut,
   needsPlanningAhead,
   suggestRecipes,
   vetoProposal,
@@ -296,6 +297,28 @@ describe("consolidateIngredients", () => {
     if (!item) throw new Error(`no ${name}`);
     return item;
   };
+
+  it("keeps the category of an ingredient on its line, the first one named", () => {
+    const items = consolidateIngredients(
+      [
+        recipe("A", 2, ing("Butter", "30 g"), ing("Salz", "1 TL", { category: "Gewürze" })),
+        recipe("B", 2, ing("Butter", "20 g", { category: "🧈 Aufstriche" }), ing("Salz", "", { category: "Anderes" })),
+      ],
+      2,
+    );
+    expect(one(items, "Butter").category).toBe("🧈 Aufstriche");
+    expect(one(items, "Salz").category).toBe("Gewürze");
+    expect("category" in one(consolidateIngredients([recipe("A", 2, ing("Mehl", "1 kg"))], 2), "Mehl")).toBe(false);
+  });
+
+  it("leaves out what is in stock, by name and whatever the case, and ignores names that are not on the list", () => {
+    const items = consolidateIngredients(
+      [recipe("A", 2, ing("Butter", "30 g"), ing("Salz", ""), ing("Mehl", "200 g"))],
+      2,
+    );
+    expect(leaveOut(items, [" butter ", "SALZ", "Pfeffer"]).map((i) => i.name)).toEqual(["Mehl"]);
+    expect(leaveOut(items, [])).toEqual(items);
+  });
 
   it("scales each recipe to the household and adds the same unit up", () => {
     const items = consolidateIngredients(

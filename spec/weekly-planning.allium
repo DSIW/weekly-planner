@@ -152,6 +152,7 @@ entity ExportStep {
     session: PlanningSession
     kind: planner_entry | shopping_list
     day: PlanDay when kind = planner_entry
+    left_off: Set<String> when kind = shopping_list   -- ingredient names the members already have in stock
     status: pending | sending | done
 
     transitions status {
@@ -180,13 +181,14 @@ entity Proposal {
     day: PlanDay
     recipe: Recipe
     proposed_by: Member
-    status: pending | accepted | vetoed
+    status: pending | accepted | vetoed | withdrawn
     decided_by: Member when status = accepted | vetoed
 
     transitions status {
         pending -> accepted
         pending -> vetoed
-        terminal: accepted, vetoed
+        pending -> withdrawn
+        terminal: accepted, vetoed, withdrawn
     }
 }
 
@@ -253,6 +255,17 @@ rule PassSuggestion {
     requires: session.status = open
     requires: recipe not in session.passed_recipes
     ensures: PassedSuggestion.created(session: session, recipe: recipe, passed_by: member)
+}
+
+-- The proposer may take a proposal back while nobody has decided. The day
+-- stays open, and the dish is not held against anyone: unlike a veto, it can
+-- be proposed again.
+rule WithdrawProposal {
+    when: WithdrawProposal(member, proposal)
+    requires: proposal.status = pending
+    requires: proposal.session.status = open
+    requires: proposal.proposed_by = member
+    ensures: proposal.status = withdrawn
 }
 
 rule AcceptProposal {
@@ -415,8 +428,11 @@ rule ReopenLeftoverDay {
 -- ingredients of every agreed day. A finalized plan is locked: if the
 -- household cooks something else later, nothing changes in the system and
 -- ingredients already on the list stay there.
+-- The members may leave ingredients off the list before it is sent, because
+-- they have them in stock (skipped_items, by name): the list carries every
+-- needed ingredient except those, and the choice is fixed with the list.
 rule FinalizePlan {
-    when: FinalizePlan(member, session)
+    when: FinalizePlan(member, session, skipped_items)
     requires: session.status = open
     requires: session.planned_days.count > 0
     -- Like every change to the plan, not while a vote runs.
@@ -426,7 +442,7 @@ rule FinalizePlan {
         for day in session.planned_days:
             IngredientsNeeded(recipe: day.recipe, date: day.date, portions: config.household_size)
             ExportStep.created(session: session, kind: planner_entry, day: day, status: pending)
-        ExportStep.created(session: session, kind: shopping_list, status: pending)
+        ExportStep.created(session: session, kind: shopping_list, status: pending, left_off: skipped_items)
 }
 
 -- Writing to KitchenOwl. The consolidated list is fixed when the plan is
@@ -614,6 +630,7 @@ surface PlanningBoard {
         PassSuggestion(viewer, session, recipe)
         AcceptProposal(viewer, proposal)
         VetoProposal(viewer, proposal)
+        WithdrawProposal(viewer, proposal)
         MarkLeftoverDay(viewer, day)
         SwapPlannedDays(viewer, a, b)
         MovePlannedDay(viewer, from_day, to_day)
@@ -622,7 +639,7 @@ surface PlanningBoard {
         CorrectLoggedMeal(viewer, entry, base, recipe)
         AddLoggedMeal(viewer, date, base, recipe)
         ReopenDay(viewer, day)
-        FinalizePlan(viewer, session)
+        FinalizePlan(viewer, session, skipped_items)
         SendExportStep(viewer, step)
         ResendUnconfirmedStep(viewer, step)
         CloseSession(viewer, session)

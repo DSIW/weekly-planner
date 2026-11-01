@@ -110,6 +110,23 @@ describe("WebPushNotifier", () => {
     },
   );
 
+  it("tests one member's phones only, says how many took it, and still forgets a gone one", async () => {
+    const sent: { endpoint: string; body: string }[] = [];
+    const { store, notifier } = setup(async (s, payload) => {
+      if (s.endpoint === sub(3).endpoint) throw Object.assign(new Error("gone"), { statusCode: 410 });
+      sent.push({ endpoint: s.endpoint, body: JSON.parse(payload).body });
+    });
+    await store.save(MAX, sub(1));
+    await store.save(AC, sub(2));
+    await store.save(AC, sub(3));
+    expect(await notifier.test(AC)).toBe(1);
+    expect(sent).toEqual([
+      { endpoint: sub(2).endpoint, body: "Benachrichtigungen sind an. So meldet sich der Wochenplan." },
+    ]);
+    expect((await store.all()).map((r) => r.subscription.endpoint)).not.toContain(sub(3).endpoint);
+    expect(await notifier.test(memberId("9"))).toBe(0);
+  });
+
   it("does nothing when nobody has subscribed", async () => {
     const send = vi.fn();
     const { notifier } = setup(send);

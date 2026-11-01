@@ -28,6 +28,7 @@ import {
   SuggestRecipes,
   SwapPlannedDays,
   VetoProposal,
+  WithdrawProposal,
 } from "../src/index.js";
 import {
   FakeClock,
@@ -94,6 +95,7 @@ export function household(recipes: Recipe[] = []) {
     passSuggestion: new PassSuggestion({ ...session, catalog }),
     acceptProposal: new AcceptProposal({ ...session, calendar }, config),
     vetoProposal: new VetoProposal(session),
+    withdrawProposal: new WithdrawProposal(session),
     markLeftoverDay: new MarkLeftoverDay(session),
     reopenDay: new ReopenDay(session),
     swapPlannedDays: new SwapPlannedDays(session, config),

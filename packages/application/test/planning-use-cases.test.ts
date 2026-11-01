@@ -124,6 +124,46 @@ describe("a planning session through the use cases", () => {
     });
   });
 
+  it("lets the proposer take a proposal back: the day stays open and the dish may be proposed again", async () => {
+    const { h, s } = await started();
+    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: r1.id }));
+    const id = proposed.proposals[0]!.id;
+    const back = ok(await h.withdrawProposal.execute({ member: AC, sessionId: s.id, proposalId: id }));
+    expect(back.proposals[0]?.status).toBe("withdrawn");
+    expect(back.days[0]?.status).toBe("open");
+    expect(h.events.types).toContain("ProposalWithdrawn");
+    expect((await h.suggestRecipes.execute({ sessionId: s.id })).map((r) => r.id)).toContain(r1.id);
+    ok(await h.proposeRecipe.execute({ member: ME, sessionId: s.id, date: MON, recipeId: r1.id }));
+  });
+
+  it("refuses to withdraw somebody else's proposal, a decided one or an unknown one", async () => {
+    const { h, s } = await started();
+    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: r1.id }));
+    const id = proposed.proposals[0]!.id;
+    expect(await h.withdrawProposal.execute({ member: ME, sessionId: s.id, proposalId: id })).toEqual({
+      ok: false,
+      reason: "not_your_proposal",
+    });
+    ok(await h.acceptProposal.execute({ member: ME, sessionId: s.id, proposalId: id }));
+    expect(await h.withdrawProposal.execute({ member: AC, sessionId: s.id, proposalId: id })).toEqual({
+      ok: false,
+      reason: "proposal_not_pending",
+    });
+    expect(await h.withdrawProposal.execute({ member: AC, sessionId: s.id, proposalId: proposalId("nope") })).toEqual({
+      ok: false,
+      reason: "unknown_proposal",
+    });
+  });
+
+  it("refuses to withdraw once the plan is closed", async () => {
+    const { h, s } = await started();
+    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: r1.id }));
+    ok(await h.closeSession.execute({ member: AC, sessionId: s.id }));
+    expect(
+      await h.withdrawProposal.execute({ member: AC, sessionId: s.id, proposalId: proposed.proposals[0]!.id }),
+    ).toEqual({ ok: false, reason: "session_not_open" });
+  });
+
   it("passes on a suggestion for both members", async () => {
     const { h, s } = await started();
     ok(await h.passSuggestion.execute({ member: ME, sessionId: s.id, recipeId: r2.id }));
@@ -368,7 +408,7 @@ describe("RemindToFinalize", () => {
         return result;
       },
     };
-    const notifier = { finalizeReminder: async () => void log.push("notify") };
+    const notifier = { finalizeReminder: async () => void log.push("notify"), test: async () => 0 };
     const job = new RemindToFinalize({ sessions: h.sessions, notifier, events: h.events, uow, clock: h.clock }, config);
     return { h, s, log, job, save };
   };

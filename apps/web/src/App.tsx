@@ -24,6 +24,7 @@ import {
   startSession,
   swapDays,
   vetoProposal,
+  withdrawProposal,
   type ExportView,
   type LoginError,
   type PlanSession,
@@ -45,6 +46,7 @@ const SESSION_MESSAGES: Record<SessionError, string> = {
   session_not_open: "Die Planung wurde beendet.",
   proposal_already_pending: "Es läuft gerade eine Abstimmung. Entscheidet erst darüber.",
   proposal_not_pending: "Darüber ist schon entschieden.",
+  not_your_proposal: "Das ist nicht dein Vorschlag.",
   not_next_open_day: "Es ist schon ein anderer Tag dran.",
   too_long_for_weekday: "Das Rezept ist für einen Wochentag zu lang.",
   day_not_planned: "Der Tag hat sich gerade geändert.",
@@ -90,6 +92,7 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
   const pass = useMutation({ mutationFn: (recipeId: number) => passRecipe(session.id, recipeId), onSettled: refetch });
   const accept = useMutation({ mutationFn: (id: string) => acceptProposal(session.id, id), onSettled: refetch });
   const veto = useMutation({ mutationFn: (id: string) => vetoProposal(session.id, id), onSettled: refetch });
+  const withdraw = useMutation({ mutationFn: (id: string) => withdrawProposal(session.id, id), onSettled: refetch });
   const refresh = useMutation({ mutationFn: refreshRecipes, onSettled: refetch });
 
   if (!next) return <p className="muted">Alle Tage sind geplant.</p>;
@@ -100,8 +103,9 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
         mine={proposal.proposedBy === meId}
         onAccept={() => accept.mutate(proposal.id)}
         onVeto={() => veto.mutate(proposal.id)}
-        pending={accept.isPending || veto.isPending}
-        error={messageFor(accept.error ?? veto.error)}
+        onWithdraw={() => withdraw.mutate(proposal.id)}
+        pending={accept.isPending || veto.isPending || withdraw.isPending}
+        error={messageFor(accept.error ?? veto.error ?? withdraw.error)}
       />
     );
   }
@@ -171,7 +175,7 @@ function Finalizing({ session, onDone }: { session: PlanSession; onDone: (messag
     queryFn: () => fetchFinalizePreview(session.id),
   });
   const finalize = useMutation({
-    mutationFn: () => finalizePlan(session.id),
+    mutationFn: (skip: string[]) => finalizePlan(session.id, skip),
     onSuccess: (done) => {
       if (done.export?.complete) onDone(doneMessage(done.export));
     },
@@ -183,7 +187,7 @@ function Finalizing({ session, onDone }: { session: PlanSession; onDone: (messag
       items={preview.data?.items}
       loading={preview.isPending}
       loadFailed={preview.isError}
-      onFinalize={() => finalize.mutate()}
+      onFinalize={(skip) => finalize.mutate(skip)}
       pending={finalize.isPending}
       error={messageFor(finalize.error)}
     />
@@ -308,16 +312,18 @@ export function App() {
     <main className="page">
       <header className="bar">
         <h1>Hallo, {me.data.name}</h1>
-        <button type="button" className="secondary" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
-          Abmelden
-        </button>
+        <div className="bar-actions">
+          <Notifications />
+          <button type="button" className="secondary" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
+            Abmelden
+          </button>
+        </div>
       </header>
       {signOut.isError && (
         <p role="alert" className="error">
           Abmelden hat nicht geklappt. Bitte noch einmal versuchen.
         </p>
       )}
-      <Notifications />
       <Planning meId={me.data.id} />
     </main>
   );

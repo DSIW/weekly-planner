@@ -69,6 +69,8 @@ interface ConsolidationInput {
 export interface ListItem {
   readonly id?: number;
   readonly name: string;
+  /** The source's category of the ingredient, when it names one. */
+  readonly category?: string;
   /** All amounts of this ingredient, one per unit: "800 g, 2 EL". Empty when no recipe gave an amount. */
   readonly description: string;
   /** At least one amount could not be read, or looks like a note: a person should check the line. */
@@ -103,6 +105,7 @@ const render = (key: string, total: number): string => {
 export function consolidateIngredients(inputs: readonly ConsolidationInput[], portions: number): ListItem[] {
   interface Group {
     id?: number;
+    category?: string;
     name: string;
     sums: Map<string, number>;
     notes: string[];
@@ -123,6 +126,7 @@ export function consolidateIngredients(inputs: readonly ConsolidationInput[], po
         if (ingredient.id !== undefined) g.id = ingredient.id;
         groups.set(key, g);
       }
+      if (g.category === undefined && ingredient.category) g.category = ingredient.category;
       if (!g.recipes.includes(input.recipeName)) g.recipes.push(input.recipeName);
       const amount = scaleDescription(ingredient.description, factor);
       if (amount.needsReview) g.review = true;
@@ -137,8 +141,15 @@ export function consolidateIngredients(inputs: readonly ConsolidationInput[], po
   return [...groups.values()].map((g) => ({
     ...(g.id !== undefined ? { id: g.id } : {}),
     name: g.name,
+    ...(g.category !== undefined ? { category: g.category } : {}),
     description: [...[...g.sums].map(([key, total]) => render(key, total)), ...g.notes].join(", "),
     needsReview: g.review,
     recipes: g.recipes,
   }));
+}
+
+/** The list without the ingredients the members already have, named as the list shows them (case does not matter). */
+export function leaveOut(items: readonly ListItem[], names: readonly string[]): ListItem[] {
+  const skipped = new Set(names.map((n) => n.trim().toLowerCase()));
+  return items.filter((i) => !skipped.has(i.name.toLowerCase()));
 }

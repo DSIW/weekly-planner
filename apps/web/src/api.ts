@@ -53,6 +53,8 @@ export interface RecipeView {
   minutes: number | null;
   base: string;
   diet: string;
+  /** KitchenOwl's tags worth showing on a card, emoji included; empty on recipes from before tags were kept. */
+  tags?: string[];
   needsTime: boolean;
   /** Longer than the household's lead-time limit: needs preparing the day before. */
   planAhead: boolean;
@@ -69,7 +71,7 @@ export interface Proposal {
   date: string;
   recipe: RecipeView;
   proposedBy: string;
-  status: "pending" | "accepted" | "vetoed";
+  status: "pending" | "accepted" | "vetoed" | "withdrawn";
 }
 
 export type StepStatus = "pending" | "sending" | "done";
@@ -77,6 +79,8 @@ export type StepStatus = "pending" | "sending" | "done";
 /** One line of the consolidated shopping list. */
 export interface ListLine {
   name: string;
+  /** The emoji of the item's category in KitchenOwl, when it has one. */
+  icon?: string | null;
   /** Amount and unit, summed over the recipes; empty when no recipe gave one. */
   description: string;
   /** An amount could not be read: someone should look at this line in KitchenOwl. */
@@ -111,6 +115,7 @@ const KNOWN_REASONS = [
   "session_not_open",
   "proposal_already_pending",
   "proposal_not_pending",
+  "not_your_proposal",
   "not_next_open_day",
   "date_already_taken",
   "too_long_for_weekday",
@@ -159,7 +164,8 @@ const sessionCommand = async (path: string, body?: unknown): Promise<PlanSession
   (await command<{ session: PlanSession }>(path, body)).session;
 
 /** Locks the plan and writes the planner entries and the shopping list to KitchenOwl. */
-export const finalizePlan = (sessionId: string) => sessionCommand(`/sessions/${sessionId}/finalize`);
+export const finalizePlan = (sessionId: string, skip: string[] = []) =>
+  sessionCommand(`/sessions/${sessionId}/finalize`, skip.length > 0 ? { skip } : undefined);
 
 /** Sends what is still missing. `resendUnconfirmed` also sends a step that may already have arrived. */
 export async function retryExport(sessionId: string, resendUnconfirmed: boolean): Promise<ExportView> {
@@ -190,6 +196,8 @@ export const proposeRecipe = (sessionId: string, date: string, recipeId: number)
   sessionCommand(`/sessions/${sessionId}/proposals`, { date, recipeId });
 export const acceptProposal = (sessionId: string, proposalId: string) =>
   sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/accept`);
+export const withdrawProposal = (sessionId: string, proposalId: string) =>
+  sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/withdraw`);
 export const vetoProposal = (sessionId: string, proposalId: string) =>
   sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/veto`);
 

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ListLine } from "./api";
 import { dayLabel } from "./dates";
 
@@ -6,14 +7,22 @@ interface Props {
   items: ListLine[] | undefined;
   loading: boolean;
   loadFailed: boolean;
-  onFinalize: () => void;
+  /** `skip`: the names of the ingredients that are in stock and stay off the list. */
+  onFinalize: (skip: string[]) => void;
   pending: boolean;
   error: string | null;
 }
 
 /** The consolidated shopping list as it will be sent, with the button that sends it. Lines to check stand out. */
 export function FinalizePanel({ dinners, items, loading, loadFailed, onFinalize, pending, error }: Props) {
-  const review = items?.filter((i) => i.needsReview).length ?? 0;
+  const [skipped, setSkipped] = useState<ReadonlySet<string>>(new Set());
+  const toggle = (name: string) =>
+    setSkipped((now) => {
+      const next = new Set(now);
+      if (!next.delete(name)) next.add(name);
+      return next;
+    });
+  const review = items?.filter((i) => i.needsReview && !skipped.has(i.name)).length ?? 0;
   return (
     <section className="card">
       <h2>Einkaufsliste</h2>
@@ -38,15 +47,24 @@ export function FinalizePanel({ dinners, items, loading, loadFailed, onFinalize,
       )}
       {items && items.length === 0 && <p className="muted">Für diese Rezepte sind keine Zutaten hinterlegt.</p>}
       {items && items.length > 0 && (
-        <ul className="list-preview" aria-label="Einkaufsliste">
-          {items.map((i) => (
-            <li key={i.name} className={i.needsReview ? "review" : ""}>
-              <span>{i.name}</span>
-              <span>{i.description || "ohne Menge"}</span>
-              {i.needsReview && <span className="badge">bitte prüfen</span>}
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="muted">Was ihr schon da habt, einfach abwählen. Es kommt dann nicht auf die Liste.</p>
+          <ul className="ingredient-grid" aria-label="Einkaufsliste">
+            {items.map((i) => (
+              <li key={i.name} className={i.needsReview ? "review" : ""}>
+                <label className={skipped.has(i.name) ? "tile off" : "tile"}>
+                  <input type="checkbox" checked={!skipped.has(i.name)} onChange={() => toggle(i.name)} />
+                  <span className="tile-icon" aria-hidden="true">
+                    {i.icon ?? "🛒"}
+                  </span>
+                  <span className="tile-name">{i.name}</span>
+                  <span className="tile-amount">{i.description || "ohne Menge"}</span>
+                  {i.needsReview && <span className="badge">bitte prüfen</span>}
+                </label>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {review > 0 && (
         <p className="hint">
@@ -59,7 +77,7 @@ export function FinalizePanel({ dinners, items, loading, loadFailed, onFinalize,
           {error}
         </p>
       )}
-      <button type="button" onClick={onFinalize} disabled={pending}>
+      <button type="button" onClick={() => onFinalize([...skipped])} disabled={pending}>
         {pending ? "Wird eingetragen …" : "Einkaufsliste füllen"}
       </button>
     </section>

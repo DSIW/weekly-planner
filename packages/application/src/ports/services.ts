@@ -1,5 +1,6 @@
 import type {
   LocalDateTime,
+  MemberId,
   MealLogEvent,
   PlanDate,
   PlanningEvent,
@@ -23,6 +24,8 @@ export interface EventPublisher {
 /** Port: reaches the household members. */
 export interface Notifier {
   finalizeReminder(session: PlanningSession): Promise<void>;
+  /** A message to one member's phones, to show that notifications arrive. Returns how many phones were reached. */
+  test(member: MemberId): Promise<number>;
 }
 
 export interface Clock {

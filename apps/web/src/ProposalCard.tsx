@@ -1,6 +1,6 @@
 import type { Proposal } from "./api";
 import { dayLabel } from "./dates";
-import { timeLabel } from "./recipe-time";
+import { RecipeCardBody } from "./RecipeCardBody";
 import { Swipeable } from "./Swipeable";
 
 interface Props {
@@ -8,19 +8,19 @@ interface Props {
   mine: boolean;
   onAccept: () => void;
   onVeto: () => void;
+  onWithdraw: () => void;
   pending: boolean;
   error: string | null;
 }
 
-export function ProposalCard({ proposal, mine, onAccept, onVeto, pending, error }: Props) {
+export function ProposalCard({ proposal, mine, onAccept, onVeto, onWithdraw, pending, error }: Props) {
   const { recipe } = proposal;
   return (
     <section className="card">
       <h2>Vorschlag für {dayLabel(proposal.date)}</h2>
       {mine ? (
         <div className="proposal-card">
-          <p className="proposal">{recipe.name}</p>
-          <p className="muted">{timeLabel(recipe)}</p>
+          <RecipeCardBody recipe={recipe} />
         </div>
       ) : (
         <Swipeable
@@ -32,8 +32,7 @@ export function ProposalCard({ proposal, mine, onAccept, onVeto, pending, error 
           onLeft={onVeto}
           disabled={pending}
         >
-          <p className="proposal">{recipe.name}</p>
-          <p className="muted">{timeLabel(recipe)}</p>
+          <RecipeCardBody recipe={recipe} />
         </Swipeable>
       )}
       {error && (
@@ -42,7 +41,14 @@ export function ProposalCard({ proposal, mine, onAccept, onVeto, pending, error 
         </p>
       )}
       {mine ? (
-        <p className="muted">Du hast das vorgeschlagen. Warte auf die Antwort.</p>
+        <>
+          <p className="muted">Du hast das vorgeschlagen. Warte auf die Antwort.</p>
+          <div className="actions">
+            <button type="button" className="secondary" onClick={onWithdraw} disabled={pending}>
+              Zurückziehen
+            </button>
+          </div>
+        </>
       ) : (
         <>
           <div className="actions">

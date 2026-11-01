@@ -88,6 +88,68 @@ describe("the finalize panel", () => {
     expect(screen.getByRole("button", { name: "Einkaufsliste füllen" })).toBeEnabled();
   });
 
+  it("shows the ingredients as a grid of tiles with the category icon, name and amount", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [PREVIEW]: {
+        status: 200,
+        body: {
+          ...preview,
+          items: [{ ...preview.items[0], icon: "🥬" }, preview.items[1]],
+        },
+      },
+    });
+    renderApp();
+    const list = await screen.findByRole("list", { name: "Einkaufsliste" });
+    const [onion, salt] = within(list).getAllByRole("listitem");
+    expect(onion).toHaveTextContent("🥬Zwiebel3 Stück");
+    expect(salt).toHaveTextContent("🛒Salz"); // no category emoji: the cart stands in
+    expect(within(onion!).getByRole("checkbox", { name: /Zwiebel/ })).toBeChecked();
+  });
+
+  it("sends only what is not in stock: a deselected ingredient stays off the list", async () => {
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [PREVIEW]: { status: 200, body: preview },
+      [FINALIZE]: { status: 200, body: { session: finalized(exportOf({ complete: true })) } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("checkbox", { name: /Zwiebel/ }));
+    expect(screen.getByRole("checkbox", { name: /Zwiebel/ })).not.toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Einkaufsliste füllen" }));
+    expect(calls.find((c) => c.key === FINALIZE)?.body).toEqual({ skip: ["Zwiebel"] });
+  });
+
+  it("brings an ingredient back when its tile is tapped again, and sends no body when nothing was left off", async () => {
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [PREVIEW]: { status: 200, body: preview },
+      [FINALIZE]: { status: 200, body: { session: finalized(exportOf({ complete: true })) } },
+    });
+    renderApp();
+    const onion = await screen.findByRole("checkbox", { name: /Zwiebel/ });
+    await userEvent.click(onion);
+    await userEvent.click(onion);
+    expect(onion).toBeChecked();
+    await userEvent.click(screen.getByRole("button", { name: "Einkaufsliste füllen" }));
+    expect(calls.find((c) => c.key === FINALIZE)?.body).toBeUndefined();
+  });
+
+  it("stops asking to check a line that was deselected", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: session() } },
+      [PREVIEW]: { status: 200, body: preview },
+    });
+    renderApp();
+    await screen.findByText(/Eine Menge konnte nicht gelesen werden/);
+    await userEvent.click(screen.getByRole("checkbox", { name: /Salz/ }));
+    expect(screen.queryByText(/Eine Menge konnte nicht gelesen werden/)).not.toBeInTheDocument();
+  });
+
   it("is not offered while nothing is planned", async () => {
     const empty = session({
       days: [

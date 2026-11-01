@@ -353,6 +353,18 @@ try {
     assert.ok(!names(list).includes(pending.recipe.name), "the vetoed dish is gone from the list");
   });
 
+  await step("the proposer takes a proposal back, nobody else can, and the day stays open", async () => {
+    const list = await as("dsiw", () => web.fetchEligibleRecipes(sessionId));
+    const proposed = await as("dsiw", () => web.proposeRecipe(sessionId, list.date, list.recipes[0].id));
+    const mine = proposed.proposals.find((p) => p.status === "pending");
+    const other = await as("ac", () => web.withdrawProposal(sessionId, mine.id).catch((e) => e));
+    assert.equal(other.reason, "not_your_proposal");
+    const back = await as("dsiw", () => web.withdrawProposal(sessionId, mine.id));
+    assert.equal(back.proposals.find((p) => p.id === mine.id).status, "withdrawn");
+    assert.equal(back.proposals.filter((p) => p.status === "pending").length, 0);
+    assert.equal(back.days.find((d) => d.date === list.date).status, "open");
+  });
+
   await step("leftovers, reopening and moving shape the plan, and the other member sees each change", async () => {
     const states = (session) => session.days.map((d) => [d.date, d.status, d.recipe?.name]);
     assert.deepEqual(states(await as("dsiw", () => web.markLeftovers(sessionId, D2))), [
@@ -385,7 +397,10 @@ try {
     const restored = await as("ac", () => web.fetchCurrentSession());
     assert.equal(restored?.id, sessionId);
     assert.equal(restored.days[0].recipe.name, "Pasta");
-    assert.equal(restored.proposals.length, 2);
+    assert.deepEqual(
+      restored.proposals.map((p) => p.status),
+      ["accepted", "vetoed", "withdrawn"],
+    );
     assert.equal((await as("ac", () => web.fetchMe())).name, "AC");
   });
 
@@ -441,7 +456,8 @@ try {
     "a refused planner entry leaves the plan finalized and the retry finishes without duplicates",
     async () => {
       behaviour.plannerStatus = 503;
-      const done = await as("dsiw", () => web.finalizePlan(nextSession));
+      // Flour is in stock: it stays off the list.
+      const done = await as("dsiw", () => web.finalizePlan(nextSession, ["mehl"]));
       finalizedAt = done;
       assert.equal(done.status, "finalized");
       assert.equal(done.export.complete, false);
@@ -464,7 +480,6 @@ try {
       assert.equal(written.list.length, 1);
       assert.deepEqual(written.list[0].items, [
         { id: 101, name: "Zwiebel", description: "2 Stück", optional: false },
-        { id: 102, name: "Mehl", description: "250 g", optional: false },
         { id: 103, name: "Salz", description: "etwas", optional: false },
       ]);
       assert.equal(await as("dsiw", () => web.fetchCurrentSession()), null, "an exported plan leaves the board");
@@ -545,6 +560,7 @@ try {
     assert.match(serverLog, /POST \/plan\/api\/login -> 403 not_in_household/);
     assert.match(serverLog, /POST \/plan\/api\/sessions -> 409 session_already_open/);
     assert.match(serverLog, /-> 403 own_proposal/);
+    assert.match(serverLog, /\/withdraw -> 403 not_your_proposal/);
     assert.match(serverLog, /POST \/plan\/api\/sessions\/[^ ]+\/passes -> 409 already_passed/);
     assert.match(serverLog, /-> 409 proposal_already_pending/);
     assert.match(serverLog, /-> 409 day_not_planned/);
