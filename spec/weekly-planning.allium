@@ -75,13 +75,16 @@ entity PlanningSession {
     days: PlanDay with session = this
     proposals: Proposal with session = this
     passes: PassedSuggestion with session = this
+    export_steps: ExportStep with session = this
 
     -- Projections
     open_days: days where status = open
     planned_days: days where status = planned
     pending_proposals: proposals where status = pending
+    unfinished_export_steps: export_steps where status != done
 
     -- Derived
+    export_complete: status = finalized and unfinished_export_steps.count = 0
     next_open_day: min_by(open_days, d => d.date)
     first_planned_date: min_by(planned_days, d => d.date).date
     reminder_due_at: first_planned_date + config.reminder_offset
@@ -134,6 +137,25 @@ entity MealLogEntry {
 entity CookedRecipe {
     recipe: Recipe
     first_cooked: Timestamp
+}
+
+-- One write to KitchenOwl that finalizing needs: the planner entry of an agreed
+-- day, or the whole shopping list in one batch. KitchenOwl cannot tell a repeated
+-- request from a new one (a repeated list batch adds the amounts up twice), so a
+-- step is recorded as sending before the request goes out and as done after it
+-- was answered. A step that stays sending is not known to have arrived.
+entity ExportStep {
+    session: PlanningSession
+    kind: planner_entry | shopping_list
+    day: PlanDay when kind = planner_entry
+    status: pending | sending | done
+
+    transitions status {
+        pending -> sending
+        sending -> done
+        sending -> pending
+        terminal: done
+    }
 }
 
 -- Passing on a suggestion hides it for the rest of the session, for both
@@ -392,6 +414,40 @@ rule FinalizePlan {
         session.status = finalized
         for day in session.planned_days:
             IngredientsNeeded(recipe: day.recipe, date: day.date, portions: config.household_size)
+            ExportStep.created(session: session, kind: planner_entry, day: day, status: pending)
+        ExportStep.created(session: session, kind: shopping_list, status: pending)
+}
+
+-- Writing to KitchenOwl. The consolidated list is fixed when the plan is
+-- finalized, so every send of the list carries the same items.
+rule SendExportStep {
+    when: SendExportStep(member, step)
+    requires: step.session.status = finalized
+    requires: step.status = pending
+    ensures: step.status = sending
+}
+
+rule ExportStepAnswered {
+    when: ExportStepAnswered(step)
+    requires: step.status = sending
+    ensures: step.status = done
+}
+
+-- KitchenOwl refused the request (or was not reached): nothing was written.
+rule ExportStepRefused {
+    when: ExportStepRefused(step)
+    requires: step.status = sending
+    ensures: step.status = pending
+}
+
+-- No answer at all (timeout, the planner stopped): the step stays sending and
+-- is not sent again by itself. A member who has looked at KitchenOwl may send
+-- it once more, knowing it can then appear twice.
+rule ResendUnconfirmedStep {
+    when: ResendUnconfirmedStep(member, step)
+    requires: step.session.status = finalized
+    requires: step.status = sending
+    ensures: step.status = sending
 }
 
 -- The shopping list is never filled automatically. If the household agreed
@@ -474,7 +530,10 @@ actor HouseholdMember {
 surface PlanningBoard {
     facing viewer: HouseholdMember
 
-    context session: PlanningSession where status in {open, finalized}
+    -- The board shows the open session; while none is open, a finalized one
+    -- whose export is not complete (so a failed write can be retried). A
+    -- finalized session that was exported completely leaves the board.
+    context session: PlanningSession where status = open or (status = finalized and not export_complete)
 
     exposes:
         session.days
@@ -504,6 +563,8 @@ surface PlanningBoard {
         AddLoggedMeal(viewer, date, base, recipe)
         ReopenDay(viewer, day)
         FinalizePlan(viewer, session)
+        SendExportStep(viewer, step)
+        ResendUnconfirmedStep(viewer, step)
         CloseSession(viewer, session)
 
     timeout:
@@ -552,5 +613,4 @@ surface PlanningBoard {
 ------------------------------------------------------------
 open question "LogPlannedMeal fires on every evaluation once a planned day is a day old. After MarkNotCooked removes the entry, nothing in the rules stops the entry from being created again; the implementation remembers which planned dates were logged (MealLogRepository.loggedPlanDates). Should the spec carry that guard?"
 open question "Abandoned sessions: AbandonSession closes a session that was never finalized, yet LogPlannedMeal accepts closed sessions, so its agreed days still become meal-log entries, and (its dates are free again for planning since S3). Should an abandoned session's days be logged? CloseFinalizedSession also closes, so a finalized plan's dates would be freed as well: decide in S4 whether to keep them blocked. The suggestion ranking (base variety and the recent window) counts planned days of every other session today, abandoned ones included; should it?"
-open question "Current session: the PlanningBoard shows sessions that are open or finalized, and StartSession now only needs no other open session, so a finalized session and a new open one can exist together. Which one does the board show, and how does a member close the finalized one? (The planner shows the open session only; nothing can be finalized before S4.)"
 open question "StartSession accepts any dates, including past dates and dates another finalized or abandoned session already planned; OneDinnerPerDay only fails later at AcceptProposal. Should StartSession refuse such dates up front?"
