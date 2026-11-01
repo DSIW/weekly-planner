@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.15](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.14...weekly-planner-v0.1.15) (2026-11-01)
+
+
+### Features
+
+* a dish can be settled in person without the other member confirming on a phone ([a7c7944](https://github.com/DSIW/weekly-planner/commit/a7c794463ca7e4f04026173c46d3889afeb15b8a))
+* the first screen lists the planned days with their recipe pictures ([264eadc](https://github.com/DSIW/weekly-planner/commit/264eadc3c0831630d7d95890a1b5faf81c98b925))
+
 ## [0.1.14](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.13...weekly-planner-v0.1.14) (2026-11-01)
 
 
