@@ -17,9 +17,13 @@ export class SqliteDinnerCalendar implements DinnerCalendar {
     return this.db
       .prepare("select date, recipe_json from plan_day where blocks_date = 1 and date >= ? order by date")
       .all(from)
-      .map((r) => ({
-        date: planDate(r.date as string),
-        recipeName: r.recipe_json ? (JSON.parse(r.recipe_json as string) as { name: string }).name : "",
-      }));
+      .map((r) => {
+        const recipe = r.recipe_json ? (JSON.parse(r.recipe_json as string) as { id?: number; name: string }) : null;
+        return {
+          date: planDate(r.date as string),
+          recipeName: recipe?.name ?? "",
+          ...(typeof recipe?.id === "number" ? { recipeId: recipe.id } : {}),
+        };
+      });
   }
 }

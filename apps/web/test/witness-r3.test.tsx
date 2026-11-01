@@ -485,7 +485,28 @@ describe("dates that already hold a dinner (witness r3)", () => {
     const taken = await screen.findByRole("button", { name: /3\.11\./ });
     await waitFor(() => expect(taken).toBeDisabled());
     expect(taken).toHaveTextContent("schon geplant");
-    expect(screen.getByText("Grau hinterlegte Tage haben schon ein geplantes Essen.")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Schon geplant" })).not.toBeInTheDocument(); // no recipe to show
+  });
+
+  it("are listed with the recipe's picture on the first screen", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: {
+        status: 200,
+        body: {
+          dates: [
+            { date: "2026-11-03", recipeName: "Pasta", recipeId: 7 },
+            { date: "2026-11-04", recipeName: "Risotto" },
+          ],
+        },
+      },
+    });
+    renderApp();
+    const list = await screen.findByRole("list", { name: "Schon geplant" });
+    const [first] = within(list).getAllByRole("listitem");
+    expect(first).toHaveTextContent("Pasta");
+    expect(first?.querySelector(".thumb img")).toHaveAttribute("src", `${api}/recipes/7/photo`);
   });
 
   it("are not explained when there are none", async () => {
@@ -497,7 +518,7 @@ describe("dates that already hold a dinner (witness r3)", () => {
     renderApp();
     await screen.findByRole("button", { name: "Planung starten" });
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.queryByText(/Grau hinterlegte Tage/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Schon geplant" })).not.toBeInTheDocument();
   });
 });
 

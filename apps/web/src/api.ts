@@ -195,6 +195,7 @@ export async function fetchFinalizePreview(
 export interface TakenDate {
   date: string;
   recipeName: string;
+  recipeId?: number;
 }
 
 /** The dates from today on that already hold a planned dinner, in a plan that is still counted. */

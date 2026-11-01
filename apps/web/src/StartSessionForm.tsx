@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { TakenDate } from "./api";
 import { dayLabel, upcomingDates } from "./dates";
+import { DayBadge } from "./DayBadge";
+import { RecipeThumb } from "./RecipeThumb";
 
 const MIN = 1;
 const MAX = 5;
@@ -20,37 +22,56 @@ export function StartSessionForm({ onStart, pending, error, takenDates = [], tod
   const toggle = (date: string) =>
     setPicked((now) => (now.includes(date) ? now.filter((d) => d !== date) : now.length < MAX ? [...now, date] : now));
   return (
-    <section className="card">
-      <h2>Neue Planung</h2>
-      <fieldset className="day-chips">
-        <legend className="sr-only">Tage</legend>
-        {upcomingDates(7, today).map((date) => {
-          const taken = takenDates.find((t) => t.date === date);
-          return (
-            <button
-              key={date}
-              type="button"
-              className="chip day-chip"
-              aria-pressed={picked.includes(date)}
-              disabled={taken !== undefined}
-              title={taken ? `Hier ist schon ein Essen geplant: ${taken.recipeName}` : undefined}
-              onClick={() => toggle(date)}
-            >
-              <span>{dayLabel(date)}</span>
-              {taken && <small>{taken.recipeName || "schon geplant"}</small>}
-            </button>
-          );
-        })}
-      </fieldset>
-      {takenDates.length > 0 && <p className="muted">Grau hinterlegte Tage haben schon ein geplantes Essen.</p>}
-      {error && (
-        <p role="alert" className="error">
-          {error}
-        </p>
+    <>
+      {takenDates.some((t) => t.recipeId !== undefined) && (
+        <section className="card">
+          <h2>Schon geplant</h2>
+          <ul className="plain planned-days" aria-label="Schon geplant">
+            {takenDates.map((t) => (
+              <li key={t.date} className="dinner">
+                <DayBadge date={t.date} />
+                <span className="recipe-line">
+                  {t.recipeId !== undefined && <RecipeThumb key={t.recipeId} recipeId={t.recipeId} />}
+                  <span className="recipe-line-text">
+                    <strong>{t.recipeName}</strong>
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
-      <button type="button" disabled={pending || picked.length < MIN} onClick={() => onStart([...picked].sort())}>
-        {pending ? "Starte …" : "Planung starten"}
-      </button>
-    </section>
+      <section className="card">
+        <h2>Neue Planung</h2>
+        <fieldset className="day-chips">
+          <legend className="sr-only">Tage</legend>
+          {upcomingDates(7, today).map((date) => {
+            const taken = takenDates.find((t) => t.date === date);
+            return (
+              <button
+                key={date}
+                type="button"
+                className="chip day-chip"
+                aria-pressed={picked.includes(date)}
+                disabled={taken !== undefined}
+                title={taken ? `Hier ist schon ein Essen geplant: ${taken.recipeName}` : undefined}
+                onClick={() => toggle(date)}
+              >
+                <span>{dayLabel(date)}</span>
+                {taken && <small>{taken.recipeName || "schon geplant"}</small>}
+              </button>
+            );
+          })}
+        </fieldset>
+        {error && (
+          <p role="alert" className="error">
+            {error}
+          </p>
+        )}
+        <button type="button" disabled={pending || picked.length < MIN} onClick={() => onStart([...picked].sort())}>
+          {pending ? "Starte …" : "Planung starten"}
+        </button>
+      </section>
+    </>
   );
 }

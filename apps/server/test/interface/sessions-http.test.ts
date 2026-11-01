@@ -1323,7 +1323,7 @@ describe("dates that already hold a dinner, over HTTP", () => {
   it("lists the dates of a plan that is still counted, and nothing once that plan is discarded", async () => {
     const id = await takenBy();
     expect((await call("GET", "/planned-dates", ac)).json()).toEqual({
-      dates: [{ date: FUTURE, recipeName: "Pasta" }],
+      dates: [{ date: FUTURE, recipeName: "Pasta", recipeId: 1 }],
     });
     await call("POST", `/sessions/${id}/close`, max);
     expect((await call("GET", "/planned-dates", ac)).json()).toEqual({ dates: [] });

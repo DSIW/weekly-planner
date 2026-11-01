@@ -14,6 +14,8 @@ export type DomainEvent = PlanningEvent | MealLogEvent;
 export interface TakenDate {
   readonly date: PlanDate;
   readonly recipeName: string;
+  /** For the recipe's picture; absent when the dinner is not known by recipe. */
+  readonly recipeId?: number;
 }
 
 /** Port: what KitchenOwl's planner holds right now. */
