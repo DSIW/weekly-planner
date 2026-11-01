@@ -115,6 +115,7 @@ const KNOWN_REASONS = [
   "session_not_open",
   "proposal_already_pending",
   "proposal_not_pending",
+  "recipe_already_proposed",
   "not_your_proposal",
   "not_next_open_day",
   "date_already_taken",
@@ -126,6 +127,10 @@ const KNOWN_REASONS = [
   "export_running",
   "step_unconfirmed",
   "session_not_finalized",
+  "unknown_entry",
+  "already_confirmed",
+  "no_recipe",
+  "date_in_future",
 ] as const;
 export type SessionError = (typeof KNOWN_REASONS)[number] | "unavailable";
 
@@ -180,6 +185,13 @@ export async function fetchFinalizePreview(
   const res = await fetch(`${base}/sessions/${sessionId}/finalize-preview`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return (await res.json()) as { dinners: { date: string; recipeName: string }[]; items: ListLine[] };
+}
+
+/** The dates from today on that already hold a planned dinner, in a plan that is still counted. */
+export async function fetchPlannedDates(): Promise<string[]> {
+  const res = await fetch(`${base}/planned-dates`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return ((await res.json()) as { dates: string[] }).dates;
 }
 
 export const startSession = (dates: string[]) => sessionCommand("/sessions", { dates });
@@ -241,3 +253,39 @@ export function listenForChanges(onChange: () => void): () => void {
   source.addEventListener("changed", onChange);
   return () => source.close();
 }
+
+export const BASES = ["pasta", "rice", "potatoes", "grains", "bread", "other"] as const;
+export type BaseName = (typeof BASES)[number];
+
+/** One logged meal: what the household ate on a day. */
+export interface MealEntry {
+  id: string;
+  date: string;
+  base: BaseName;
+  /** Null for a meal given by its base only. */
+  recipe: RecipeView | null;
+  source: "from_plan" | "corrected" | "added";
+  /** A member said this was really cooked. */
+  confirmed: boolean;
+}
+
+/** What was eaten in the last days, newest first. */
+export async function fetchMealLog(days = 14): Promise<MealEntry[]> {
+  const res = await fetch(`${base}/meal-log?days=${days}`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return ((await res.json()) as { entries: MealEntry[] }).entries;
+}
+
+/** Every recipe that can be named for a meal, by name. */
+export async function fetchRecipes(): Promise<RecipeView[]> {
+  const res = await fetch(`${base}/recipes`, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return ((await res.json()) as { recipes: RecipeView[] }).recipes;
+}
+
+export const confirmMeal = (id: string) => command<{ entry: MealEntry }>(`/meal-log/${id}/confirm`);
+export const notCooked = (id: string) => command<{ entry: MealEntry }>(`/meal-log/${id}/not-cooked`);
+export const correctMeal = (id: string, baseName: BaseName, recipeId: number | null) =>
+  command<{ entry: MealEntry }>(`/meal-log/${id}/correct`, { base: baseName, recipeId });
+export const addMeal = (date: string, baseName: BaseName, recipeId: number | null) =>
+  command<{ entry: MealEntry }>("/meal-log", { date, base: baseName, recipeId });

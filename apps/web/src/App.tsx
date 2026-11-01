@@ -8,6 +8,7 @@ import {
   fetchDeck,
   fetchEligibleRecipes,
   fetchMe,
+  fetchPlannedDates,
   finalizePlan,
   listenForChanges,
   login,
@@ -33,10 +34,12 @@ import {
 import { ExportStatus } from "./ExportStatus";
 import { FinalizePanel } from "./FinalizePanel";
 import { LoginForm } from "./LoginForm";
+import { MealLogPanel } from "./MealLogPanel";
 import { Notifications } from "./Notifications";
 import { PlanBoard } from "./PlanBoard";
 import type { Drop } from "./plan-moves";
 import { ProposalCard } from "./ProposalCard";
+import { WaitingProposals } from "./WaitingProposals";
 import { RecipePicker } from "./RecipePicker";
 import { StartSessionForm } from "./StartSessionForm";
 import { SwipeDeck } from "./SwipeDeck";
@@ -44,20 +47,25 @@ import { SwipeDeck } from "./SwipeDeck";
 const SESSION_MESSAGES: Record<SessionError, string> = {
   session_already_open: "Es läuft schon eine Planung. Sie ist jetzt zu sehen.",
   session_not_open: "Die Planung wurde beendet.",
-  proposal_already_pending: "Es läuft gerade eine Abstimmung. Entscheidet erst darüber.",
+  proposal_already_pending: "Für diesen Tag wartet schon ein Vorschlag auf eine Antwort.",
   proposal_not_pending: "Darüber ist schon entschieden.",
+  recipe_already_proposed: "Dieses Gericht wartet schon an einem anderen Tag auf eine Antwort.",
   not_your_proposal: "Das ist nicht dein Vorschlag.",
   not_next_open_day: "Es ist schon ein anderer Tag dran.",
   too_long_for_weekday: "Das Rezept ist für einen Wochentag zu lang.",
   day_not_planned: "Der Tag hat sich gerade geändert.",
   day_already_open: "Der Tag hat sich gerade geändert.",
   target_not_open: "Der Tag hat sich gerade geändert.",
-  date_already_taken: "An diesem Tag ist schon ein Essen geplant.",
+  date_already_taken: "Für diesen Tag ist schon ein Essen geplant, in einer anderen Planung.",
   nothing_planned: "Es ist noch kein Tag geplant.",
   export_running: "Das Eintragen läuft gerade. Gleich noch einmal nachsehen.",
   step_unconfirmed:
     "Es ist unklar, ob der letzte Schritt angekommen ist. Bitte in KitchenOwl nachsehen und dann erneut senden.",
   session_not_finalized: "Die Planung ist nicht mehr abgeschlossen.",
+  unknown_entry: "Diese Mahlzeit gibt es nicht mehr.",
+  already_confirmed: "Das ist schon als gekocht bestätigt.",
+  no_recipe: "Ohne Rezept lässt sich das nicht bestätigen. Wähle „Etwas anderes“.",
+  date_in_future: "Eine Mahlzeit in der Zukunft lässt sich nicht eintragen.",
   unavailable: "Das hat nicht geklappt. Bitte später noch einmal versuchen.",
 };
 
@@ -69,12 +77,17 @@ const canFinalize = (s: PlanSession): boolean =>
 const messageFor = (error: unknown): string | null =>
   error === null ? null : SESSION_MESSAGES[error instanceof SessionFailed ? error.reason : "unavailable"];
 
-/** The next open day: swipe through the ranked cards or search the list, or decide on the other member's proposal. */
+/**
+ * Proposing and deciding. Proposals of the other member wait for an answer from you; your own wait in a short list
+ * below the deck. The deck goes on with the next day that has no proposal yet, so nobody waits for an answer.
+ */
 function Proposing({ session, meId, refetch }: { session: PlanSession; meId: string; refetch: () => void }) {
   const [view, setView] = useState<"deck" | "list">("deck");
-  const next = session.days.find((d) => d.status === "open");
-  const proposal = session.proposals.find((p) => p.status === "pending");
-  const open = next !== undefined && proposal === undefined;
+  const waiting = session.proposals.filter((p) => p.status === "pending");
+  const theirs = waiting.filter((p) => p.proposedBy !== meId);
+  const mine = waiting.filter((p) => p.proposedBy === meId);
+  const free = session.days.find((d) => d.status === "open" && !waiting.some((p) => p.date === d.date));
+  const open = free !== undefined;
   const deck = useQuery({
     queryKey: ["session", "deck", session.id],
     queryFn: () => fetchDeck(session.id),
@@ -95,18 +108,31 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
   const withdraw = useMutation({ mutationFn: (id: string) => withdrawProposal(session.id, id), onSettled: refetch });
   const refresh = useMutation({ mutationFn: refreshRecipes, onSettled: refetch });
 
-  if (!next) return <p className="muted">Alle Tage sind geplant.</p>;
-  if (proposal) {
+  const decide = theirs.map((proposal) => (
+    <ProposalCard
+      key={proposal.id}
+      proposal={proposal}
+      onAccept={() => accept.mutate(proposal.id)}
+      onVeto={() => veto.mutate(proposal.id)}
+      pending={accept.isPending || veto.isPending}
+      error={messageFor(accept.error ?? veto.error)}
+    />
+  ));
+  const waitingList = mine.length > 0 && (
+    <WaitingProposals
+      proposals={mine}
+      onWithdraw={(p) => withdraw.mutate(p.id)}
+      pending={withdraw.isPending}
+      error={messageFor(withdraw.error)}
+    />
+  );
+  if (!open) {
     return (
-      <ProposalCard
-        proposal={proposal}
-        mine={proposal.proposedBy === meId}
-        onAccept={() => accept.mutate(proposal.id)}
-        onVeto={() => veto.mutate(proposal.id)}
-        onWithdraw={() => withdraw.mutate(proposal.id)}
-        pending={accept.isPending || veto.isPending || withdraw.isPending}
-        error={messageFor(accept.error ?? veto.error ?? withdraw.error)}
-      />
+      <>
+        {decide}
+        {waiting.length === 0 && <p className="muted">Alle Tage sind geplant.</p>}
+        {waitingList}
+      </>
     );
   }
 
@@ -125,6 +151,7 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
   if (view === "deck") {
     return (
       <>
+        {decide}
         {switcher}
         {deck.isPending && <p className="muted">Lädt …</p>}
         {deck.isError && <p className="error">Die Karten konnten nicht geladen werden.</p>}
@@ -138,11 +165,13 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
             error={messageFor(propose.error ?? pass.error)}
           />
         )}
+        {waitingList}
       </>
     );
   }
   return (
     <>
+      {decide}
       {switcher}
       {eligible.isPending && <p className="muted">Lädt …</p>}
       {eligible.isError && <p className="error">Die Rezepte konnten nicht geladen werden.</p>}
@@ -157,6 +186,7 @@ function Proposing({ session, meId, refetch }: { session: PlanSession; meId: str
           error={messageFor(propose.error ?? refresh.error)}
         />
       )}
+      {waitingList}
     </>
   );
 }
@@ -218,10 +248,18 @@ function Exporting({ session, onDone }: { session: PlanSession; onDone: (message
 /** The shared plan: whatever either member does shows up for both, live. */
 function Planning({ meId }: { meId: string }) {
   const client = useQueryClient();
-  const refetch = useCallback(() => client.invalidateQueries({ queryKey: ["session"] }), [client]);
+  const refetch = useCallback(() => {
+    void client.invalidateQueries({ queryKey: ["meal-log"] });
+    return client.invalidateQueries({ queryKey: ["session"] });
+  }, [client]);
   useEffect(() => listenForChanges(refetch), [refetch]);
   const [exported, setExported] = useState<string | null>(null);
   const current = useQuery({ queryKey: ["session"], queryFn: fetchCurrentSession });
+  const taken = useQuery({
+    queryKey: ["session", "planned-dates"],
+    queryFn: fetchPlannedDates,
+    enabled: current.data === null,
+  });
   const start = useMutation({ mutationFn: startSession, onSettled: refetch });
   const close = useMutation({ mutationFn: closeSession, onSettled: refetch });
   const shape = useMutation({
@@ -272,7 +310,12 @@ function Planning({ meId }: { meId: string }) {
           {exported}
         </p>
       )}
-      <StartSessionForm onStart={(dates) => start.mutate(dates)} pending={start.isPending} error={error} />
+      <StartSessionForm
+        onStart={(dates) => start.mutate(dates)}
+        pending={start.isPending}
+        error={error}
+        takenDates={taken.data ?? []}
+      />
     </>
   );
 }
@@ -324,6 +367,7 @@ export function App() {
           Abmelden hat nicht geklappt. Bitte noch einmal versuchen.
         </p>
       )}
+      <MealLogPanel messageFor={messageFor} />
       <Planning meId={me.data.id} />
     </main>
   );

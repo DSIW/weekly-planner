@@ -65,7 +65,7 @@ function DayRow({
       )}
       {!readOnly && day.status !== "open" && (
         <button type="button" className="secondary small" disabled={busy} onClick={() => onReopen(day.date)}>
-          Wieder öffnen
+          {day.status === "leftovers" ? "Doch kochen" : "Neu wählen"}
         </button>
       )}
     </li>

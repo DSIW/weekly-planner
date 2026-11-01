@@ -123,29 +123,64 @@ describe("choosing a dinner for the next open day", () => {
     renderApp();
     await showList();
     await userEvent.click(await screen.findByRole("button", { name: /Pasta/ }));
-    expect(await screen.findByText(/Warte auf die Antwort/)).toBeInTheDocument();
+    const waiting = await screen.findByRole("list", { name: "Wartet auf Antwort" });
+    expect(waiting).toHaveTextContent("Pasta");
+    expect(within(waiting).getByRole("button", { name: "Zurückziehen" })).toBeInTheDocument();
     expect(calls.find((c) => c.key === PROPOSE)?.body).toEqual({ date: "2026-11-02", recipeId: 1 });
     expect(screen.queryByRole("button", { name: "Passt" })).not.toBeInTheDocument();
   });
 
-  it("shows the proposal as a card with the recipe's picture and tags, for the one who decides and the one who waits", async () => {
+  it("shows the other member's proposal as a card with the recipe's picture and tags to decide on", async () => {
     const withTags = { ...pasta, tags: ["🍝 Pasta", "🥬 Vegetarisch"] };
-    for (const [member, role] of [
-      [ac, "article"],
-      [max, null],
-    ] as const) {
-      server({
-        ...as(member),
-        [CURRENT]: { status: 200, body: { session: session({ proposals: [{ ...proposal(), recipe: withTags }] }) } },
-      });
-      const view = renderApp();
-      const name = await screen.findByRole("heading", { name: "Pasta" });
-      const card = role ? screen.getByRole(role, { name: "Pasta" }) : name.closest(".proposal-card")!;
-      expect(card.querySelector("img")).toHaveAttribute("src", `${api}/recipes/1/photo`);
-      expect(within(card as HTMLElement).getByRole("status", { name: "Bild wird geladen" })).toBeInTheDocument();
-      expect([...card.querySelectorAll(".badge")].map((b) => b.textContent)).toEqual(["🍝 Pasta", "🥬 Vegetarisch"]);
-      view.unmount();
-    }
+    server({
+      ...as(ac),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [{ ...proposal(), recipe: withTags }] }) } },
+    });
+    renderApp();
+    const card = await screen.findByRole("article", { name: "Pasta" });
+    expect(card.querySelector("img")).toHaveAttribute("src", `${api}/recipes/1/photo`);
+    expect(within(card).getByRole("status", { name: "Bild wird geladen" })).toBeInTheDocument();
+    expect([...card.querySelectorAll(".badge")].map((b) => b.textContent)).toEqual(["🍝 Pasta", "🥬 Vegetarisch"]);
+  });
+
+  it("shows your own proposal as a short row with a thumbnail, not as a card, so adding it moves nothing above", async () => {
+    server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal()] }) } },
+      [DECK]: deckOf("2026-11-03", card(curry)),
+    });
+    renderApp();
+    const row = (await screen.findByRole("list", { name: "Wartet auf Antwort" })).querySelector("li")!;
+    expect(row.querySelector("img.thumb")).toHaveAttribute("src", `${api}/recipes/1/photo`);
+    expect(row).toHaveTextContent("Pasta");
+    expect(row).toHaveTextContent(/2\.11\./);
+    expect(screen.queryByRole("article", { name: "Pasta" })).not.toBeInTheDocument();
+  });
+
+  it("goes on with the next day while your proposal for the first waits for an answer", async () => {
+    const calls = server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal()] }) } },
+      [DECK]: deckOf("2026-11-03", card(curry)),
+    });
+    renderApp();
+    const deckCard = await screen.findByRole("article", { name: "Curry" });
+    expect(screen.getByRole("heading", { name: /Abendessen am .*3\.11\./ })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Wartet auf Antwort" })).toHaveTextContent("Pasta");
+    expect(deckCard).toBeInTheDocument();
+    expect(calls.some((c) => c.key === DECK)).toBe(true);
+  });
+
+  it("lets you decide on the other member's proposals and propose on in the same view", async () => {
+    server({
+      ...as(ac),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal()] }) } },
+      [DECK]: deckOf("2026-11-03", card(curry)),
+    });
+    renderApp();
+    expect(await screen.findByRole("article", { name: "Pasta" })).toBeInTheDocument();
+    expect(await screen.findByRole("article", { name: "Curry" })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Wartet auf Antwort" })).not.toBeInTheDocument();
   });
 
   it("lets the proposer take the proposal back without waiting for the answer", async () => {
@@ -329,10 +364,11 @@ describe("deciding on the other member's proposal", () => {
       [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal("pending", "2")] }) } },
     });
     renderApp();
-    const el = await screen.findByRole("heading", { name: "Pasta" });
+    const el = await screen.findByRole("heading", { name: "Wartet auf Antwort" });
     fireEvent(el, new MouseEvent("pointerdown", { clientX: 200, bubbles: true }));
     fireEvent(el, new MouseEvent("pointermove", { clientX: 400, bubbles: true }));
     fireEvent(el, new MouseEvent("pointerup", { clientX: 400, bubbles: true }));
+    expect(screen.queryByRole("article", { name: "Pasta" })).not.toBeInTheDocument(); // nothing to swipe on
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(calls.some((c) => c.key === ACCEPT || c.key === VETO)).toBe(false);
     expect(document.querySelector(".stamp")).toBeNull();

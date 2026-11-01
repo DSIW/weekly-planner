@@ -63,6 +63,31 @@ const MIGRATIONS: readonly string[] = [
     value text not null
   );
   `,
+  // 6: what was eaten (S5). A plan that was finalized stays marked when it is closed later, so that its dinners still
+  // become log entries while a discarded plan's do not; sessions that were finalized or exported before count as such.
+  // The planned dates that already became an entry are remembered apart from the entries, so that removing an entry
+  // ("we did not cook it") does not bring it back.
+  `
+  alter table planning_session add column was_finalized integer not null default 0;
+  update planning_session set was_finalized = 1
+    where status = 'finalized' or id in (select session_id from finalize_export);
+  create table meal_log_entry (
+    id text primary key,
+    date text not null,
+    base text not null,
+    recipe_json text,
+    source text not null check (source in ('from_plan', 'corrected', 'added')),
+    confirmed integer not null
+  );
+  create index meal_log_entry_by_date on meal_log_entry (date);
+  create table logged_plan_date (
+    date text primary key
+  );
+  create table recipe_experience (
+    recipe_id integer primary key,
+    first_cooked text not null
+  );
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

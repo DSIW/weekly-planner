@@ -43,9 +43,11 @@ export class SqliteSessionRepository implements SessionRepository {
     try {
       this.db
         .prepare(
-          `insert into planning_session (id, status, started_by, started_at, reminder_sent, proposals_json, passes_json)
-           values (?, ?, ?, ?, ?, ?, ?)
+          `insert into planning_session
+             (id, status, started_by, started_at, reminder_sent, was_finalized, proposals_json, passes_json)
+           values (?, ?, ?, ?, ?, ?, ?, ?)
            on conflict (id) do update set status = excluded.status, reminder_sent = excluded.reminder_sent,
+             was_finalized = excluded.was_finalized,
              proposals_json = excluded.proposals_json, passes_json = excluded.passes_json`,
         )
         .run(
@@ -54,6 +56,7 @@ export class SqliteSessionRepository implements SessionRepository {
           s.startedBy,
           s.startedAt,
           s.reminderSent ? 1 : 0,
+          s.wasFinalized ? 1 : 0,
           JSON.stringify(s.proposals),
           JSON.stringify(s.passes),
         );
@@ -94,6 +97,7 @@ export class SqliteSessionRepository implements SessionRepository {
       proposals: JSON.parse(row.proposals_json as string) as Proposal[],
       passes: JSON.parse(row.passes_json as string) as PassedSuggestion[],
       reminderSent: row.reminder_sent === 1,
+      wasFinalized: row.was_finalized === 1,
     };
   }
 }

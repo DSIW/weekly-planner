@@ -163,7 +163,7 @@ describe("migrations", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     expect(fresh(path).db.prepare("pragma user_version").get()).toEqual(version);
-    expect(version).toEqual({ user_version: 5 });
+    expect(version).toEqual({ user_version: 6 });
   });
 });
 
@@ -244,14 +244,49 @@ describe("migration 4 and the export repository", () => {
     const first = fresh(path);
     await first.sessions.save(aSession("keep"));
     first.db.exec(
-      "drop table finalize_export; drop table push_subscription; drop table setting; pragma user_version = 3",
+      "drop table finalize_export; drop table push_subscription; drop table setting; alter table planning_session drop column was_finalized; drop table meal_log_entry; drop table logged_plan_date; drop table recipe_experience; pragma user_version = 3",
     );
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     const again = fresh(path);
-    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 5 });
+    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 6 });
     expect((await again.sessions.get(sessionId("keep")))?.id).toBe("keep");
     await new SqliteExportRepository(again.db).save({ ...exported, sessionId: sessionId("keep") });
+  });
+});
+
+describe("migration 6 on a database that already holds sessions", () => {
+  it("marks the plans that were finalized or exported as finalized, and not the discarded ones", async () => {
+    const path = join(mkdtempSync(join(tmpdir(), "planner-")), "planner.sqlite");
+    const first = fresh(path);
+    const exports = new SqliteExportRepository(first.db);
+    await first.sessions.save({ ...aSession("exported", [MON, TUE]), status: "closed" });
+    await exports.save(newExport(sessionId("exported"), [], []));
+    await first.sessions.save({ ...aSession("finalized", [MON, TUE]), status: "finalized" });
+    await first.sessions.save({ ...aSession("discarded", [MON, TUE]), status: "closed" });
+    first.db.exec(
+      "alter table planning_session drop column was_finalized; drop table meal_log_entry; drop table logged_plan_date; drop table recipe_experience; pragma user_version = 5",
+    );
+    first.db.close();
+    open.splice(open.indexOf(first.db), 1);
+    const again = fresh(path);
+    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 6 });
+    const was = async (id: string) => (await again.sessions.get(sessionId(id)))?.wasFinalized;
+    expect(await was("exported")).toBe(true);
+    expect(await was("finalized")).toBe(true);
+    expect(await was("discarded")).toBe(false);
+  });
+});
+
+describe("a session's finalized mark", () => {
+  it("is saved and loaded, and stays when the session is closed", async () => {
+    const { sessions } = fresh();
+    await sessions.save({ ...aSession("s1"), status: "finalized", wasFinalized: true });
+    expect((await sessions.get(sessionId("s1")))?.wasFinalized).toBe(true);
+    await sessions.save({ ...aSession("s1"), status: "closed", wasFinalized: true });
+    expect((await sessions.get(sessionId("s1")))?.wasFinalized).toBe(true);
+    await sessions.save({ ...aSession("s2", [planDate("2026-12-01"), planDate("2026-12-02")]), status: "closed" });
+    expect((await sessions.get(sessionId("s2")))?.wasFinalized).toBe(false);
   });
 });
 

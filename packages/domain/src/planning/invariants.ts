@@ -31,8 +31,11 @@ export function invariantViolations(
     }
   }
   for (const s of sessions) {
-    if (s.proposals.filter((p) => p.status === "pending").length > 1) {
-      out.push(`OnePendingProposalPerSession: session ${s.id} has several pending proposals`);
+    const dates = s.proposals.filter((p) => p.status === "pending").map((p) => p.date);
+    for (const date of new Set(dates)) {
+      if (dates.filter((d) => d === date).length > 1) {
+        out.push(`OnePendingProposalPerDay: session ${s.id} has several pending proposals for ${date}`);
+      }
     }
   }
   return out;

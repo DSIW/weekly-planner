@@ -37,15 +37,16 @@ export interface DueDinner {
 }
 
 /**
- * rule LogPlannedMeal (temporal): from the day after a planned dinner of a finalized or closed session,
- * the planned meal is due as the default log entry, until it has been logged.
+ * rule LogPlannedMeal (temporal): from the day after a planned dinner of a finalized session, or of a closed one that
+ * was finalized before, the planned meal is due as the default log entry, until it has been logged. A plan that was
+ * thrown away without ever being finalized logs nothing.
  */
 export function dinnersDueForLogging(
   session: PlanningSession,
   today: PlanDate,
   alreadyLogged: ReadonlySet<PlanDate>,
 ): DueDinner[] {
-  if (session.status === "open") return [];
+  if (session.status === "open" || (session.status === "closed" && !session.wasFinalized)) return [];
   return plannedDays(session).flatMap((d) =>
     d.recipe && d.date < today && !alreadyLogged.has(d.date) ? [{ date: d.date, recipe: d.recipe }] : [],
   );

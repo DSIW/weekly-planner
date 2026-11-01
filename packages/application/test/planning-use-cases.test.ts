@@ -228,6 +228,32 @@ describe("the ranked deck", () => {
     });
   });
 
+  describe("plans that were thrown away", () => {
+    // Both dishes have the base "other", so only the recent-plan window and a base rule could reorder them.
+    const x = aRecipe(50, { name: "X", base: "other" });
+    const y = aRecipe(51, { name: "Y", base: "other" });
+    const rankedAfter = async (finalize: boolean, closeIt: boolean) => {
+      const { h, s: first } = await started(household([x, y]), [planDate("2026-10-31"), planDate("2026-10-30")]);
+      await agree(h, first, planDate("2026-10-30"), x);
+      if (finalize) ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
+      if (closeIt) ok(await h.closeSession.execute({ member: AC, sessionId: first.id }));
+      const second = ok(await h.startSession.execute({ member: AC, dates: [MON, TUE] }));
+      return (await h.suggestRecipes.execute({ sessionId: second.id })).map((r) => r.name);
+    };
+
+    it("do not count: a dish of a discarded plan is not held against itself", async () => {
+      expect(await rankedAfter(false, true)).toEqual(["X", "Y"]);
+    });
+
+    it("still count when the plan was finalized before it was closed", async () => {
+      expect(await rankedAfter(true, true)).toEqual(["Y", "X"]);
+    });
+
+    it("count for a finalized plan that stays open on the board", async () => {
+      expect(await rankedAfter(true, false)).toEqual(["Y", "X"]);
+    });
+  });
+
   it("is for the next open day once the first one is agreed", async () => {
     const { h, s } = await started(household(all), [MON, TUE]);
     await agree(h, s, MON, pasta);
@@ -331,14 +357,26 @@ describe("a concurrent decision on the same date", () => {
 });
 
 describe("one dinner per date across sessions (DinnerCalendar)", () => {
-  it("rejects accepting a proposal for a date another session already planned", async () => {
+  /** Another plan took the date after this one was started: only a race can do that, since starting checks it. */
+  async function raceFor(h: ReturnType<typeof household>, from: PlanningSession, date: typeof MON) {
+    const recipe = from.days.find((d) => d.status === "planned")!.recipe!;
+    await h.sessions.save({
+      ...from,
+      id: sessionId("other"),
+      status: "finalized",
+      days: [{ date, status: "planned", recipe }],
+      proposals: [],
+    });
+  }
+
+  it("rejects accepting a proposal for a date another session planned in the meantime", async () => {
     const { h, s: first } = await started(household([r1, r2, r3]), [MON, TUE]);
     await agree(h, first, MON, r1);
-    // Only one session is open at a time, so the clash comes from a finalized session still holding its dinner.
     ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
-    const second = ok(await h.startSession.execute({ member: AC, dates: [MON, WED] }));
+    const second = ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
+    await raceFor(h, h.sessions.byId.get(first.id)!, TUE);
     const proposed = ok(
-      await h.proposeRecipe.execute({ member: AC, sessionId: second.id, date: MON, recipeId: r2.id }),
+      await h.proposeRecipe.execute({ member: AC, sessionId: second.id, date: TUE, recipeId: r2.id }),
     );
     const r = await h.acceptProposal.execute({
       member: ME,
@@ -347,19 +385,61 @@ describe("one dinner per date across sessions (DinnerCalendar)", () => {
     });
     expect(r).toEqual({ ok: false, reason: "date_already_taken" });
   });
+
+  describe("starting a plan", () => {
+    const finalizedOn = async (date: typeof MON) => {
+      const { h, s: first } = await started(household([r1, r2, r3]), [date, planDate("2026-11-09")]);
+      await agree(h, first, date, r1);
+      ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
+      return { h, first };
+    };
+
+    it("refuses a date a finalized plan already planned a dinner for", async () => {
+      const { h } = await finalizedOn(WED);
+      expect(await h.startSession.execute({ member: AC, dates: [TUE, WED] })).toEqual({
+        ok: false,
+        reason: "date_already_taken",
+      });
+      expect(h.sessions.byId.size).toBe(1);
+    });
+
+    it("accepts the dates once that plan was closed, since a closed plan holds nothing", async () => {
+      const { h, first } = await finalizedOn(WED);
+      ok(await h.closeSession.execute({ member: AC, sessionId: first.id }));
+      ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
+    });
+
+    it("is not held back by a plan that was thrown away", async () => {
+      const { h, s: first } = await started(household([r1, r2, r3]), [WED, planDate("2026-11-09")]);
+      await agree(h, first, WED, r1);
+      ok(await h.closeSession.execute({ member: AC, sessionId: first.id }));
+      ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
+    });
+
+    it("lists the dates that hold a dinner from today on", async () => {
+      const { h } = await finalizedOn(WED);
+      expect(await h.listTakenDates.execute()).toEqual([WED]);
+      h.clock.date = planDate("2026-11-05");
+      expect(await h.listTakenDates.execute()).toEqual([]);
+    });
+  });
 });
 
 describe("one dinner per date across sessions: moving", () => {
-  it("rejects moving a dinner onto a date a finalized session already planned", async () => {
+  it("rejects moving a dinner onto a date another session planned in the meantime", async () => {
     const { h, s: first } = await started(household([r1, r2, r3]), [WED, planDate("2026-11-05")]);
     await agree(h, first, WED, r1);
     ok(await h.finalizePlan.execute({ member: ME, sessionId: first.id }));
-    const second = ok(await h.startSession.execute({ member: AC, dates: [TUE, WED] }));
+    const second = ok(await h.startSession.execute({ member: AC, dates: [TUE, planDate("2026-11-06")] }));
     await agree(h, second, TUE, r2);
-    expect(await h.movePlannedDay.execute({ member: AC, sessionId: second.id, from: TUE, to: WED })).toEqual({
-      ok: false,
-      reason: "date_already_taken",
+    await h.sessions.save({
+      ...h.sessions.byId.get(first.id)!,
+      id: sessionId("other"),
+      days: [{ date: planDate("2026-11-06"), status: "planned", recipe: r1 }],
     });
+    expect(
+      await h.movePlannedDay.execute({ member: AC, sessionId: second.id, from: TUE, to: planDate("2026-11-06") }),
+    ).toEqual({ ok: false, reason: "date_already_taken" });
   });
 });
 

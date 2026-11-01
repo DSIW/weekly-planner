@@ -500,3 +500,50 @@ li.review {
   color: var(--text);
   border: 1px solid var(--outline);
 }
+.waiting {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.waiting li {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.thumb {
+  width: 56px;
+  height: 42px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--background);
+}
+.waiting-text {
+  display: grid;
+  min-width: 0;
+}
+.waiting-text strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.deck-card .badges {
+  min-height: 1.9rem;
+}
+.actions.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.chooser {
+  display: grid;
+  gap: 8px;
+}
+.history summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.history[open] {
+  display: grid;
+  gap: 10px;
+}

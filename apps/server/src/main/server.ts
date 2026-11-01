@@ -1,5 +1,13 @@
 import {
   AcceptProposal,
+  AddLoggedMeal,
+  ConfirmCooked,
+  CorrectLoggedMeal,
+  ListMealLog,
+  ListRecipes,
+  ListTakenDates,
+  LogPlannedMeals,
+  MarkNotCooked,
   CloseSession,
   ExportFinalizedPlan,
   FinalizePlan,
@@ -39,9 +47,10 @@ import { KitchenOwlRecipeCatalog } from "../infrastructure/kitchenowl/kitchenowl
 import { loadOrCreateVapidKeys } from "../infrastructure/push/vapid-keys.js";
 import { WebPushNotifier } from "../infrastructure/push/web-push-notifier.js";
 import { startScheduler } from "../infrastructure/scheduling/scheduler.js";
-import { NoMealsRecordedYet } from "../infrastructure/meal-log/not-recorded-yet.js";
 import { openDatabase } from "../infrastructure/sqlite/database.js";
 import { SqliteDinnerCalendar } from "../infrastructure/sqlite/sqlite-dinner-calendar.js";
+import { SqliteMealLogRepository } from "../infrastructure/sqlite/sqlite-meal-log-repository.js";
+import { SqliteRecipeExperienceRepository } from "../infrastructure/sqlite/sqlite-recipe-experience-repository.js";
 import { SqliteExportRepository } from "../infrastructure/sqlite/sqlite-export-repository.js";
 import { SqlitePushSubscriptions } from "../infrastructure/sqlite/sqlite-push-subscriptions.js";
 import { SqliteSessionRepository } from "../infrastructure/sqlite/sqlite-session-repository.js";
@@ -55,6 +64,8 @@ const RECIPE_CACHE_MS = 10 * 60_000;
 
 /** How often the reminder is checked: the first agreed morning is hit within a minute. */
 const REMINDER_CHECK_MS = 60_000;
+/** How often planned dinners of yesterday and before are turned into log entries (idempotent, so often is fine). */
+const MEAL_LOG_CHECK_MS = 15 * 60_000;
 /** Spec config export_retry_interval: how often refused export steps are sent again. */
 const EXPORT_RETRY_MS = 15 * 60_000;
 
@@ -89,15 +100,18 @@ async function main(): Promise<void> {
       }),
     `${config.basePath}/`,
   );
-  const meals = new NoMealsRecordedYet();
+  const mealLog = new SqliteMealLogRepository(db);
+  const experience = new SqliteRecipeExperienceRepository(db);
+  const logDeps = { mealLog, experience, events: hub, uow: deps.uow };
   const suggest = new SuggestRecipes(
-    { sessions, catalog, mealLog: meals, experience: meals, clock, randomness: new SystemRandomness() },
+    { sessions, catalog, mealLog, experience, clock, randomness: new SystemRandomness() },
     planning,
   );
   const app = await buildApp({
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
     getCurrentSession: new GetCurrentSession({ sessions, exports }),
-    startSession: new StartSession({ ...deps, ids, clock }, planning),
+    startSession: new StartSession({ ...deps, ids, clock, calendar }, planning),
+    listTakenDates: new ListTakenDates({ calendar, clock }),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, planning),
@@ -105,7 +119,7 @@ async function main(): Promise<void> {
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
-    getDeck: new GetDeck({ sessions, experience: meals, suggest }),
+    getDeck: new GetDeck({ sessions, experience, suggest }),
     passSuggestion: new PassSuggestion({ ...deps, catalog }),
     markLeftoverDay: new MarkLeftoverDay(deps),
     reopenDay: new ReopenDay(deps),
@@ -116,6 +130,12 @@ async function main(): Promise<void> {
     getFinalizePreview: new GetFinalizePreview({ sessions, catalog }, planning),
     finalizePlan: new FinalizePlan({ ...deps, catalog, exports, exporter }, planning),
     retryExport: new RetryExport({ sessions, exporter }),
+    listMealLog: new ListMealLog({ mealLog, clock }),
+    listRecipes: new ListRecipes(catalog),
+    confirmCooked: new ConfirmCooked(logDeps),
+    markNotCooked: new MarkNotCooked(logDeps),
+    correctLoggedMeal: new CorrectLoggedMeal({ ...logDeps, catalog }),
+    addLoggedMeal: new AddLoggedMeal({ ...logDeps, catalog, ids, clock }),
     subscribeToPush: new SubscribeToPush(pushSubscriptions),
     sendTestNotification: new SendTestNotification(notifier),
     unsubscribeFromPush: new UnsubscribeFromPush(pushSubscriptions),
@@ -130,8 +150,10 @@ async function main(): Promise<void> {
   });
   const remind = new RemindToFinalize({ sessions, notifier, events: hub, uow: deps.uow, clock }, planning);
   const retryRefused = new RetryRefusedExports({ sessions, exports, exporter });
+  const logMeals = new LogPlannedMeals({ sessions, mealLog, events: hub, uow: deps.uow, clock, ids });
   const stopJobs = startScheduler([
     { name: "remind-to-finalize", everyMs: REMINDER_CHECK_MS, run: () => remind.execute() },
+    { name: "log-planned-meals", everyMs: MEAL_LOG_CHECK_MS, run: () => logMeals.execute() },
     { name: "retry-refused-exports", everyMs: EXPORT_RETRY_MS, run: () => retryRefused.execute() },
   ]);
   const stop = async () => {

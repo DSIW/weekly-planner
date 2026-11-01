@@ -43,6 +43,25 @@ describe("LogPlannedMeals", () => {
   });
 });
 
+describe("LogPlannedMeals and discarded plans", () => {
+  it("logs nothing for a plan that was thrown away without being finalized", async () => {
+    const h = household([fresh, other]);
+    const s = ok(await h.startSession.execute({ member: AC, dates: [MON, TUE] }));
+    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: fresh.id }));
+    ok(await h.acceptProposal.execute({ member: ME, sessionId: s.id, proposalId: proposed.proposals[0]!.id }));
+    ok(await h.closeSession.execute({ member: AC, sessionId: s.id }));
+    h.clock.date = TUE;
+    expect(await h.logPlannedMeals.execute()).toBe(0);
+    expect(h.mealLog.entries.size).toBe(0);
+  });
+
+  it("still logs a finalized plan that was closed afterwards", async () => {
+    const { h, s } = await dayAfterDinner();
+    ok(await h.closeSession.execute({ member: AC, sessionId: s.id }));
+    expect(await h.logPlannedMeals.execute()).toBe(1);
+  });
+});
+
 describe("ConfirmCooked", () => {
   it("confirms the entry and makes the recipe proven, so it ranks as known", async () => {
     const { h, s } = await dayAfterDinner();
@@ -106,5 +125,39 @@ describe("CorrectLoggedMeal and AddLoggedMeal", () => {
       ok: false,
       reason: "date_in_future",
     });
+  });
+});
+
+describe("ListMealLog", () => {
+  it("lists the entries of the last days, newest first, and nothing older", async () => {
+    const h = household([fresh, other]);
+    h.clock.date = THU;
+    for (const [date, base] of [
+      [planDate("2026-10-20"), "rice"],
+      [MON, "pasta"],
+      [WED, "rice"],
+      [TUE, "pasta"],
+    ] as const) {
+      ok(await h.addLoggedMeal.execute({ member: ME, date, base, recipeId: null }));
+    }
+    const list = await h.listMealLog.execute({ days: 7 });
+    expect(list.map((e) => e.date)).toEqual([WED, TUE, MON]);
+    expect((await h.listMealLog.execute({ days: 30 })).map((e) => e.date)).toEqual([
+      WED,
+      TUE,
+      MON,
+      planDate("2026-10-20"),
+    ]);
+    expect(await h.listMealLog.execute({ days: 0 })).toEqual([]);
+  });
+});
+
+describe("ListRecipes", () => {
+  it("lists the recipes that are ready, by name, and leaves out those with problems", async () => {
+    const zebra = aRecipe(5, { name: "Zebrabraten" });
+    const apple = aRecipe(6, { name: "Äpfel" });
+    const h = household([zebra, fresh, apple]);
+    h.catalog.entries.push({ kind: "needs-data", recipeId: aRecipe(9).id, name: "Kaputt", problems: ["no diet tag"] });
+    expect((await h.listRecipes.execute()).map((r) => r.name)).toEqual(["Äpfel", "Neu", "Zebrabraten"]);
   });
 });

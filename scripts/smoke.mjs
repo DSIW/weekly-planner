@@ -534,6 +534,69 @@ try {
     assert.equal(await as("dsiw", () => web.fetchCurrentSession()), null);
   });
 
+  await step(
+    "proposals for two days wait at once, the dates of a finished plan are refused, then the meal log",
+    async () => {
+      // Two recent days that no earlier step used, so the daily job logs their dinners as soon as the server starts.
+      const day = (back) => {
+        const d = new Date(Date.now() - back * 86_400_000);
+        return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(d);
+      };
+      const used = new Set([D1, D2, D3, D4]);
+      const [P1, P2] = [1, 2, 3, 4, 5, 6, 7].map(day).filter((d) => !used.has(d));
+      const plan = await as("dsiw", () => web.startSession([P1, P2]));
+      const eligible = await as("dsiw", () => web.fetchEligibleRecipes(plan.id));
+      const [first, second] = eligible.recipes.filter((r) => !r.planAhead);
+      const afterFirst = await as("dsiw", () => web.proposeRecipe(plan.id, eligible.date, first.id));
+      // Nobody waits for an answer: the next day can be proposed at once, and a waiting dish is not offered again.
+      const nextList = await as("dsiw", () => web.fetchEligibleRecipes(plan.id));
+      assert.notEqual(nextList.date, eligible.date);
+      assert.ok(!nextList.recipes.some((r) => r.id === first.id));
+      const both = await as("dsiw", () => web.proposeRecipe(plan.id, nextList.date, second.id));
+      assert.equal(both.proposals.filter((p) => p.status === "pending").length, 2);
+      for (const p of both.proposals.filter((q) => q.status === "pending")) {
+        await as("ac", () => web.acceptProposal(plan.id, p.id));
+      }
+      const done = await as("dsiw", () => web.finalizePlan(plan.id));
+      assert.equal(done.status, "finalized");
+      assert.equal(afterFirst.proposals.length, 1);
+
+      // A finished plan still holds its dates: a new plan on them is refused at once.
+      const refused = await as("ac", () => web.startSession([P1, P2]).catch((e) => e));
+      assert.equal(refused.reason, "date_already_taken");
+      assert.deepEqual(
+        (await as("ac", () => web.fetchPlannedDates())).filter((d) => d === P1 || d === P2),
+        [],
+        "past days are no longer listed",
+      );
+
+      // The daily job runs when the server starts: yesterday's dinners become questions.
+      await stopServer();
+      await startServer(kitchenowlPort);
+      const log = await as("ac", () => web.fetchMealLog(14));
+      const asked = log.filter((e) => e.source === "from_plan" && !e.confirmed && (e.date === P1 || e.date === P2));
+      assert.equal(asked.length, 2);
+      const [a, b] = asked;
+      assert.equal((await as("ac", () => web.confirmMeal(a.id))).entry.confirmed, true);
+      assert.equal((await as("dsiw", () => web.confirmMeal(a.id).catch((e) => e))).reason, "already_confirmed");
+      await as("dsiw", () => web.notCooked(b.id));
+      assert.ok(!(await as("dsiw", () => web.fetchMealLog(14))).some((e) => e.id === b.id));
+      const added = await as("dsiw", () => web.addMeal(day(0), "bread", null));
+      assert.deepEqual([added.entry.base, added.entry.recipe, added.entry.source], ["bread", null, "added"]);
+      const recipes = await as("ac", () => web.fetchRecipes());
+      const fixed = await as("ac", () => web.correctMeal(added.entry.id, "rice", recipes[0].id));
+      assert.deepEqual([fixed.entry.source, fixed.entry.recipe.id], ["corrected", recipes[0].id]);
+      const future = await as("ac", () => web.addMeal(day(-2), "pasta", null).catch((e) => e));
+      assert.equal(future.reason, "date_in_future");
+      // Another start does not bring a removed dinner back.
+      await stopServer();
+      await startServer(kitchenowlPort);
+      assert.ok(
+        !(await as("ac", () => web.fetchMealLog(14))).some((e) => e.date === b.date && e.source === "from_plan"),
+      );
+    },
+  );
+
   await step("a phone subscribes to notifications with the server's own key and unsubscribes again", async () => {
     const cookie = [...jars.get("ac")].map(([k, v]) => `${k}=${v}`).join("; ");
     const call = (method, path, body) =>

@@ -36,7 +36,10 @@ export class SuggestRecipes {
     const entries = await deps.catalog.listAll();
     const candidates = entries.flatMap((e) => (e.kind === "ready" ? [e.recipe] : []));
     const log = await deps.mealLog.listSince(addDays(day.date, -config.varietyWindowDays));
-    const others = (await deps.sessions.listAll()).filter((s) => s.id !== session.id);
+    // A plan that was thrown away without being finalized is not what the household cooks: it does not count.
+    const others = (await deps.sessions.listAll()).filter(
+      (s) => s.id !== session.id && (s.status === "finalized" || s.wasFinalized === true),
+    );
     // What was cooked, and what another session planned: both count towards base variety, planned or not yet logged.
     const history = [
       ...log.map((e) => ({ date: e.date, base: e.base })),

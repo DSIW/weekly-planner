@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   beginStep,
   closeSession,
+  dinnersDueForLogging,
   completeStep,
   consolidateIngredients,
+  acceptProposal,
   eligibleRecipes,
+  nextOpenDay,
+  proposeRecipe,
   finalizePlan,
   exportComplete,
   failStep,
@@ -41,6 +45,7 @@ import {
   config,
   dayOf,
   must,
+  newProposalId,
   plan,
   withProposal,
 } from "../support/builders.js";
@@ -58,8 +63,8 @@ describe("rule MovePlannedDay across sessions", () => {
   });
 });
 
-// Added with slice S3: a day never changes under a vote, so a session holds at most one pending proposal. This
-// also makes the older "same recipe planned elsewhere while a proposal waits" scenario unreachable.
+// Added with slice S3: a day never changes under a vote. Later (phone feedback) proposals for several days may wait at
+// once, one per day, so this is about the day that holds the proposal; finalizing still waits for every vote.
 describe("day operations while a proposal is pending", () => {
   const voting = () => withProposal(plan(aSession([MON, TUE, SAT]), MON, aRecipe()), TUE, aRecipe(), AC);
   const pendingRejection = { ok: false, reason: "proposal_already_pending" };
@@ -70,16 +75,17 @@ describe("day operations while a proposal is pending", () => {
     expect(markLeftoverDay(session, { member: ME, date: SAT }).ok).toBe(true);
   });
 
-  it("ReopenDay refuses planned and leftover days alike", () => {
+  it("ReopenDay works on planned and leftover days while a vote runs on another day", () => {
     const { session } = voting();
-    expect(reopenDay(session, { member: ME, date: MON })).toEqual(pendingRejection);
+    expect(reopenDay(session, { member: ME, date: MON }).ok).toBe(true);
     const left = must(markLeftoverDay(session, { member: ME, date: SAT })).state;
-    expect(reopenDay(left, { member: ME, date: SAT })).toEqual(pendingRejection);
+    expect(reopenDay(left, { member: ME, date: SAT }).ok).toBe(true);
   });
 
-  it("MovePlannedDay refuses to vacate a day while a proposal waits", () => {
+  it("MovePlannedDay refuses a target that holds a proposal, but moves to another open day", () => {
     const { session } = voting();
-    expect(movePlannedDay(session, { member: ME, from: MON, to: SAT }, config)).toEqual(pendingRejection);
+    expect(movePlannedDay(session, { member: ME, from: MON, to: TUE }, config)).toEqual(pendingRejection);
+    expect(movePlannedDay(session, { member: ME, from: MON, to: SAT }, config).ok).toBe(true);
   });
 
   it("FinalizePlan is refused too", () => {
@@ -107,15 +113,20 @@ describe("day operations while a proposal is pending", () => {
     expect(invariantViolations([closed, other])).toEqual([]);
   });
 
-  it("invariantViolations reports a second pending proposal", () => {
+  it("invariantViolations reports a second pending proposal for one day, but not for another day", () => {
     const { session } = voting();
     const pending = session.proposals.find((p) => p.status === "pending");
     if (!pending) throw new Error("setup failed: no pending proposal");
-    const second = {
+    const sameDay = {
       ...session,
-      proposals: [...session.proposals, { ...pending, id: proposalId("extra"), date: SAT }],
+      proposals: [...session.proposals, { ...pending, id: proposalId("extra"), recipe: aRecipe() }],
     };
-    expect(invariantViolations([second]).some((v) => v.startsWith("OnePendingProposalPerSession"))).toBe(true);
+    expect(invariantViolations([sameDay]).some((v) => v.startsWith("OnePendingProposalPerDay"))).toBe(true);
+    const otherDay = {
+      ...session,
+      proposals: [...session.proposals, { ...pending, id: proposalId("extra"), date: SAT, recipe: aRecipe() }],
+    };
+    expect(invariantViolations([otherDay])).toEqual([]);
     expect(invariantViolations([session])).toEqual([]);
   });
 });
@@ -623,5 +634,89 @@ describe("rule WithdrawProposal", () => {
       ok: false,
       reason: "session_not_open",
     });
+  });
+});
+
+describe("which plans log their dinners (resolves the abandoned-sessions question)", () => {
+  const recipe = aRecipe({ name: "Pasta" });
+  const agreed = () => plan(aSession([MON, TUE]), MON, recipe);
+  const finalizedPlan = () => must(finalizePlan(agreed(), { member: AC }, config)).state;
+
+  it("marks a session as finalized only when it was, and keeps that when it is closed", () => {
+    expect(aSession().wasFinalized).toBeFalsy();
+    expect(agreed().wasFinalized).toBeFalsy();
+    expect(finalizedPlan().wasFinalized).toBe(true);
+    expect(must(closeSession(finalizedPlan(), { member: AC })).state.wasFinalized).toBe(true);
+    expect(must(closeSession(agreed(), { member: AC })).state.wasFinalized).toBeFalsy();
+  });
+
+  it("logs nothing for a plan that was thrown away without being finalized", () => {
+    const discarded = must(closeSession(agreed(), { member: AC })).state;
+    expect(dinnersDueForLogging(discarded, TUE, new Set())).toEqual([]);
+  });
+
+  it("still logs the dinners of a finalized plan that was closed afterwards", () => {
+    const closed = must(closeSession(finalizedPlan(), { member: AC })).state;
+    expect(dinnersDueForLogging(closed, TUE, new Set())).toEqual([{ date: MON, recipe }]);
+  });
+});
+
+describe("proposals for several days at once (phone feedback)", () => {
+  const sessionOf = () => aSession([MON, TUE, SAT]);
+  const proposeFor = (s: ReturnType<typeof sessionOf>, date: typeof MON, recipe = aRecipe(), member = AC) =>
+    proposeRecipe(s, { proposalId: newProposalId(), member, date, recipe });
+
+  it("lets the next day be proposed for while the first day still waits for an answer", () => {
+    const first = must(proposeFor(sessionOf(), MON)).state;
+    expect(nextOpenDay(first)?.date).toBe(TUE);
+    const second = must(proposeFor(first, TUE)).state;
+    expect(second.proposals.filter((p) => p.status === "pending").map((p) => p.date)).toEqual([MON, TUE]);
+    expect(nextOpenDay(second)?.date).toBe(SAT);
+  });
+
+  it("still allows one waiting proposal per day, and only for the next day without one", () => {
+    const first = must(proposeFor(sessionOf(), MON)).state;
+    expect(proposeFor(first, MON)).toEqual({ ok: false, reason: "proposal_already_pending" });
+    expect(proposeFor(first, SAT)).toEqual({ ok: false, reason: "not_next_open_day" });
+  });
+
+  it("does not propose a dish again that already waits for an answer on another day", () => {
+    const dish = aRecipe();
+    const first = must(proposeFor(sessionOf(), MON, dish)).state;
+    expect(proposeFor(first, TUE, dish)).toEqual({ ok: false, reason: "recipe_already_proposed" });
+    expect(proposeFor(first, TUE, aRecipe()).ok).toBe(true);
+  });
+
+  it("leaves a dish that waits for an answer out of the eligible recipes", () => {
+    const dish = aRecipe();
+    const other = aRecipe();
+    const first = must(proposeFor(sessionOf(), MON, dish)).state;
+    expect(eligibleRecipes(first, [dish, other], config)).toEqual([other]);
+  });
+
+  it("offers the day again when its proposal was vetoed or withdrawn, ahead of later days", () => {
+    const first = must(proposeFor(sessionOf(), MON)).state;
+    const second = must(proposeFor(first, TUE)).state;
+    const id = second.proposals[0]!.id;
+    const vetoed = must(vetoProposal(second, { member: ME, proposalId: id })).state;
+    expect(nextOpenDay(vetoed)?.date).toBe(MON);
+    const withdrawn = must(withdrawProposal(second, { member: AC, proposalId: id })).state;
+    expect(nextOpenDay(withdrawn)?.date).toBe(MON);
+    // the dish that waits for the other day is still held: it cannot be proposed for Monday meanwhile
+    expect(proposeFor(vetoed, MON, second.proposals[1]!.recipe)).toEqual({
+      ok: false,
+      reason: "recipe_already_proposed",
+    });
+  });
+
+  it("accepting one of several waiting proposals plans only its day", () => {
+    const first = must(proposeFor(sessionOf(), MON)).state;
+    const second = must(proposeFor(first, TUE)).state;
+    const accepted = must(
+      acceptProposal(second, { member: ME, proposalId: second.proposals[1]!.id, dateTakenElsewhere: false }, config),
+    ).state;
+    expect(accepted.days.map((d) => d.status)).toEqual(["open", "planned", "open"]);
+    expect(accepted.proposals.map((p) => p.status)).toEqual(["pending", "accepted"]);
+    expect(finalizePlan(accepted, { member: ME })).toEqual({ ok: false, reason: "proposal_already_pending" });
   });
 });

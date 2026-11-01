@@ -48,6 +48,43 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("dates that already hold a dinner", () => {
+  const PLANNED = `GET ${api}/planned-dates`;
+
+  it("are shown in the form but cannot be picked, with the reason", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: { status: 200, body: { dates: ["2026-11-03"] } },
+    });
+    renderApp();
+    const taken = await screen.findByRole("button", { name: /3\.11\./ });
+    await waitFor(() => expect(taken).toBeDisabled());
+    expect(taken).toHaveAttribute("title", "Hier ist schon ein Essen geplant");
+    expect(screen.getByRole("button", { name: /2\.11\./ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /4\.11\./ })).toBeEnabled();
+  });
+
+  it("do not block the form when the list of them cannot be loaded", async () => {
+    server({ ...signedIn, [CURRENT]: { status: 200, body: { session: null } }, [PLANNED]: { status: 500, body: {} } });
+    renderApp();
+    expect(await screen.findByRole("button", { name: /3\.11\./ })).toBeEnabled();
+  });
+
+  it("explain a refused start by the other plan", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [START]: { status: 409, body: { error: "date_already_taken" } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: /2\.11\./ }));
+    await userEvent.click(screen.getByRole("button", { name: /3\.11\./ }));
+    await userEvent.click(screen.getByRole("button", { name: "Planung starten" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("schon ein Essen geplant, in einer anderen Planung");
+  });
+});
+
 describe("starting a session", () => {
   it("offers the next seven days and needs two to three of them", async () => {
     server({ ...signedIn, [CURRENT]: { status: 200, body: { session: null } } });

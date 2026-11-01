@@ -1,4 +1,5 @@
 import {
+  addDays,
   addLoggedMeal,
   confirmCooked,
   correctLoggedMeal,
@@ -12,6 +13,7 @@ import {
   type MemberId,
   type PlanDate,
   type RecipeId,
+  type Recipe,
   type Result,
 } from "@weekly-planner/domain";
 import type { RecipeCatalog } from "../ports/recipe-catalog.js";
@@ -129,5 +131,27 @@ export class AddLoggedMeal {
     if (!result.ok) return result;
     await deps.events.publish(result.value.events);
     return { ok: true, value: result.value.state };
+  }
+}
+
+/** What was eaten lately, newest first: the "yesterday" card and the history list read it. */
+export class ListMealLog {
+  constructor(private readonly deps: { mealLog: Pick<MealLogRepository, "listSince">; clock: Pick<Clock, "today"> }) {}
+
+  async execute(cmd: { days: number }): Promise<readonly MealLogEntry[]> {
+    const entries = await this.deps.mealLog.listSince(addDays(this.deps.clock.today(), -cmd.days));
+    return [...entries].sort((a, b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id));
+  }
+}
+
+/** Every recipe that can be named for a meal, by name: to correct an entry or add a meal that was not planned. */
+export class ListRecipes {
+  constructor(private readonly catalog: Pick<RecipeCatalog, "listAll">) {}
+
+  async execute(): Promise<readonly Recipe[]> {
+    const entries = await this.catalog.listAll();
+    return entries
+      .flatMap((e) => (e.kind === "ready" ? [e.recipe] : []))
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
   }
 }

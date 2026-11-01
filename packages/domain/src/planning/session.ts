@@ -44,6 +44,8 @@ export interface PlanningSession {
   readonly passes: readonly PassedSuggestion[];
   /** The finalize reminder fires once. */
   readonly reminderSent: boolean;
+  /** Finalized at some point; stays true when a finalized plan is closed later. A discarded plan never was. */
+  readonly wasFinalized?: boolean;
 }
 
 type Done = Result<Outcome<PlanningSession, PlanningEvent>>;
@@ -58,11 +60,22 @@ export const openDays = (s: PlanningSession): PlanDay[] => s.days.filter((d) => 
 
 export const plannedDays = (s: PlanningSession): PlanDay[] => s.days.filter((d) => d.status === "planned");
 
-/** A vote is running somewhere in the session (OnePendingProposalPerSession: at most one). */
+/** A vote is running somewhere in the session. Several days may be voted on at once, one proposal per day. */
 export const hasPendingProposal = (s: PlanningSession): boolean => s.proposals.some((p) => p.status === "pending");
 
-/** The day the deck is currently filling: the earliest day that is still open. */
-export const nextOpenDay = (s: PlanningSession): PlanDay | undefined => openDays(s)[0];
+const hasPendingOn = (s: PlanningSession, date: PlanDate): boolean =>
+  s.proposals.some((p) => p.date === date && p.status === "pending");
+
+/**
+ * The day the deck is currently filling: the earliest day that is still open and has no proposal waiting for an
+ * answer, so nobody has to wait for the other member before going on with the next day.
+ */
+export const nextOpenDay = (s: PlanningSession): PlanDay | undefined =>
+  openDays(s).find((d) => !hasPendingOn(s, d.date));
+
+/** Dishes that wait for an answer on some day; proposing one again on another day would plan it twice. */
+export const pendingRecipeIds = (s: PlanningSession): Set<RecipeId> =>
+  new Set(s.proposals.filter((p) => p.status === "pending").map((p) => p.recipe.id));
 
 const plannedRecipeIds = (s: PlanningSession): Set<RecipeId> =>
   new Set(plannedDays(s).flatMap((d) => (d.recipe ? [d.recipe.id] : [])));
@@ -95,6 +108,8 @@ export interface StartSessionCommand {
   readonly now: number;
   /** Another session is still open; the caller asks the repository (the aggregate cannot see other sessions). */
   readonly openSessionExists?: boolean;
+  /** Dates that another session already planned a dinner for; the caller asks the DinnerCalendar. */
+  readonly takenDates?: readonly PlanDate[];
 }
 
 /** rule StartSession */
@@ -106,6 +121,7 @@ export function startSession(
   if (new Set(cmd.dates).size !== cmd.dates.length) return reject("duplicate_dates");
   if (cmd.dates.length < config.minDaysPerSession) return reject("too_few_days");
   if (cmd.dates.length > config.maxDaysPerSession) return reject("too_many_days");
+  if (cmd.takenDates?.some((d) => cmd.dates.includes(d))) return reject("date_already_taken");
   const dates = [...cmd.dates].sort();
   const state: PlanningSession = {
     id: cmd.id,
@@ -116,6 +132,7 @@ export function startSession(
     proposals: [],
     passes: [],
     reminderSent: false,
+    wasFinalized: false,
   };
   return done(state, { type: "SessionStarted", sessionId: cmd.id, dates });
 }
@@ -137,9 +154,10 @@ export function proposeRecipe(
   const day = dayOn(s, cmd.date);
   if (!day) return reject("unknown_day");
   if (day.status !== "open") return reject("day_not_open");
+  if (hasPendingOn(s, cmd.date)) return reject("proposal_already_pending");
   if (nextOpenDay(s)?.date !== cmd.date) return reject("not_next_open_day");
-  if (s.proposals.some((p) => p.date === cmd.date && p.status === "pending")) return reject("proposal_already_pending");
   if (!isDinnerCandidate(cmd.recipe)) return reject("not_a_dinner");
+  if (pendingRecipeIds(s).has(cmd.recipe.id)) return reject("recipe_already_proposed");
   if (vetoedRecipeIds(s).has(cmd.recipe.id)) return reject("recipe_vetoed");
   if (passedRecipeIds(s).has(cmd.recipe.id)) return reject("recipe_passed");
   if (plannedRecipeIds(s).has(cmd.recipe.id)) return reject("recipe_already_planned");
@@ -257,7 +275,7 @@ export function markLeftoverDay(s: PlanningSession, cmd: { member: MemberId; dat
   const day = dayOn(s, cmd.date);
   if (!day) return reject("unknown_day");
   if (day.status !== "open") return reject("day_not_open");
-  if (s.proposals.some((p) => p.date === cmd.date && p.status === "pending")) return reject("proposal_already_pending");
+  if (hasPendingOn(s, cmd.date)) return reject("proposal_already_pending");
   return done(withDay(s, cmd.date, { date: cmd.date, status: "leftovers" }), {
     type: "DayMarkedLeftovers",
     sessionId: s.id,
@@ -271,7 +289,6 @@ export function reopenDay(s: PlanningSession, cmd: { member: MemberId; date: Pla
   const day = dayOn(s, cmd.date);
   if (!day) return reject("unknown_day");
   if (day.status === "open") return reject("day_already_open");
-  if (hasPendingProposal(s)) return reject("proposal_already_pending");
   return done(withDay(s, cmd.date, openOn(cmd.date)), { type: "DayReopened", sessionId: s.id, date: cmd.date });
 }
 
@@ -310,7 +327,7 @@ export function movePlannedDay(
   if (!from || !to) return reject("unknown_day");
   if (from.status !== "planned" || !from.recipe) return reject("day_not_planned");
   if (to.status !== "open") return reject("target_not_open");
-  if (hasPendingProposal(s)) return reject("proposal_already_pending");
+  if (hasPendingOn(s, to.date)) return reject("proposal_already_pending");
   if (cmd.dateTakenElsewhere) return reject("date_already_taken");
   if (!fitsDate(from.recipe, to.date, config)) return reject("too_long_for_weekday");
   const moved = withDay(withDay(s, to.date, plannedWith(to.date, from.recipe)), from.date, openOn(from.date));
@@ -328,7 +345,7 @@ export function finalizePlan(
   if (planned.length === 0) return reject("nothing_planned");
   if (hasPendingProposal(s)) return reject("proposal_already_pending");
   return done(
-    { ...s, status: "finalized" },
+    { ...s, status: "finalized", wasFinalized: true },
     {
       type: "PlanFinalized",
       sessionId: s.id,

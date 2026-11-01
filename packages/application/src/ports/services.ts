@@ -14,6 +14,8 @@ export type DomainEvent = PlanningEvent | MealLogEvent;
 export interface DinnerCalendar {
   /** True when a session other than `exceptSession` has a planned dinner on `date`. */
   isDateTaken(date: PlanDate, exceptSession: SessionId): Promise<boolean>;
+  /** The dates from `from` on that a session already planned a dinner for, in date order. */
+  takenDatesFrom(from: PlanDate): Promise<readonly PlanDate[]>;
 }
 
 /** Port: told after a change has been committed. */

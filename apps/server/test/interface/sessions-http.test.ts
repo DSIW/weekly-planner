@@ -3,6 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   AcceptProposal,
+  AddLoggedMeal,
+  ConfirmCooked,
+  CorrectLoggedMeal,
+  ListMealLog,
+  ListRecipes,
+  ListTakenDates,
+  LogPlannedMeals,
+  MarkNotCooked,
   CloseSession,
   ExportFinalizedPlan,
   ExportNotApplied,
@@ -37,7 +45,8 @@ import { defaultPlanningConfig, memberId, recipeId, type CatalogEntry, type Reci
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { InProcessEventHub } from "../../src/infrastructure/events/in-process-event-hub.js";
 import { openDatabase, type Database } from "../../src/infrastructure/sqlite/database.js";
-import { NoMealsRecordedYet } from "../../src/infrastructure/meal-log/not-recorded-yet.js";
+import { SqliteMealLogRepository } from "../../src/infrastructure/sqlite/sqlite-meal-log-repository.js";
+import { SqliteRecipeExperienceRepository } from "../../src/infrastructure/sqlite/sqlite-recipe-experience-repository.js";
 import { SystemRandomness, UuidGenerator } from "../../src/infrastructure/system/system-services.js";
 import { SqliteExportRepository } from "../../src/infrastructure/sqlite/sqlite-export-repository.js";
 import { SqliteDinnerCalendar } from "../../src/infrastructure/sqlite/sqlite-dinner-calendar.js";
@@ -144,7 +153,9 @@ beforeEach(async () => {
   const exports = new SqliteExportRepository(db);
   const exporter = new ExportFinalizedPlan({ exports, planner, events: hub, uow: deps.uow });
   const ids = new UuidGenerator();
-  const noMeals = new NoMealsRecordedYet();
+  const mealLog = new SqliteMealLogRepository(db);
+  const experience = new SqliteRecipeExperienceRepository(db);
+  const logDeps = { mealLog, experience, events: hub, uow: deps.uow };
   const clock = {
     now: () => NOW,
     today: () => "2026-11-01" as never,
@@ -154,8 +165,8 @@ beforeEach(async () => {
     {
       sessions: deps.sessions,
       catalog,
-      mealLog: noMeals,
-      experience: noMeals,
+      mealLog,
+      experience,
       clock,
       randomness: new SystemRandomness(),
     },
@@ -177,11 +188,18 @@ beforeEach(async () => {
     getFinalizePreview: new GetFinalizePreview({ sessions: deps.sessions, catalog }, defaultPlanningConfig),
     finalizePlan: new FinalizePlan({ ...deps, catalog, exports, exporter }, defaultPlanningConfig),
     retryExport: new RetryExport({ sessions: deps.sessions, exporter }),
+    listMealLog: new ListMealLog({ mealLog, clock }),
+    listRecipes: new ListRecipes(catalog),
+    confirmCooked: new ConfirmCooked(logDeps),
+    markNotCooked: new MarkNotCooked(logDeps),
+    correctLoggedMeal: new CorrectLoggedMeal({ ...logDeps, catalog }),
+    addLoggedMeal: new AddLoggedMeal({ ...logDeps, catalog, ids, clock }),
     subscribeToPush: new SubscribeToPush(new SqlitePushSubscriptions(db)),
     sendTestNotification: new SendTestNotification({ test: async (member) => (tested.push(member), tested.length) }),
     unsubscribeFromPush: new UnsubscribeFromPush(new SqlitePushSubscriptions(db)),
     pushPublicKey: "public-key-of-the-server",
-    startSession: new StartSession({ ...deps, ids, clock }, defaultPlanningConfig),
+    startSession: new StartSession({ ...deps, ids, clock, calendar }, defaultPlanningConfig),
+    listTakenDates: new ListTakenDates({ calendar, clock }),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions: deps.sessions, catalog }, defaultPlanningConfig),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, defaultPlanningConfig),
@@ -189,7 +207,7 @@ beforeEach(async () => {
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
-    getDeck: new GetDeck({ sessions: deps.sessions, experience: noMeals, suggest }),
+    getDeck: new GetDeck({ sessions: deps.sessions, experience, suggest }),
     passSuggestion: new PassSuggestion({ ...deps, catalog }),
     getRecipePhoto: new GetRecipePhoto(catalog),
     markLeftoverDay: new MarkLeftoverDay(deps),
@@ -351,7 +369,7 @@ const propose = (as: typeof max, id: string, date: string, recipe: Recipe) =>
   call("POST", `/sessions/${id}/proposals`, as, { date, recipeId: recipe.id });
 const decide = (as: typeof max, id: string, proposalId: string, what: "accept" | "veto" | "withdraw") =>
   call("POST", `/sessions/${id}/proposals/${proposalId}/${what}`, as);
-const pending = (session: { proposals: { id: string; status: string }[] }) =>
+const pending = <P extends { id: string; date: string; status: string }>(session: { proposals: P[] }) =>
   session.proposals.filter((p) => p.status === "pending");
 
 describe("agreeing a dinner over HTTP", () => {
@@ -682,19 +700,39 @@ describe("shaping the plan over HTTP", () => {
     expect((await eligible(max, session.id)).recipes.map((r: { name: string }) => r.name)).toContain("Pasta");
   });
 
-  it("refuses to change a day while a proposal waits for an answer", async () => {
+  it("refuses to change the day that holds a waiting proposal, but not the other days", async () => {
     const { session } = (await start(max, [MON, TUE, SAT])).json();
     await agree(session.id, MON, pasta);
     await propose(max, session.id, TUE, risotto);
-    for (const res of [
-      await leftovers(ac, session.id, TUE),
-      await reopen(ac, session.id, MON),
-      await move(ac, session.id, MON, SAT),
-    ]) {
+    for (const res of [await leftovers(ac, session.id, TUE), await move(ac, session.id, MON, TUE)]) {
       expect(res.statusCode).toBe(409);
       expect(res.json()).toEqual({ error: "proposal_already_pending" });
     }
+    expect((await reopen(ac, session.id, MON)).statusCode).toBe(200); // not the day under a vote
     expect((await leftovers(ac, session.id, SAT)).statusCode).toBe(200);
+  });
+
+  it("lets the next day be proposed while the first still waits, and accepts them in any order", async () => {
+    const { session } = (await start(max, [MON, TUE, SAT])).json();
+    const first = pending((await propose(max, session.id, MON, pasta)).json().session)[0]!;
+    const second = (await propose(max, session.id, TUE, risotto)).json().session;
+    expect(pending(second).map((p) => p.date)).toEqual([MON, TUE]);
+    const tuesday = pending(second).find((p) => p.date === TUE)!;
+    const accepted = (await decide(ac, session.id, tuesday.id, "accept")).json().session;
+    expect(day(accepted, TUE)).toMatchObject({ status: "planned", recipe: { name: "Risotto" } });
+    expect(day(accepted, MON)).toMatchObject({ status: "open" });
+    expect(pending(accepted).map((p) => p.id)).toEqual([first.id]);
+    const again = await propose(max, session.id, MON, curry);
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toEqual({ error: "proposal_already_pending" });
+  });
+
+  it("does not propose a dish again that waits for an answer on another day", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    await propose(max, session.id, MON, pasta);
+    const res = await propose(max, session.id, TUE, pasta);
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: "recipe_already_proposed" });
   });
 
   it("frees the dates of a discarded plan: the same day can be agreed again in the next session", async () => {
@@ -997,5 +1035,187 @@ describe("notifications over HTTP", () => {
     expect(tested).toEqual([]);
     expect((await call("POST", "/push/test", ac)).json()).toEqual({ reached: 1 });
     expect((await call("POST", "/push/test", ac)).json()).toEqual({ reached: 2 });
+  });
+});
+
+describe("the meal log over HTTP", () => {
+  const DAY = "2026-10-30";
+  const yesterday = "2026-10-31";
+  const entriesOf = async (as: typeof max, days = 14) =>
+    (await call("GET", `/meal-log?days=${days}`, as)).json().entries as {
+      id: string;
+      date: string;
+      base: string;
+      confirmed: boolean;
+      source: string;
+      recipe: { name: string } | null;
+    }[];
+  const post = (path: string, as: typeof max | undefined, payload?: unknown) => call("POST", path, as, payload);
+
+  /** A finalized plan with Pasta on DAY, turned into a log entry the day after, the way the daily job does it. */
+  async function loggedFromPlan(recipe: Recipe = pasta) {
+    const { session } = (await start(max, [DAY, yesterday])).json();
+    const proposal = pending((await propose(max, session.id, DAY, recipe)).json().session)[0]!;
+    await decide(ac, session.id, proposal.id, "accept");
+    expect((await call("POST", `/sessions/${session.id}/finalize`, ac)).statusCode).toBe(200);
+    const clock = {
+      now: () => NOW,
+      today: () => "2026-11-01" as never,
+      localNow: () => ({ date: "2026-11-01" as never, hour: 12 }),
+    };
+    const job = new LogPlannedMeals({
+      sessions: new SqliteSessionRepository(db),
+      mealLog: new SqliteMealLogRepository(db),
+      events: new InProcessEventHub(),
+      uow: new SqliteUnitOfWork(db),
+      clock,
+      ids: new UuidGenerator(),
+    });
+    expect(await job.execute()).toBe(1);
+    return (await entriesOf(max))[0]!;
+  }
+
+  it("needs a signed-in member for every route", async () => {
+    for (const [method, url] of [
+      ["GET", "/meal-log"],
+      ["POST", "/meal-log"],
+      ["POST", "/meal-log/x/confirm"],
+      ["POST", "/meal-log/x/not-cooked"],
+      ["POST", "/meal-log/x/correct"],
+      ["GET", "/recipes"],
+    ] as const) {
+      expect((await call(method, url)).statusCode, `${method} ${url}`).toBe(401);
+    }
+  });
+
+  it("lists every recipe that is ready, by name, for naming a meal", async () => {
+    const res = await call("GET", "/recipes", max);
+    expect(res.statusCode).toBe(200);
+    const names = res.json().recipes.map((r: { name: string }) => r.name);
+    expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b, "de")));
+    expect(names).toContain("Tiramisu"); // a dessert is no dinner, but a meal can be one
+    expect(res.json().recipes.find((r: { name: string }) => r.name === "Pasta").tags).toEqual([
+      "🍝 Pasta",
+      "🥬 Vegetarisch",
+    ]);
+  });
+
+  it("shows yesterday's planned dinner as an unconfirmed entry, to both members", async () => {
+    const entry = await loggedFromPlan();
+    expect(entry).toMatchObject({ date: DAY, base: "pasta", confirmed: false, source: "from_plan" });
+    expect(entry.recipe?.name).toBe("Pasta");
+    expect(await entriesOf(ac)).toEqual([entry]);
+  });
+
+  it("confirms a meal once and refuses a second time", async () => {
+    const entry = await loggedFromPlan();
+    const done = await post(`/meal-log/${entry.id}/confirm`, ac);
+    expect(done.statusCode).toBe(200);
+    expect(done.json().entry.confirmed).toBe(true);
+    const again = await post(`/meal-log/${entry.id}/confirm`, max);
+    expect(again.statusCode).toBe(409);
+    expect(again.json()).toEqual({ error: "already_confirmed" });
+    expect((await post("/meal-log/nope/confirm", max)).statusCode).toBe(404);
+  });
+
+  it("removes a meal that was not cooked, and does not bring it back", async () => {
+    const entry = await loggedFromPlan();
+    expect((await post(`/meal-log/${entry.id}/not-cooked`, max)).statusCode).toBe(200);
+    expect(await entriesOf(max)).toEqual([]);
+    const second = await post(`/meal-log/${entry.id}/not-cooked`, max);
+    expect(second.statusCode).toBe(404);
+  });
+
+  it("refuses to call a confirmed meal not cooked", async () => {
+    const entry = await loggedFromPlan();
+    await post(`/meal-log/${entry.id}/confirm`, max);
+    const res = await post(`/meal-log/${entry.id}/not-cooked`, ac);
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: "already_confirmed" });
+  });
+
+  it("corrects a meal to another recipe, or to a base only", async () => {
+    const entry = await loggedFromPlan();
+    const other = await post(`/meal-log/${entry.id}/correct`, max, { base: "rice", recipeId: 2 });
+    expect(other.statusCode).toBe(200);
+    expect(other.json().entry).toMatchObject({ base: "rice", confirmed: true, source: "corrected" });
+    expect(other.json().entry.recipe.name).toBe("Risotto");
+    const baseOnly = await post(`/meal-log/${entry.id}/correct`, ac, { base: "potatoes", recipeId: null });
+    expect(baseOnly.json().entry).toMatchObject({ base: "potatoes", recipe: null, confirmed: true });
+    expect((await post(`/meal-log/${entry.id}/correct`, ac, { base: "rice", recipeId: 999 })).statusCode).toBe(404);
+    expect((await post(`/meal-log/${entry.id}/correct`, ac, { base: "soup", recipeId: null })).statusCode).toBe(400);
+    expect((await post(`/meal-log/${entry.id}/correct`, ac, { base: "rice" })).statusCode).toBe(400);
+  });
+
+  it("adds a meal that was not planned: by recipe, or by its base only", async () => {
+    const byRecipe = await post("/meal-log", max, { date: yesterday, base: "pasta", recipeId: 1 });
+    expect(byRecipe.statusCode).toBe(201);
+    expect(byRecipe.json().entry).toMatchObject({ date: yesterday, source: "added", confirmed: true });
+    const byBase = await post("/meal-log", ac, { date: DAY, base: "bread", recipeId: null });
+    expect(byBase.json().entry).toMatchObject({ base: "bread", recipe: null });
+    expect((await entriesOf(max)).map((e) => e.date)).toEqual([yesterday, DAY]);
+  });
+
+  it("refuses a meal from the future, an unknown recipe and a body that is not a meal", async () => {
+    const future = await post("/meal-log", max, { date: "2026-11-02", base: "pasta", recipeId: null });
+    expect(future.statusCode).toBe(422);
+    expect(future.json()).toEqual({ error: "date_in_future" });
+    expect((await post("/meal-log", max, { date: yesterday, base: "pasta", recipeId: 999 })).statusCode).toBe(404);
+    expect((await post("/meal-log", max, { date: "kein Datum", base: "pasta", recipeId: null })).statusCode).toBe(400);
+    expect((await post("/meal-log", max, { date: yesterday, base: "pasta" })).statusCode).toBe(400);
+    expect(await entriesOf(max)).toEqual([]);
+  });
+
+  it("lists only the days asked for, and refuses a nonsense number of days", async () => {
+    await post("/meal-log", max, { date: DAY, base: "pasta", recipeId: null });
+    await post("/meal-log", max, { date: yesterday, base: "rice", recipeId: null });
+    expect((await entriesOf(max, 1)).map((e) => e.date)).toEqual([yesterday]);
+    expect(await entriesOf(max, 0)).toEqual([]);
+    expect((await call("GET", "/meal-log?days=-1", max)).statusCode).toBe(400);
+    expect((await call("GET", "/meal-log?days=91", max)).statusCode).toBe(400);
+    expect((await call("GET", "/meal-log?days=abc", max)).statusCode).toBe(400);
+  });
+
+  it("counts a confirmed new recipe as known in the next session's deck", async () => {
+    const entry = await loggedFromPlan(kuerbis);
+    const isNew = async () => {
+      const { session } = (await start(max, ["2026-11-02", "2026-11-03"])).json();
+      const deck = (await call("GET", `/sessions/${session.id}/deck`, ac)).json();
+      await call("POST", `/sessions/${session.id}/close`, max);
+      return deck.cards.find((c: { name: string }) => c.name === "Kürbissuppe").isNew;
+    };
+    expect(await isNew()).toBe(true);
+    await post(`/meal-log/${entry.id}/confirm`, max);
+    expect(await isNew()).toBe(false);
+  });
+});
+
+describe("dates that already hold a dinner, over HTTP", () => {
+  const FUTURE = "2026-11-04";
+  const takenBy = async () => {
+    const { session } = (await start(max, [FUTURE, "2026-11-05"])).json();
+    const proposal = pending((await propose(max, session.id, FUTURE, pasta)).json().session)[0]!;
+    await decide(ac, session.id, proposal.id, "accept");
+    return session.id as string;
+  };
+
+  it("needs a signed-in member to list them", async () => {
+    expect((await call("GET", "/planned-dates")).statusCode).toBe(401);
+  });
+
+  it("lists the dates of a plan that is still counted, and nothing once that plan is discarded", async () => {
+    const id = await takenBy();
+    expect((await call("GET", "/planned-dates", ac)).json()).toEqual({ dates: [FUTURE] });
+    await call("POST", `/sessions/${id}/close`, max);
+    expect((await call("GET", "/planned-dates", ac)).json()).toEqual({ dates: [] });
+  });
+
+  it("refuses to start a plan on such a date, at once and with the reason, not only when a dish is accepted", async () => {
+    const id = await takenBy();
+    await call("POST", `/sessions/${id}/finalize`, max);
+    const res = await start(ac, [FUTURE, "2026-11-06"]);
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toEqual({ error: "date_already_taken" });
+    expect((await start(ac, ["2026-11-05", "2026-11-06"])).statusCode).toBe(201);
   });
 });

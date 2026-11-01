@@ -34,10 +34,21 @@ import { changeSession, type CommandResult, type SessionDeps } from "./support.j
 
 const unknownRecipe: CommandResult = { ok: false, reason: "unknown_recipe" };
 
+/** The dates from today on that already hold a planned dinner: the form for a new plan does not offer them. */
+export class ListTakenDates {
+  constructor(
+    private readonly deps: { calendar: Pick<DinnerCalendar, "takenDatesFrom">; clock: Pick<Clock, "today"> },
+  ) {}
+
+  execute(): Promise<readonly PlanDate[]> {
+    return this.deps.calendar.takenDatesFrom(this.deps.clock.today());
+  }
+}
+
 /** rule StartSession */
 export class StartSession {
   constructor(
-    private readonly deps: SessionDeps & { ids: IdGenerator; clock: Clock },
+    private readonly deps: SessionDeps & { ids: IdGenerator; clock: Clock; calendar: DinnerCalendar },
     private readonly config: PlanningConfig,
   ) {}
 
@@ -46,9 +57,13 @@ export class StartSession {
     let result: Result<Outcome<PlanningSession, PlanningEvent>>;
     try {
       result = await deps.uow.run(async () => {
+        const id = sessionId(deps.ids.next());
+        const takenDates: PlanDate[] = [];
+        for (const date of cmd.dates) if (await deps.calendar.isDateTaken(date, id)) takenDates.push(date);
         const outcome = startSession(
           {
-            id: sessionId(deps.ids.next()),
+            id,
+            takenDates,
             startedBy: cmd.member,
             dates: cmd.dates,
             now: deps.clock.now(),

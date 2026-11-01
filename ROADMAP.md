@@ -105,6 +105,7 @@ Status S4b (built 2026-11-01): `RemindToFinalize` now decides on the session as 
 
 - Backend: `LogPlannedMeals` daily job, `ConfirmCooked`, `MarkNotCooked`, `CorrectLoggedMeal`, `AddLoggedMeal`, experience repository, meal log feeding base variety and the proven flag into the deck.
 - Frontend: "yesterday" card with cooked / not cooked / something else, add a meal by base only, history list.
+Status S5 (built 2026-11-01): meal log and experience in SQLite (migration 6), the daily job wired into the server, routes and screens for the question the day after (cooked, not cooked, something else), adding a meal by recipe or base only, a 14 day history, and the deck reading the real log and experience. Decided: D32, D33; the two open spec questions (log guard, abandoned plans) are closed. Phone feedback during the build changed more: several proposals wait at once (D30), starting a plan refuses taken dates (D31, answers the "already planned" error from the first test), leftovers days offer "Doch kochen", agreed days "Neu wählen", the bell is a monochrome icon. **Not verified on a phone.** Still open in the spec: past dates in `StartSession`.
 - Verify by hand: confirm a new recipe as cooked and see it count as proven in the next session; mark one as not cooked and see its base stop weighing on the ranking; correct an entry with "something else" (another recipe), and add a meal by its base only.
 
 ### S6: One real week

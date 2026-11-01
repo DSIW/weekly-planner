@@ -60,8 +60,24 @@ describe("shaping the plan on the board", () => {
       [REOPEN]: { status: 200, body: { session: board(days) } },
     });
     renderApp();
-    await userEvent.click((await screen.findAllByRole("button", { name: "Wieder öffnen" }))[0]!);
+    await userEvent.click((await screen.findAllByRole("button", { name: "Neu wählen" }))[0]!);
     expect(calls.some((c) => c.key === REOPEN)).toBe(true);
+  });
+
+  it("names the way back by what the day is: cook after all for leftovers, choose again for an agreed dish", async () => {
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: board(days) } },
+      [`POST ${api}/sessions/s1/days/2026-11-07/reopen`]: { status: 200, body: { session: board(days) } },
+    });
+    renderApp();
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows[0]).not.toHaveTextContent(/Doch kochen|Neu wählen/); // an open day offers "Reste"
+    expect(rows[1]).toHaveTextContent("Neu wählen");
+    expect(rows[2]).toHaveTextContent("Doch kochen");
+    expect(screen.queryByRole("button", { name: "Wieder öffnen" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Doch kochen" }));
+    expect(calls.some((c) => c.key.endsWith("/days/2026-11-07/reopen"))).toBe(true);
   });
 
   it("offers a drag handle only on agreed days", async () => {
@@ -79,7 +95,7 @@ describe("shaping the plan on the board", () => {
     });
     renderApp();
     await userEvent.click((await screen.findAllByRole("listitem"))[0]!.querySelector("button.small")!);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Abstimmung");
+    expect(await screen.findByRole("alert")).toHaveTextContent("wartet schon ein Vorschlag");
   });
 
   it("says so when reopening fails for any other reason", async () => {
@@ -90,7 +106,7 @@ describe("shaping the plan on the board", () => {
       [REOPEN]: { status: 500, body: {} },
     });
     renderApp();
-    await userEvent.click((await screen.findAllByRole("button", { name: "Wieder öffnen" }))[0]!);
+    await userEvent.click((await screen.findAllByRole("button", { name: "Neu wählen" }))[0]!);
     expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
   });
 });

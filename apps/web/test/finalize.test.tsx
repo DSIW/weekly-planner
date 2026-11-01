@@ -341,7 +341,8 @@ describe("the export status", () => {
     await screen.findByRole("heading", { name: "Abgeschlossene Planung" });
     expect(screen.queryByRole("button", { name: /verschieben/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reste" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Wieder öffnen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Neu wählen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Doch kochen" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Einkaufsliste füllen" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Planung schließen" }));
     expect(await screen.findByRole("button", { name: "Planung starten" })).toBeInTheDocument();

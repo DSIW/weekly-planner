@@ -112,13 +112,23 @@ describe("notifications switch", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("crosses the bell out while notifications are off", async () => {
+    phone(false);
+    server(base);
+    renderApp();
+    const bell = await screen.findByRole("button", { name: "Benachrichtigungen an" });
+    expect(bell.querySelector("svg")).toHaveAttribute("data-icon", "bell-off");
+    expect(bell.textContent).toBe("");
+  });
+
   it("is a bell in the header, not a labelled button in the page", async () => {
     phone(true);
     server(base);
     renderApp();
     const bell = await screen.findByRole("button", { name: "Benachrichtigungen aus" });
     expect(bell.closest("header")).not.toBeNull();
-    expect(bell).toHaveTextContent("🔔");
+    expect(bell.querySelector("svg")).toHaveAttribute("data-icon", "bell");
+    expect(bell.textContent).toBe(""); // an icon, no emoji and no text
     expect(bell).not.toHaveTextContent("Benachrichtigungen");
   });
 

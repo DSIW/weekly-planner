@@ -72,6 +72,7 @@ entity PlanningSession {
     started_at: Timestamp
     status: open | finalized | closed
     reminder_sent: Boolean   -- the finalize reminder fires once per session
+    was_finalized: Boolean   -- the plan was finalized at some point; stays true when a finalized plan is closed later
     export_failure: refused | unconfirmed | none   -- how the last failed export step failed; cleared by the next step that succeeds
 
     days: PlanDay with session = this
@@ -81,6 +82,7 @@ entity PlanningSession {
 
     -- Projections
     open_days: days where status = open
+    open_days_without_vote: open_days where pending_proposals.count = 0
     planned_days: days where status = planned
     pending_proposals: proposals where status = pending
     unfinished_export_steps: export_steps where status != done
@@ -89,10 +91,13 @@ entity PlanningSession {
 
     -- Derived
     export_complete: status = finalized and unfinished_export_steps.count = 0
-    next_open_day: min_by(open_days, d => d.date)
+    -- The day the deck fills: members may propose for the next day while the other one still has to answer for the
+    -- one before, so a day that already has a proposal waiting is skipped.
+    next_open_day: min_by(open_days_without_vote, d => d.date)
     first_planned_date: min_by(planned_days, d => d.date).date
     reminder_due_at: first_planned_date + config.reminder_offset
     vetoed_recipes: proposals where status = vetoed -> recipe
+    pending_recipes: proposals where status = pending -> recipe
     passed_recipes: passes -> recipe
 
     transitions status {
@@ -108,6 +113,7 @@ entity PlanDay {
     date: Timestamp
     status: open | planned | leftovers
     recipe: Recipe when status = planned
+    logged: Boolean   -- the planned dinner already became a meal-log entry; stays true when the entry is removed again
 
     proposals: Proposal with day = this
 
@@ -115,6 +121,7 @@ entity PlanDay {
     pending_proposals: proposals where status = pending
 
     -- Derived
+    holds_date: status = planned and session.status in {open, finalized}   -- a discarded plan holds nothing
     is_weekend: is_weekend(date)
 
     transitions status {
@@ -207,8 +214,15 @@ rule StartSession {
     -- session, so a second one may only start after the first is finalized
     -- or abandoned.
     requires: not exists PlanningSession{status: open}
+    -- One dinner per day also holds across sessions: a date that a plan
+    -- (open or finalized, not a discarded one) already agreed a dinner for
+    -- cannot be planned again, so the plan does not fail only when a dish is
+    -- accepted.
+    requires:
+        for date in dates:
+            not exists PlanDay{date: date, holds_date: true}
     ensures:
-        let session = PlanningSession.created(started_by: member, started_at: now, status: open, reminder_sent: false, export_failure: none)
+        let session = PlanningSession.created(started_by: member, started_at: now, status: open, reminder_sent: false, was_finalized: false, export_failure: none)
         for date in dates:
             PlanDay.created(session: session, date: date, status: open)
 }
@@ -226,13 +240,14 @@ rule ProposeRecipe {
     requires: day.session.status = open
     requires: day.status = open
     requires: day = day.session.next_open_day
-    -- One pending proposal at a time: if both members propose at the same
-    -- time, the first one wins and the other member votes on it or waits.
-    -- The guard is per day; together with requiring the next open day and
-    -- the day operations refusing while a vote runs, this keeps
-    -- OnePendingProposalPerSession.
+    -- One pending proposal per day: if both members propose for the same day
+    -- at the same time, the first one wins and the other member votes on it
+    -- or waits. Proposals for several days may wait at once: nobody has to
+    -- wait for an answer before going on with the next day. A dish that
+    -- already waits for an answer on another day is not proposed again.
     requires: day.pending_proposals.count = 0
     requires: recipe.meal_type = main
+    requires: recipe not in day.session.pending_recipes
     requires: recipe not in day.session.vetoed_recipes
     requires: recipe not in day.session.passed_recipes
     requires: not exists PlanDay{session: day.session, recipe: recipe}
@@ -297,11 +312,15 @@ rule VetoProposal {
 }
 
 -- The day after a finalized plan day, the planned meal becomes the default
--- log entry.
+-- log entry, once. A plan that was thrown away without ever being finalized
+-- logs nothing: nobody agreed to cook it. A finalized plan that was closed
+-- later still logs, its dinners were agreed and written to KitchenOwl.
 rule LogPlannedMeal {
     when: day: PlanDay.date + 1.day <= now
     requires: day.status = planned
-    requires: day.session.status in {finalized, closed}
+    requires: day.session.status = finalized or (day.session.status = closed and day.session.was_finalized)
+    requires: not day.logged
+    ensures: day.logged = true
     ensures: MealLogEntry.created(
         date: day.date,
         base: day.recipe.base,
@@ -390,9 +409,8 @@ rule MovePlannedDay {
     requires: from_day.session.status = open
     requires: from_day.status = planned
     requires: to_day.status = open
-    -- Moving opens a day and fills another: no vote may be running, so the
-    -- next open day never changes while a proposal waits for an answer.
-    requires: from_day.session.pending_proposals.count = 0
+    -- A day does not change under a vote: the target must not have a proposal waiting.
+    requires: to_day.pending_proposals.count = 0
     requires: not exists PlanDay{date: to_day.date, status: planned}
     requires:
         to_day.is_weekend
@@ -409,7 +427,6 @@ rule ReopenPlannedDay {
     when: ReopenDay(member, day)
     requires: day.session.status = open
     requires: day.status = planned
-    requires: day.session.pending_proposals.count = 0
     ensures:
         day.status = open
         day.recipe = null
@@ -419,7 +436,6 @@ rule ReopenLeftoverDay {
     when: ReopenDay(member, day)
     requires: day.session.status = open
     requires: day.status = leftovers
-    requires: day.session.pending_proposals.count = 0
     ensures: day.status = open
 }
 
@@ -439,6 +455,7 @@ rule FinalizePlan {
     requires: session.pending_proposals.count = 0
     ensures:
         session.status = finalized
+        session.was_finalized = true
         for day in session.planned_days:
             IngredientsNeeded(recipe: day.recipe, date: day.date, portions: config.household_size)
             ExportStep.created(session: session, kind: planner_entry, day: day, status: pending)
@@ -552,11 +569,11 @@ invariant WeekdayTimeLimit {
                 or day.recipe.total_time <= config.weekday_time_limit)
 }
 
--- A vote is always about the next open day.
-invariant OnePendingProposalPerSession {
+-- A day has at most one vote running; several days may be voted on at once.
+invariant OnePendingProposalPerDay {
     for a in Proposals:
         for b in Proposals:
-            a != b and a.session = b.session and a.status = pending
+            a != b and a.day = b.day and a.status = pending
                 implies b.status != pending
 }
 
@@ -659,7 +676,7 @@ surface PlanningBoard {
         -- conflict:
         --   1. base variety: rank lower the base (pasta, rice, potatoes, ...)
         --      of the meals in the previous config.variety_window_days days
-        --      (cooked, or planned in another session) and of the other days
+        --      (cooked, or planned in another session that was finalized) and of the other days
         --      in this session. Bases are only ranked
         --      lower, never excluded, so the list always has suggestions.
         --      The base "other" is never ranked lower: it is no real base.
@@ -689,6 +706,4 @@ surface PlanningBoard {
 ------------------------------------------------------------
 -- Open Questions
 ------------------------------------------------------------
-open question "LogPlannedMeal fires on every evaluation once a planned day is a day old. After MarkNotCooked removes the entry, nothing in the rules stops the entry from being created again; the implementation remembers which planned dates were logged (MealLogRepository.loggedPlanDates). Should the spec carry that guard?"
-open question "Abandoned sessions: AbandonSession closes a session that was never finalized, yet LogPlannedMeal accepts closed sessions, so its agreed days still become meal-log entries, and (its dates are free again for planning since S3). Should an abandoned session's days be logged? CloseFinalizedSession also closes, so a finalized plan's dates would be freed as well: S4a left this undecided (D24), so they are freed. The suggestion ranking (base variety and the recent window) counts planned days of every other session today, abandoned ones included; should it?"
 open question "StartSession accepts any dates, including past dates and dates another finalized or abandoned session already planned; OneDinnerPerDay only fails later at AcceptProposal. Should StartSession refuse such dates up front?"

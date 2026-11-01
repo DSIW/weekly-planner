@@ -135,8 +135,17 @@ export class SessionsDinnerCalendar implements DinnerCalendar {
   constructor(private readonly sessions: InMemorySessions) {}
   async isDateTaken(date: PlanDate, except: SessionId) {
     return [...this.sessions.byId.values()].some(
-      (s) => s.id !== except && s.days.some((d) => d.date === date && d.status === "planned"),
+      (s) => s.id !== except && s.status !== "closed" && s.days.some((d) => d.date === date && d.status === "planned"),
     );
+  }
+  async takenDatesFrom(from: PlanDate) {
+    return [
+      ...new Set(
+        [...this.sessions.byId.values()]
+          .filter((s) => s.status !== "closed")
+          .flatMap((s) => s.days.filter((d) => d.status === "planned" && d.date >= from).map((d) => d.date)),
+      ),
+    ].sort();
   }
 }
 

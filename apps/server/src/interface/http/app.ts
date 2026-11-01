@@ -2,6 +2,13 @@ import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import type {
   AcceptProposal,
+  AddLoggedMeal,
+  ConfirmCooked,
+  CorrectLoggedMeal,
+  ListMealLog,
+  ListRecipes,
+  ListTakenDates,
+  MarkNotCooked,
   CloseSession,
   DomainEvent,
   FinalizePlan,
@@ -28,6 +35,8 @@ import type {
   WithdrawProposal,
 } from "@weekly-planner/application";
 import {
+  BASES,
+  mealLogEntryId,
   memberId,
   needsPlanningAhead,
   exportComplete,
@@ -38,6 +47,7 @@ import {
   sessionId,
   type FinalizeExport,
   type ListItem,
+  type MealLogEntry,
   type PlanningSession,
   type Recipe,
 } from "@weekly-planner/domain";
@@ -68,6 +78,13 @@ interface AppOptions {
   readonly getFinalizePreview: Pick<GetFinalizePreview, "execute">;
   readonly finalizePlan: Pick<FinalizePlan, "execute">;
   readonly retryExport: Pick<RetryExport, "execute">;
+  readonly listMealLog: Pick<ListMealLog, "execute">;
+  readonly listRecipes: Pick<ListRecipes, "execute">;
+  readonly listTakenDates: Pick<ListTakenDates, "execute">;
+  readonly confirmCooked: Pick<ConfirmCooked, "execute">;
+  readonly markNotCooked: Pick<MarkNotCooked, "execute">;
+  readonly correctLoggedMeal: Pick<CorrectLoggedMeal, "execute">;
+  readonly addLoggedMeal: Pick<AddLoggedMeal, "execute">;
   readonly subscribeToPush: Pick<SubscribeToPush, "execute">;
   readonly sendTestNotification: Pick<SendTestNotification, "execute">;
   readonly unsubscribeFromPush: Pick<UnsubscribeFromPush, "execute">;
@@ -156,6 +173,21 @@ const pushEndpointBody = z.object({ endpoint: z.string().max(1000) });
 
 const finalizeBody = z.object({ skip: z.array(z.string().max(200)).max(300).default([]) }).default({ skip: [] });
 
+const BASE_NAMES = z.enum(BASES);
+const mealBody = z.object({ base: BASE_NAMES, recipeId: z.number().int().nullable() });
+const addMealBody = mealBody.extend({ date: z.string() });
+const mealLogQuery = z.object({ days: z.coerce.number().int().min(0).max(90).default(14) });
+
+/** What the phones see of a logged meal. */
+const entryView = (e: MealLogEntry, ahead: number) => ({
+  id: e.id,
+  date: e.date,
+  base: e.base,
+  recipe: e.recipe ? recipeView(e.recipe, ahead) : null,
+  source: e.source,
+  confirmed: e.confirmed,
+});
+
 const retryBody = z.object({ resendUnconfirmed: z.boolean().optional() }).default({});
 
 const passBody = z.object({ recipeId: z.number().int() });
@@ -179,6 +211,10 @@ const COMMAND_REJECTIONS: Record<string, number> = {
   unknown_recipe: 404,
   unknown_proposal: 404,
   unknown_day: 404,
+  unknown_entry: 404,
+  no_recipe: 409,
+  already_confirmed: 409,
+  date_in_future: 422,
   own_proposal: 403,
   not_your_proposal: 403,
   not_next_open_day: 409,
@@ -192,6 +228,7 @@ const COMMAND_REJECTIONS: Record<string, number> = {
   day_not_open: 409,
   date_already_taken: 409,
   recipe_vetoed: 409,
+  recipe_already_proposed: 409,
   recipe_passed: 409,
   already_passed: 409,
   recipe_already_planned: 409,
@@ -542,6 +579,74 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       .header("Cache-Control", "private, max-age=86400")
       .type(photo.contentType)
       .send(Buffer.from(photo.data));
+  });
+
+  app.get(`${api}/recipes`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const recipes = await options.listRecipes.execute();
+    return { recipes: recipes.map((r) => recipeView(r, options.planAheadMinutes)) };
+  });
+
+  app.get(`${api}/planned-dates`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    return { dates: await options.listTakenDates.execute() };
+  });
+
+  app.get(`${api}/meal-log`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const query = mealLogQuery.safeParse(req.query);
+    if (!query.success) return reply.code(400).send({ error: "invalid_request" });
+    const entries = await options.listMealLog.execute({ days: query.data.days });
+    return { entries: entries.map((e) => entryView(e, options.planAheadMinutes)) };
+  });
+
+  app.post(`${api}/meal-log`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = addMealBody.safeParse(req.body);
+    let date: ReturnType<typeof planDate>;
+    try {
+      if (!body.success) throw new Error("invalid");
+      date = planDate(body.data.date);
+    } catch {
+      return reply.code(400).send({ error: "invalid_request" });
+    }
+    const result = await options.addLoggedMeal.execute({
+      member: memberId(member.id),
+      date,
+      base: body.data.base,
+      recipeId: body.data.recipeId === null ? null : recipeId(body.data.recipeId),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return reply.code(201).send({ entry: entryView(result.value, options.planAheadMinutes) });
+  });
+
+  for (const [verb, useCase] of [
+    ["confirm", options.confirmCooked],
+    ["not-cooked", options.markNotCooked],
+  ] as const) {
+    app.post<{ Params: { id: string } }>(`${api}/meal-log/:id/${verb}`, async (req, reply) => {
+      const member = requireMember(req, reply);
+      if (!member) return reply;
+      const result = await useCase.execute({ member: memberId(member.id), entryId: mealLogEntryId(req.params.id) });
+      if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+      return { entry: entryView(result.value, options.planAheadMinutes) };
+    });
+  }
+
+  app.post<{ Params: { id: string } }>(`${api}/meal-log/:id/correct`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const body = mealBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.correctLoggedMeal.execute({
+      member: memberId(member.id),
+      entryId: mealLogEntryId(req.params.id),
+      base: body.data.base,
+      recipeId: body.data.recipeId === null ? null : recipeId(body.data.recipeId),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { entry: entryView(result.value, options.planAheadMinutes) };
   });
 
   app.post(`${api}/recipes/refresh`, async (req, reply) => {

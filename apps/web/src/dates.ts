@@ -10,6 +10,16 @@ export function upcomingDates(count: number, from: Date = new Date()): string[] 
   );
 }
 
+/** The `count` days up to and including `to`, oldest first: the days a meal can still be added for. */
+export function recentDates(count: number, to: Date = new Date()): string[] {
+  return Array.from({ length: count }, (_, i) =>
+    toPlanDate(new Date(to.getFullYear(), to.getMonth(), to.getDate() - (count - 1 - i))),
+  );
+}
+
+/** Today in the phone's time zone, as the server plans. */
+export const todayPlanDate = (now: Date = new Date()): string => toPlanDate(now);
+
 const label = new Intl.DateTimeFormat("de-DE", { weekday: "short", day: "numeric", month: "numeric" });
 
 /** "Mo., 2.11." for `2026-11-02`. */

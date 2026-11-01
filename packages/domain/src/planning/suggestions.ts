@@ -3,7 +3,14 @@ import { isVegetarian } from "../catalog/recipe.js";
 import type { PlanningConfig } from "./config.js";
 import { addDays, isWeekend, type PlanDate } from "./dates.js";
 import { fitsWeekdayLimit, isDinnerCandidate, needsPlanningAhead } from "./eligibility.js";
-import { nextOpenDay, passedRecipeIds, plannedDays, vetoedRecipeIds, type PlanningSession } from "./session.js";
+import {
+  nextOpenDay,
+  passedRecipeIds,
+  pendingRecipeIds,
+  plannedDays,
+  vetoedRecipeIds,
+  type PlanningSession,
+} from "./session.js";
 
 /** What the household ate on a past day, as far as base variety is concerned. */
 export interface MealLogHistory {
@@ -31,7 +38,7 @@ export const isNewRecipe = (r: Pick<Recipe, "id" | "isProven">, experienced: Rea
 
 /**
  * The hard rules for the next open day, without any ranking: main dishes only, on a weekday within the time limit,
- * and not vetoed, passed or planned in this session. Empty when the session is not open or no day is open.
+ * and not vetoed, passed, planned or waiting for an answer in this session. Empty when the session is not open or no day is open.
  */
 export function eligibleRecipes(
   session: PlanningSession,
@@ -42,6 +49,7 @@ export function eligibleRecipes(
   if (!day) return [];
   const excluded = new Set<RecipeId>([
     ...vetoedRecipeIds(session),
+    ...pendingRecipeIds(session),
     ...passedRecipeIds(session),
     ...plannedDays(session).flatMap((d) => (d.recipe ? [d.recipe.id] : [])),
   ]);

@@ -8,11 +8,13 @@ interface Props {
   onStart: (dates: string[]) => void;
   pending: boolean;
   error: string | null;
+  /** Dates that already hold a planned dinner: they are shown but cannot be picked. */
+  takenDates?: string[];
   /** Today's date; the form offers the following days. Injected for tests. */
   today?: Date;
 }
 
-export function StartSessionForm({ onStart, pending, error, today }: Props) {
+export function StartSessionForm({ onStart, pending, error, takenDates = [], today }: Props) {
   const [picked, setPicked] = useState<string[]>([]);
   const toggle = (date: string) =>
     setPicked((now) => (now.includes(date) ? now.filter((d) => d !== date) : now.length < MAX ? [...now, date] : now));
@@ -30,6 +32,8 @@ export function StartSessionForm({ onStart, pending, error, today }: Props) {
             type="button"
             className="chip"
             aria-pressed={picked.includes(date)}
+            disabled={takenDates.includes(date)}
+            title={takenDates.includes(date) ? "Hier ist schon ein Essen geplant" : undefined}
             onClick={() => toggle(date)}
           >
             {dayLabel(date)}
