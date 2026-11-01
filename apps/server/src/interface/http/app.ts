@@ -4,8 +4,11 @@ import type {
   AcceptProposal,
   CloseSession,
   DomainEvent,
+  FinalizePlan,
   GetCurrentSession,
   GetDeck,
+  GetExport,
+  GetFinalizePreview,
   GetRecipePhoto,
   MarkLeftoverDay,
   MovePlannedDay,
@@ -14,6 +17,7 @@ import type {
   ProposeRecipe,
   RefreshRecipes,
   ReopenDay,
+  RetryExport,
   SignIn,
   StartSession,
   SwapPlannedDays,
@@ -22,11 +26,13 @@ import type {
 import {
   memberId,
   needsPlanningAhead,
+  exportComplete,
   needsTime,
   planDate,
   proposalId,
   recipeId,
   sessionId,
+  type FinalizeExport,
   type PlanningSession,
   type Recipe,
 } from "@weekly-planner/domain";
@@ -52,6 +58,10 @@ interface AppOptions {
   readonly swapPlannedDays: Pick<SwapPlannedDays, "execute">;
   readonly movePlannedDay: Pick<MovePlannedDay, "execute">;
   readonly getRecipePhoto: Pick<GetRecipePhoto, "execute">;
+  readonly getExport: Pick<GetExport, "execute">;
+  readonly getFinalizePreview: Pick<GetFinalizePreview, "execute">;
+  readonly finalizePlan: Pick<FinalizePlan, "execute">;
+  readonly retryExport: Pick<RetryExport, "execute">;
   /** Recipes longer than this need a day's lead time; the phones flag them. */
   readonly planAheadMinutes: number;
   /** Told about every committed change; returns the way to stop listening. */
@@ -81,8 +91,25 @@ const recipeView = (r: Recipe, planAheadMinutes: number) => ({
   planAhead: needsPlanningAhead(r, { planAheadMinutes }),
 });
 
+/** How far the export to KitchenOwl has come, for the finalize screen. */
+const exportView = (e: FinalizeExport) => ({
+  complete: exportComplete(e),
+  failure: e.failure,
+  days: e.days.map((d) => ({ date: d.date, recipeName: d.recipeName, status: d.status })),
+  list: {
+    status: e.list.status,
+    items: e.list.items.map((i) => ({
+      name: i.name,
+      description: i.description,
+      needsReview: i.needsReview,
+      recipes: i.recipes,
+    })),
+  },
+});
+
 /** What the phones see of a session; passes and the rest join in the slices that show them. */
-const sessionView = (s: PlanningSession, ahead: number) => ({
+const sessionView = (s: PlanningSession, ahead: number, exported?: FinalizeExport | null) => ({
+  ...(exported ? { export: exportView(exported) } : {}),
   id: s.id,
   status: s.status,
   startedBy: s.startedBy,
@@ -101,6 +128,8 @@ const sessionView = (s: PlanningSession, ahead: number) => ({
   })),
 });
 
+const retryBody = z.object({ resendUnconfirmed: z.boolean().optional() }).default({});
+
 const passBody = z.object({ recipeId: z.number().int() });
 const recipeParam = z.object({ id: z.coerce.number().int() });
 
@@ -112,6 +141,13 @@ const COMMAND_REJECTIONS: Record<string, number> = {
   session_already_open: 409,
   session_already_closed: 409,
   unknown_session: 404,
+  nothing_planned: 409,
+  session_not_finalized: 409,
+  export_running: 409,
+  step_unconfirmed: 409,
+  step_already_done: 409,
+  unknown_step: 409,
+  no_export: 404,
   unknown_recipe: 404,
   unknown_proposal: 404,
   unknown_day: 404,
@@ -226,7 +262,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.get(`${api}/sessions/current`, async (req, reply) => {
     if (!requireMember(req, reply)) return reply;
     const session = await options.getCurrentSession.execute();
-    return { session: session ? sessionView(session, options.planAheadMinutes) : null };
+    if (!session) return { session: null };
+    const exported = session.status === "finalized" ? await options.getExport.execute({ sessionId: session.id }) : null;
+    return { session: sessionView(session, options.planAheadMinutes, exported) };
   });
 
   app.post(`${api}/sessions`, async (req, reply) => {
@@ -254,6 +292,45 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
     return { session: sessionView(result.value, options.planAheadMinutes) };
+  });
+
+  app.get<{ Params: { id: string } }>(`${api}/sessions/:id/finalize-preview`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const result = await options.getFinalizePreview.execute({ sessionId: sessionId(req.params.id) });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return {
+      dinners: result.value.dinners,
+      items: result.value.items.map((i) => ({
+        name: i.name,
+        description: i.description,
+        needsReview: i.needsReview,
+        recipes: i.recipes,
+      })),
+    };
+  });
+
+  // The plan is finalized even when KitchenOwl could not be reached; the answer then carries the failed export.
+  app.post<{ Params: { id: string } }>(`${api}/sessions/:id/finalize`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const result = await options.finalizePlan.execute({
+      member: memberId(member.id),
+      sessionId: sessionId(req.params.id),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { session: sessionView(result.value.session, options.planAheadMinutes, result.value.export) };
+  });
+
+  app.post<{ Params: { id: string } }>(`${api}/sessions/:id/export/retry`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const body = retryBody.safeParse(req.body ?? {});
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.retryExport.execute({
+      sessionId: sessionId(req.params.id),
+      resendUnconfirmed: body.data.resendUnconfirmed === true,
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { export: exportView(result.value) };
   });
 
   app.get<{ Params: { id: string } }>(`${api}/sessions/:id/recipes`, async (req, reply) => {

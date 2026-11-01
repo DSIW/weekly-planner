@@ -1,8 +1,12 @@
 import {
   AcceptProposal,
   CloseSession,
+  ExportFinalizedPlan,
+  FinalizePlan,
   GetCurrentSession,
   GetDeck,
+  GetExport,
+  GetFinalizePreview,
   GetRecipePhoto,
   PassSuggestion,
   ListEligibleRecipes,
@@ -11,6 +15,7 @@ import {
   ProposeRecipe,
   RefreshRecipes,
   ReopenDay,
+  RetryExport,
   SignIn,
   StartSession,
   SuggestRecipes,
@@ -22,10 +27,12 @@ import { InProcessEventHub } from "../infrastructure/events/in-process-event-hub
 import { CachedRecipeCatalog } from "../infrastructure/kitchenowl/cached-recipe-catalog.js";
 import { KitchenOwlClient } from "../infrastructure/kitchenowl/client.js";
 import { KitchenOwlHouseholdDirectory } from "../infrastructure/kitchenowl/kitchenowl-household-directory.js";
+import { KitchenOwlPlannerGateway } from "../infrastructure/kitchenowl/kitchenowl-planner-gateway.js";
 import { KitchenOwlRecipeCatalog } from "../infrastructure/kitchenowl/kitchenowl-recipe-catalog.js";
 import { NoMealsRecordedYet } from "../infrastructure/meal-log/not-recorded-yet.js";
 import { openDatabase } from "../infrastructure/sqlite/database.js";
 import { SqliteDinnerCalendar } from "../infrastructure/sqlite/sqlite-dinner-calendar.js";
+import { SqliteExportRepository } from "../infrastructure/sqlite/sqlite-export-repository.js";
 import { SqliteSessionRepository } from "../infrastructure/sqlite/sqlite-session-repository.js";
 import { SqliteUnitOfWork } from "../infrastructure/sqlite/sqlite-unit-of-work.js";
 import { SystemClock, SystemRandomness, UuidGenerator } from "../infrastructure/system/system-services.js";
@@ -47,6 +54,13 @@ async function main(): Promise<void> {
   const ids = new UuidGenerator();
   const catalog = new CachedRecipeCatalog(new KitchenOwlRecipeCatalog(client), RECIPE_CACHE_MS);
   const calendar = new SqliteDinnerCalendar(db);
+  const exports = new SqliteExportRepository(db);
+  const exporter = new ExportFinalizedPlan({
+    exports,
+    planner: new KitchenOwlPlannerGateway(client, config.shoppingListId),
+    events: hub,
+    uow: deps.uow,
+  });
   const planning = defaultPlanningConfig;
   const meals = new NoMealsRecordedYet();
   const suggest = new SuggestRecipes(
@@ -55,7 +69,7 @@ async function main(): Promise<void> {
   );
   const app = await buildApp({
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
-    getCurrentSession: new GetCurrentSession(sessions),
+    getCurrentSession: new GetCurrentSession({ sessions, exports }),
     startSession: new StartSession({ ...deps, ids, clock }, planning),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
@@ -70,6 +84,10 @@ async function main(): Promise<void> {
     swapPlannedDays: new SwapPlannedDays(deps, planning),
     movePlannedDay: new MovePlannedDay({ ...deps, calendar }, planning),
     getRecipePhoto: new GetRecipePhoto(catalog),
+    getExport: new GetExport(exports),
+    getFinalizePreview: new GetFinalizePreview({ sessions, catalog }, planning),
+    finalizePlan: new FinalizePlan({ ...deps, catalog, exports, exporter }, planning),
+    retryExport: new RetryExport({ sessions, exporter }),
     planAheadMinutes: planning.planAheadMinutes,
     subscribe: (listener) => hub.subscribe(listener),
     sessionSecret: config.sessionSecret,

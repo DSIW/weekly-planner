@@ -4,8 +4,13 @@ import { join } from "node:path";
 import {
   AcceptProposal,
   CloseSession,
+  ExportFinalizedPlan,
+  ExportNotApplied,
+  FinalizePlan,
   GetCurrentSession,
   GetDeck,
+  GetExport,
+  GetFinalizePreview,
   GetRecipePhoto,
   MarkLeftoverDay,
   MovePlannedDay,
@@ -15,10 +20,14 @@ import {
   ProposeRecipe,
   RefreshRecipes,
   ReopenDay,
+  RetryExport,
   StartSession,
   SwapPlannedDays,
   VetoProposal,
+  type PlannerEntry,
+  type PlannerGateway,
   type RecipeCatalog,
+  type ShoppingListItem,
 } from "@weekly-planner/application";
 import { defaultPlanningConfig, memberId, recipeId, type CatalogEntry, type Recipe } from "@weekly-planner/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -26,6 +35,7 @@ import { InProcessEventHub } from "../../src/infrastructure/events/in-process-ev
 import { openDatabase, type Database } from "../../src/infrastructure/sqlite/database.js";
 import { NoMealsRecordedYet } from "../../src/infrastructure/meal-log/not-recorded-yet.js";
 import { SystemRandomness, UuidGenerator } from "../../src/infrastructure/system/system-services.js";
+import { SqliteExportRepository } from "../../src/infrastructure/sqlite/sqlite-export-repository.js";
 import { SqliteDinnerCalendar } from "../../src/infrastructure/sqlite/sqlite-dinner-calendar.js";
 import { SqliteSessionRepository } from "../../src/infrastructure/sqlite/sqlite-session-repository.js";
 import { SqliteUnitOfWork } from "../../src/infrastructure/sqlite/sqlite-unit-of-work.js";
@@ -50,9 +60,20 @@ const aRecipe = (id: number, name: string, over: Partial<Recipe> = {}): Recipe =
   yields: 2,
   ...over,
 });
-const pasta = aRecipe(1, "Pasta");
+const pasta = aRecipe(1, "Pasta", {
+  ingredients: [
+    { id: 11, name: "Zwiebel", description: "2 Stück, gehackt", optional: false },
+    { name: "Mehl", description: "400 g", optional: false },
+  ],
+});
 const risotto = aRecipe(2, "Risotto");
-const curry = aRecipe(3, "Curry");
+const curry = aRecipe(3, "Curry", {
+  yields: 4,
+  ingredients: [
+    { id: 11, name: "Zwiebel", description: "2 Stück", optional: false },
+    { name: "Salz", description: "etwas", optional: false },
+  ],
+});
 const tiramisu = aRecipe(4, "Tiramisu", { mealType: "dessert" });
 const braten = aRecipe(5, "Schmorbraten", { totalTimeMinutes: 120, diet: "meat" });
 const biga = aRecipe(6, "Pizza Biga", { totalTimeMinutes: 1285 });
@@ -81,6 +102,25 @@ const catalog: RecipeCatalog = {
 };
 let logged: string[];
 
+/** What reaches KitchenOwl; `fail` makes the next request throw. */
+const sent: { entries: PlannerEntry[]; batches: (readonly ShoppingListItem[])[]; fail: Error[] } = {
+  entries: [],
+  batches: [],
+  fail: [],
+};
+const planner: PlannerGateway = {
+  async addPlannerEntry(entry) {
+    const error = sent.fail.shift();
+    if (error) throw error;
+    sent.entries.push(entry);
+  },
+  async addShoppingListItems(items) {
+    const error = sent.fail.shift();
+    if (error) throw error;
+    sent.batches.push(items);
+  },
+};
+
 let db: Database;
 let app: Awaited<ReturnType<typeof buildApp>>;
 beforeEach(async () => {
@@ -89,8 +129,13 @@ beforeEach(async () => {
   refreshes = 0;
   catalogDown = false;
   logged = [];
+  sent.entries = [];
+  sent.batches = [];
+  sent.fail = [];
   const deps = { sessions: new SqliteSessionRepository(db), events: hub, uow: new SqliteUnitOfWork(db) };
   const calendar = new SqliteDinnerCalendar(db);
+  const exports = new SqliteExportRepository(db);
+  const exporter = new ExportFinalizedPlan({ exports, planner, events: hub, uow: deps.uow });
   const ids = new UuidGenerator();
   const noMeals = new NoMealsRecordedYet();
   const clock = {
@@ -120,7 +165,11 @@ beforeEach(async () => {
             ? { ok: true, value: ac }
             : { ok: false, reason: "invalid_credentials" },
     },
-    getCurrentSession: new GetCurrentSession(deps.sessions),
+    getCurrentSession: new GetCurrentSession({ sessions: deps.sessions, exports }),
+    getExport: new GetExport(exports),
+    getFinalizePreview: new GetFinalizePreview({ sessions: deps.sessions, catalog }, defaultPlanningConfig),
+    finalizePlan: new FinalizePlan({ ...deps, catalog, exports, exporter }, defaultPlanningConfig),
+    retryExport: new RetryExport({ sessions: deps.sessions, exporter }),
     startSession: new StartSession({ ...deps, ids, clock }, defaultPlanningConfig),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions: deps.sessions, catalog }, defaultPlanningConfig),
@@ -656,5 +705,131 @@ describe("shaping the plan over HTTP", () => {
     const { session } = (await start(max, [MON, TUE])).json();
     await call("POST", `/sessions/${session.id}/close`, max);
     expect((await leftovers(max, session.id, MON)).json()).toEqual({ error: "session_not_open" });
+  });
+});
+
+describe("finalizing over HTTP", () => {
+  const finalize = (as: typeof max | undefined, id: string) => call("POST", `/sessions/${id}/finalize`, as);
+  const retry = (as: typeof max | undefined, id: string, payload?: unknown) =>
+    call("POST", `/sessions/${id}/export/retry`, as, payload);
+  const preview = (as: typeof max | undefined, id: string) => call("GET", `/sessions/${id}/finalize-preview`, as);
+
+  /** Two agreed days: Pasta on Monday, Curry on Tuesday. */
+  async function planned() {
+    const { session } = (await start(max, [MON, TUE])).json();
+    for (const [date, recipe] of [
+      [MON, pasta],
+      [TUE, curry],
+    ] as const) {
+      const proposed = await call("POST", `/sessions/${session.id}/proposals`, max, { date, recipeId: recipe.id });
+      const id = proposed.json().session.proposals.find((p: { status: string }) => p.status === "pending").id;
+      expect((await call("POST", `/sessions/${session.id}/proposals/${id}/accept`, ac)).statusCode).toBe(200);
+    }
+    return session.id as string;
+  }
+
+  it("needs a signed-in member for every route", async () => {
+    expect((await preview(undefined, "x")).statusCode).toBe(401);
+    expect((await finalize(undefined, "x")).statusCode).toBe(401);
+    expect((await retry(undefined, "x")).statusCode).toBe(401);
+  });
+
+  it("previews the consolidated, scaled list before anything is written", async () => {
+    const id = await planned();
+    const res = await preview(max, id);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      dinners: [
+        { date: MON, recipeName: "Pasta" },
+        { date: TUE, recipeName: "Curry" },
+      ],
+      items: [
+        { name: "Zwiebel", description: "3 Stück", needsReview: false, recipes: ["Pasta", "Curry"] },
+        { name: "Mehl", description: "400 g", needsReview: false, recipes: ["Pasta"] },
+        { name: "Salz", description: "etwas", needsReview: true, recipes: ["Curry"] },
+      ],
+    });
+    expect(sent.entries).toEqual([]);
+  });
+
+  it("finalizes: both phones see the finished export, and the session leaves the board", async () => {
+    const id = await planned();
+    const res = await finalize(ac, id);
+    expect(res.statusCode).toBe(200);
+    const { session } = res.json();
+    expect(session).toMatchObject({
+      status: "finalized",
+      export: {
+        complete: true,
+        failure: null,
+        days: [
+          { date: MON, status: "done" },
+          { date: TUE, status: "done" },
+        ],
+        list: { status: "done" },
+      },
+    });
+    expect(sent.entries.map((e) => [e.recipeId, e.date, e.portions])).toEqual([
+      [1, MON, 2],
+      [3, TUE, 2],
+    ]);
+    expect(sent.batches).toHaveLength(1);
+    expect((await call("GET", "/sessions/current", max)).json()).toEqual({ session: null });
+  });
+
+  it("keeps a failed export on the board, shows it to the other member and retries without duplicates", async () => {
+    const id = await planned();
+    sent.fail.push(new ExportNotApplied("HTTP 503"));
+    const first = (await finalize(max, id)).json().session;
+    expect(first.status).toBe("finalized");
+    expect(first.export).toMatchObject({ complete: false, failure: "refused" });
+    const seen = (await call("GET", "/sessions/current", ac)).json().session;
+    expect(seen).toMatchObject({ id, status: "finalized", export: { complete: false, failure: "refused" } });
+    const retried = await retry(ac, id);
+    expect(retried.statusCode).toBe(200);
+    expect(retried.json().export).toMatchObject({ complete: true, failure: null });
+    expect(sent.entries).toHaveLength(2);
+    expect(sent.batches).toHaveLength(1);
+    expect((await retry(ac, id)).json().export.complete).toBe(true);
+    expect(sent.batches).toHaveLength(1);
+  });
+
+  it("asks before sending a step again that may have arrived", async () => {
+    const id = await planned();
+    sent.fail.push(new Error("timeout"));
+    expect((await finalize(max, id)).json().session.export.failure).toBe("unconfirmed");
+    const refused = await retry(ac, id);
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json()).toEqual({ error: "step_unconfirmed" });
+    expect((await retry(ac, id, { resendUnconfirmed: true })).json().export.complete).toBe(true);
+    expect((await retry(ac, id, { resendUnconfirmed: "yes" })).statusCode).toBe(400);
+  });
+
+  it("answers with the rule's reason and logs it when a request cannot be done", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    const empty = await finalize(max, session.id);
+    expect(empty.statusCode).toBe(409);
+    expect(empty.json()).toEqual({ error: "nothing_planned" });
+    expect((await preview(max, session.id)).json()).toEqual({ error: "nothing_planned" });
+    expect((await preview(max, "nope")).statusCode).toBe(404);
+    expect((await finalize(max, "nope")).statusCode).toBe(404);
+    expect((await retry(max, "nope")).statusCode).toBe(404);
+    expect((await retry(max, session.id)).json()).toEqual({ error: "session_not_finalized" });
+    expect(logged.some((l) => /POST \/plan\/api\/sessions\/[^ ]+\/finalize -> 409 nothing_planned/.test(l))).toBe(true);
+    await call("POST", `/sessions/${session.id}/close`, max);
+    const id = await planned();
+    await finalize(max, id);
+    expect((await finalize(ac, id)).json()).toEqual({ error: "session_not_open" });
+    expect((await preview(max, id)).json()).toEqual({ error: "session_not_open" });
+  });
+
+  it("answers 502 and logs it when KitchenOwl is down while the preview reads the recipes", async () => {
+    const id = await planned();
+    catalogDown = true;
+    const res = await preview(max, id);
+    expect(res.statusCode).toBe(502);
+    expect(logged.some((l) => l.includes("finalize-preview failed: KitchenOwl is down"))).toBe(true);
+    expect((await finalize(max, id)).statusCode).toBe(502);
+    expect((await call("GET", "/sessions/current", max)).json().session.status).toBe("open");
   });
 });
