@@ -845,3 +845,36 @@ describe("rule RemoveLoggedMeal", () => {
       ]);
   });
 });
+
+describe("rule AgreeInPerson", () => {
+  const recipe = aRecipe();
+  const proposed = () => withProposal(aSession(), MON, recipe, AC);
+
+  it("lets the proposer settle the dish they proposed: the two agreed in the room", () => {
+    const { session, id } = proposed();
+    const { state, events } = must(
+      acceptProposal(session, { member: AC, proposalId: id, dateTakenElsewhere: false, inPerson: true }),
+    );
+    expect(state.proposals[0]).toMatchObject({ status: "accepted", decidedBy: AC });
+    expect(dayOf(state, MON)).toMatchObject({ status: "planned", recipe: { id: recipe.id } });
+    expect(events[0]).toMatchObject({ type: "ProposalAccepted", decidedBy: AC });
+  });
+
+  it("keeps every other guard: a taken date, a closed plan, a decided proposal", () => {
+    const { session, id } = proposed();
+    const agree = (s: typeof session, taken = false) =>
+      acceptProposal(s, { member: AC, proposalId: id, dateTakenElsewhere: taken, inPerson: true });
+    expect(agree(session, true)).toEqual({ ok: false, reason: "date_already_taken" });
+    expect(agree(must(closeSession(session, { member: AC })).state)).toEqual({ ok: false, reason: "session_not_open" });
+    const settled = must(agree(session)).state;
+    expect(agree(settled)).toEqual({ ok: false, reason: "proposal_not_pending" });
+  });
+
+  it("is still refused for the proposer without the in-person flag", () => {
+    const { session, id } = proposed();
+    expect(acceptProposal(session, { member: AC, proposalId: id, dateTakenElsewhere: false })).toEqual({
+      ok: false,
+      reason: "own_proposal",
+    });
+  });
+});

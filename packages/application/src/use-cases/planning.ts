@@ -161,12 +161,30 @@ export class AcceptProposal {
     private readonly config: PlanningConfig,
   ) {}
 
-  async execute(cmd: { member: MemberId; sessionId: SessionId; proposalId: ProposalId }): Promise<CommandResult> {
+  async execute(cmd: {
+    member: MemberId;
+    sessionId: SessionId;
+    proposalId: ProposalId;
+    inPerson?: boolean;
+  }): Promise<CommandResult> {
     return changeSession(this.deps, cmd.sessionId, async (s) => {
       const date = s.proposals.find((p) => p.id === cmd.proposalId)?.date;
       const dateTakenElsewhere = date ? await this.deps.calendar.isDateTaken(date, s.id) : false;
-      return acceptProposal(s, { member: cmd.member, proposalId: cmd.proposalId, dateTakenElsewhere }, this.config);
+      return acceptProposal(
+        s,
+        { member: cmd.member, proposalId: cmd.proposalId, dateTakenElsewhere, inPerson: cmd.inPerson === true },
+        this.config,
+      );
     });
+  }
+}
+
+/** rule AgreeInPerson: the two agreed in the same room, so one of them records it; no phone confirmation needed. */
+export class AgreeInPerson {
+  constructor(private readonly accept: Pick<AcceptProposal, "execute">) {}
+
+  execute(cmd: { member: MemberId; sessionId: SessionId; proposalId: ProposalId }): Promise<CommandResult> {
+    return this.accept.execute({ ...cmd, inPerson: true });
   }
 }
 

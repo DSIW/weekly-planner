@@ -1,6 +1,7 @@
 import { defaultPlanningConfig, type CatalogEntry, type Recipe } from "@weekly-planner/domain";
 import {
   AcceptProposal,
+  AgreeInPerson,
   AddLoggedMeal,
   CloseSession,
   ConfirmCooked,
@@ -112,6 +113,7 @@ export function household(recipes: Recipe[] = []) {
     proposeRecipe: new ProposeRecipe({ ...session, catalog, ids }, config),
     passSuggestion: new PassSuggestion({ ...session, catalog }),
     acceptProposal: new AcceptProposal({ ...session, calendar }, config),
+    agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...session, calendar }, config)),
     vetoProposal: new VetoProposal(session),
     withdrawProposal: new WithdrawProposal(session),
     markLeftoverDay: new MarkLeftoverDay(session),

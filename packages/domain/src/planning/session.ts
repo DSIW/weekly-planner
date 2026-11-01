@@ -204,6 +204,8 @@ export interface AcceptProposalCommand {
   readonly proposalId: ProposalId;
   /** Another session already planned a dinner on this date; the use case asks the DinnerCalendar. */
   readonly dateTakenElsewhere: boolean;
+  /** rule AgreeInPerson: the two agreed in the room, so the proposer may record it too. */
+  readonly inPerson?: boolean;
 }
 
 /** rule AcceptProposal */
@@ -217,7 +219,7 @@ export function acceptProposal(
   if (proposal.status !== "pending") return reject("proposal_not_pending");
   if (s.status !== "open") return reject("session_not_open");
   if (dayOn(s, proposal.date)?.status !== "open") return reject("day_not_open");
-  if (cmd.member === proposal.proposedBy) return reject("own_proposal");
+  if (cmd.member === proposal.proposedBy && !cmd.inPerson) return reject("own_proposal");
   if (cmd.dateTakenElsewhere) return reject("date_already_taken");
   // Guards the session invariants even when proposals were made in a different order than they are decided.
   if (plannedRecipeIds(s).has(proposal.recipe.id)) return reject("recipe_already_planned");

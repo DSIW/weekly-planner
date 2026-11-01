@@ -218,6 +218,9 @@ export const proposeRecipe = (sessionId: string, date: string, recipeId: number)
   sessionCommand(`/sessions/${sessionId}/proposals`, { date, recipeId });
 export const acceptProposal = (sessionId: string, proposalId: string) =>
   sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/accept`);
+/** "We agreed in the room": the proposer settles the dish without the other member confirming on a phone. */
+export const agreeInPerson = (sessionId: string, proposalId: string) =>
+  sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/agree`);
 export const withdrawProposal = (sessionId: string, proposalId: string) =>
   sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/withdraw`);
 export const vetoProposal = (sessionId: string, proposalId: string) =>

@@ -300,6 +300,22 @@ rule AcceptProposal {
         proposal.day.recipe = proposal.recipe
 }
 
+-- Nobody has to confirm on a phone: the two may simply have agreed in the
+-- same room. Either member can record that, the proposer included.
+rule AgreeInPerson {
+    when: AgreeInPerson(member, proposal)
+    requires: proposal.status = pending
+    requires: proposal.session.status = open
+    requires: proposal.day.status = open
+    requires: not exists PlanDay{date: proposal.day.date, status: planned}
+    requires: not exists PlanDay{session: proposal.session, recipe: proposal.recipe}
+    ensures:
+        proposal.status = accepted
+        proposal.decided_by = member
+        proposal.day.status = planned
+        proposal.day.recipe = proposal.recipe
+}
+
 -- A no only removes the dish from this session. It may be proposed again
 -- in a later session.
 rule VetoProposal {
@@ -686,6 +702,7 @@ surface PlanningBoard {
         ProposeRecipe(viewer, day, recipe)
         PassSuggestion(viewer, session, recipe)
         AcceptProposal(viewer, proposal)
+        AgreeInPerson(viewer, proposal)
         VetoProposal(viewer, proposal)
         WithdrawProposal(viewer, proposal)
         MarkLeftoverDay(viewer, day)

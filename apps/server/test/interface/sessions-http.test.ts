@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   AcceptProposal,
+  AgreeInPerson,
   AddLoggedMeal,
   ConfirmCooked,
   CorrectLoggedMeal,
@@ -218,6 +219,7 @@ beforeEach(async () => {
     listEligibleRecipes: new ListEligibleRecipes({ sessions: deps.sessions, catalog }, defaultPlanningConfig),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, defaultPlanningConfig),
     acceptProposal: new AcceptProposal({ ...deps, calendar }, defaultPlanningConfig),
+    agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...deps, calendar }, defaultPlanningConfig)),
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
@@ -382,7 +384,7 @@ const sessionOf = async (as: typeof max) => (await call("GET", "/sessions/curren
 const eligible = async (as: typeof max, id: string) => (await call("GET", `/sessions/${id}/recipes`, as)).json();
 const propose = (as: typeof max, id: string, date: string, recipe: Recipe) =>
   call("POST", `/sessions/${id}/proposals`, as, { date, recipeId: recipe.id });
-const decide = (as: typeof max, id: string, proposalId: string, what: "accept" | "veto" | "withdraw") =>
+const decide = (as: typeof max, id: string, proposalId: string, what: "accept" | "agree" | "veto" | "withdraw") =>
   call("POST", `/sessions/${id}/proposals/${proposalId}/${what}`, as);
 const pending = <P extends { id: string; date: string; status: string }>(session: { proposals: P[] }) =>
   session.proposals.filter((p) => p.status === "pending");
@@ -393,6 +395,7 @@ describe("agreeing a dinner over HTTP", () => {
       ["GET", "/sessions/x/recipes"],
       ["POST", "/sessions/x/proposals"],
       ["POST", "/sessions/x/proposals/p/accept"],
+      ["POST", "/sessions/x/proposals/p/agree"],
       ["POST", "/sessions/x/proposals/p/veto"],
       ["POST", "/recipes/refresh"],
     ] as const) {
@@ -470,6 +473,15 @@ describe("agreeing a dinner over HTTP", () => {
     expect(list.at(-1)).toMatchObject({ name: "Pizza Biga", minutes: 1285, planAhead: true });
     expect(list.filter((r) => r.planAhead)).toHaveLength(1);
     expect(list.map((r) => r.name)).toContain("Schmorbraten"); // long, but not "plan ahead"
+  });
+
+  it("lets the proposer settle the dish when the two agreed in the room", async () => {
+    const { session } = (await start(max, [MON, TUE])).json();
+    const proposal = pending((await propose(max, session.id, MON, pasta)).json().session)[0]!;
+    const agreed = await decide(max, session.id, proposal.id, "agree");
+    expect(agreed.statusCode).toBe(200);
+    expect(agreed.json().session.days[0]).toMatchObject({ date: MON, status: "planned", recipe: { name: "Pasta" } });
+    expect((await decide(max, session.id, proposal.id, "agree")).statusCode).toBe(409); // already decided
   });
 
   it("answers 404 for the list of an unknown session", async () => {

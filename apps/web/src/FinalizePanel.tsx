@@ -68,8 +68,8 @@ export function FinalizePanel({ dinners, items, loading, loadFailed, onFinalize,
       )}
       {review > 0 && (
         <p className="hint">
-          {review === 1 ? "Eine Menge konnte" : `${review} Mengen konnten`} nicht gelesen werden. Sie wird unverändert
-          eingetragen.
+          {review === 1 ? "Eine Menge konnte" : `${review} Mengen konnten`} nicht gelesen werden (markiert mit „bitte
+          prüfen“). {review === 1 ? "Sie kommt" : "Sie kommen"} so auf die Liste, wie sie im Rezept steht.
         </p>
       )}
       {error && (

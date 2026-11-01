@@ -97,6 +97,18 @@ describe("a planning session through the use cases", () => {
     expect(await h.sessions.listAll()).toEqual([]);
   });
 
+  it("lets the proposer record that the two agreed in the room, with no phone answer", async () => {
+    const { h, s } = await started();
+    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: r1.id }));
+    const proposalId = proposed.proposals[0]!.id;
+    expect(await h.acceptProposal.execute({ member: AC, sessionId: s.id, proposalId })).toEqual({
+      ok: false,
+      reason: "own_proposal",
+    });
+    const agreed = ok(await h.agreeInPerson.execute({ member: AC, sessionId: s.id, proposalId }));
+    expect(agreed.days.find((d) => d.date === MON)).toMatchObject({ status: "planned", recipe: { id: r1.id } });
+  });
+
   it("reports an unknown session or recipe", async () => {
     const { h, s } = await started();
     expect(await h.finalizePlan.execute({ member: AC, sessionId: sessionId("nope") })).toEqual({

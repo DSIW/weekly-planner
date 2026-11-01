@@ -26,6 +26,8 @@ interface Props {
   onReopen: (date: string) => void;
   onDrop: (drop: Drop) => void;
   onWithdraw: (proposalId: string) => void;
+  /** The two agreed in the room: settles a waiting proposal without the other member answering on a phone. */
+  onAgree: (proposalId: string) => void;
   /** Goes on to the shopping list; absent on a finished plan. */
   onNext?: () => void;
   /** Why the shopping list cannot be reached yet; null when it can. */
@@ -50,6 +52,7 @@ interface RowProps {
   onLeftovers: (date: string) => void;
   onReopen: (date: string) => void;
   onWithdraw: (proposalId: string) => void;
+  onAgree: (proposalId: string) => void;
   /** Registers the row element, to measure how far the row under a dragged day has to slide. */
   rowRef: (date: string, el: HTMLElement | null) => void;
   /** Where this row slides while another day hovers over it: pixels down (negative: up), or null. */
@@ -66,6 +69,7 @@ function DayRow({
   onLeftovers,
   onReopen,
   onWithdraw,
+  onAgree,
   rowRef,
   shift,
 }: RowProps) {
@@ -101,7 +105,12 @@ function DayRow({
       <RecipeLine
         recipe={proposal.recipe}
         detail={mine ? "wartet auf Antwort" : "wartet auf deine Antwort"}
-        end={mine && small("Zurückziehen", () => onWithdraw(proposal.id))}
+        end={
+          <span className="row-actions">
+            {small("Abgesprochen", () => onAgree(proposal.id))}
+            {mine && small("Zurückziehen", () => onWithdraw(proposal.id))}
+          </span>
+        }
       />
     );
   } else {
@@ -162,6 +171,7 @@ export function PlanBoard({
   onReopen,
   onDrop,
   onWithdraw,
+  onAgree,
   onNext,
   nextBlocked = null,
   pending,
@@ -222,6 +232,7 @@ export function PlanBoard({
               onLeftovers={onLeftovers}
               onReopen={onReopen}
               onWithdraw={onWithdraw}
+              onAgree={onAgree}
               rowRef={rowRef}
               shift={shiftOf(day.date)}
             />

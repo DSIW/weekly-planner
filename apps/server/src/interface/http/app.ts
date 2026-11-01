@@ -2,6 +2,7 @@ import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import type {
   AcceptProposal,
+  AgreeInPerson,
   AddLoggedMeal,
   ConfirmCooked,
   CorrectLoggedMeal,
@@ -67,6 +68,7 @@ interface AppOptions {
   readonly listEligibleRecipes: Pick<ListEligibleRecipes, "execute">;
   readonly proposeRecipe: Pick<ProposeRecipe, "execute">;
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
+  readonly agreeInPerson: Pick<AgreeInPerson, "execute">;
   readonly vetoProposal: Pick<VetoProposal, "execute">;
   readonly withdrawProposal: Pick<WithdrawProposal, "execute">;
   readonly refreshRecipes: Pick<RefreshRecipes, "execute">;
@@ -465,6 +467,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
 
   for (const [verb, useCase] of [
     ["accept", options.acceptProposal],
+    ["agree", options.agreeInPerson],
     ["veto", options.vetoProposal],
     ["withdraw", options.withdrawProposal],
   ] as const) {

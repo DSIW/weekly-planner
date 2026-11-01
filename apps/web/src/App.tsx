@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import {
   acceptProposal,
+  agreeInPerson,
   closeSession,
   fetchCurrentSession,
   fetchFinalizePreview,
@@ -307,6 +308,12 @@ function Planning({ meId }: { meId: string }) {
     onSettled: refetch,
   });
   const close = useMutation({ mutationFn: closeSession, onSettled: refetch });
+  const agree = useMutation({
+    mutationFn: ({ sessionId, proposalId }: { sessionId: string; proposalId: string }) =>
+      agreeInPerson(sessionId, proposalId),
+    onSuccess: apply,
+    onSettled: refetch,
+  });
   const withdraw = useMutation({
     mutationFn: ({ sessionId, proposalId }: { sessionId: string; proposalId: string }) =>
       withdrawProposal(sessionId, proposalId),
@@ -355,9 +362,12 @@ function Planning({ meId }: { meId: string }) {
               onReopen={(date) => shape.mutate({ sessionId: session.id, kind: "reopen", date })}
               onDrop={(drop) => shape.mutate({ sessionId: session.id, ...drop })}
               onWithdraw={(proposalId) => withdraw.mutate({ sessionId: session.id, proposalId })}
+              onAgree={(proposalId) => agree.mutate({ sessionId: session.id, proposalId })}
               {...(open ? { onNext: () => setStep("list"), nextBlocked: blockedReason(session) } : {})}
-              pending={close.isPending || shape.isPending || withdraw.isPending}
-              error={close.isError ? SESSION_MESSAGES.unavailable : messageFor(shape.error ?? withdraw.error)}
+              pending={close.isPending || shape.isPending || withdraw.isPending || agree.isPending}
+              error={
+                close.isError ? SESSION_MESSAGES.unavailable : messageFor(shape.error ?? withdraw.error ?? agree.error)
+              }
             >
               {open && <Proposing session={session} meId={meId} refetch={refetch} apply={apply} />}
             </PlanBoard>

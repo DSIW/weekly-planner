@@ -9,6 +9,7 @@ const RECIPES = `GET ${api}/sessions/s1/recipes`;
 const PROPOSE = `POST ${api}/sessions/s1/proposals`;
 const ACCEPT = `POST ${api}/sessions/s1/proposals/p1/accept`;
 const VETO = `POST ${api}/sessions/s1/proposals/p1/veto`;
+const AGREE = `POST ${api}/sessions/s1/proposals/p1/agree`;
 const WITHDRAW = `POST ${api}/sessions/s1/proposals/p1/withdraw`;
 const REFRESH = `POST ${api}/recipes/refresh`;
 const DECK = `GET ${api}/sessions/s1/deck`;
@@ -202,6 +203,23 @@ describe("choosing a dinner for the next open day", () => {
     await waitFor(() => expect(calls.some((c) => c.key === WITHDRAW)).toBe(true));
     expect(await screen.findByText(/Keine Vorschläge mehr/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Zurückziehen" })).not.toBeInTheDocument();
+  });
+
+  it('lets a member settle a waiting dish with "Abgesprochen" when the two agreed in the room', async () => {
+    let current = session({ proposals: [proposal()] });
+    const calls = server({
+      ...as(max),
+      [CURRENT]: () => ({ status: 200, body: { session: current } }),
+      [DECK]: { status: 200, body: { date: "2026-11-02", cards: [] } },
+      [AGREE]: () => {
+        current = session({ proposals: [proposal("accepted")] });
+        return { status: 200, body: { session: current } };
+      },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Abgesprochen" }));
+    await waitFor(() => expect(calls.some((c) => c.key === AGREE)).toBe(true));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Abgesprochen" })).not.toBeInTheDocument());
   });
 
   it("does not offer to take back a proposal that is not yours", async () => {

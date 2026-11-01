@@ -573,6 +573,12 @@ li.review {
   z-index: 1;
   opacity: 0.85;
 }
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
 .handle-space {
   width: 8px;
 }

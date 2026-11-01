@@ -1,5 +1,6 @@
 import {
   AcceptProposal,
+  AgreeInPerson,
   AddLoggedMeal,
   ConfirmCooked,
   CorrectLoggedMeal,
@@ -128,6 +129,7 @@ async function main(): Promise<void> {
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, planning),
     acceptProposal: new AcceptProposal({ ...deps, calendar }, planning),
+    agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...deps, calendar }, planning)),
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
