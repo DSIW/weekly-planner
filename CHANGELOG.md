@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.10](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.9...weekly-planner-v0.1.10) (2026-11-01)
+
+
+### Features
+
+* S4b reminder push, board banner, scheduled retry of refused exports ([1bf9500](https://github.com/DSIW/weekly-planner/commit/1bf95006cf1d1eee32be258393a0903e7ac306ac))
+
+
+### Bug Fixes
+
+* lint in the stale-retry test; make the export answers reachable in the spec ([b124261](https://github.com/DSIW/weekly-planner/commit/b124261a72ca2f9c47e7eb9f2e21c8995bad9baf))
+
 ## [0.1.9](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.8...weekly-planner-v0.1.9) (2026-11-01)
 
 
