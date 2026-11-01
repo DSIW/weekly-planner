@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.8](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.7...weekly-planner-v0.1.8) (2026-11-01)
+
+
+### Features
+
+* shape the plan with leftovers, reopen, swap and move (S3) ([6d5f8a5](https://github.com/DSIW/weekly-planner/commit/6d5f8a5d16fdda8622291d6996c19fc7f38ebb4a))
+
+
+### Bug Fixes
+
+* a discarded plan no longer blocks its dates ([809d049](https://github.com/DSIW/weekly-planner/commit/809d0495b16b0424b28db28e4d0ebad935605bed))
+
 ## [0.1.7](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.6...weekly-planner-v0.1.7) (2026-10-31)
 
 
