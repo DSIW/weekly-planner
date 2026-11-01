@@ -1,6 +1,7 @@
 import type { MemberId, ProposalId, SessionId } from "../shared/ids.js";
 import type { RecipeId } from "../catalog/recipe.js";
 import type { PlanDate } from "./dates.js";
+import type { ExportFailure } from "./export.js";
 
 /** One agreed dinner as announced to the shopping list when the plan is finalized. */
 export interface FinalizedDinner {
@@ -48,5 +49,11 @@ export type PlanningEvent =
   | { readonly type: "DaysSwapped"; readonly sessionId: SessionId; readonly dates: readonly [PlanDate, PlanDate] }
   | { readonly type: "DayMoved"; readonly sessionId: SessionId; readonly from: PlanDate; readonly to: PlanDate }
   | { readonly type: "PlanFinalized"; readonly sessionId: SessionId; readonly dinners: readonly FinalizedDinner[] }
+  | {
+      readonly type: "ExportProgressed";
+      readonly sessionId: SessionId;
+      readonly complete: boolean;
+      readonly failure: ExportFailure | null;
+    }
   | { readonly type: "FinalizeReminderDue"; readonly sessionId: SessionId }
   | { readonly type: "SessionClosed"; readonly sessionId: SessionId };

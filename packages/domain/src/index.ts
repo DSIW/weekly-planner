@@ -7,6 +7,8 @@ export * from "./planning/dates.js";
 export * from "./planning/eligibility.js";
 export * from "./planning/events.js";
 export * from "./planning/session.js";
+export * from "./planning/shopping.js";
+export * from "./planning/export.js";
 export * from "./planning/suggestions.js";
 export * from "./planning/invariants.js";
 export * from "./meal-log/meal-log.js";
