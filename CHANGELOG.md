@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.12](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.11...weekly-planner-v0.1.12) (2026-11-01)
+
+
+### Features
+
+* S5 meal log, several proposals at once, taken dates refused at start, bell icon ([a6da036](https://github.com/DSIW/weekly-planner/commit/a6da036241f081c998a02704c93660c0cb590ab4))
+
 ## [0.1.11](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.10...weekly-planner-v0.1.11) (2026-11-01)
 
 
