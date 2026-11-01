@@ -36,7 +36,7 @@ import { SwipeDeck } from "./SwipeDeck";
 const SESSION_MESSAGES: Record<SessionError, string> = {
   session_already_open: "Es läuft schon eine Planung. Sie ist jetzt zu sehen.",
   session_not_open: "Die Planung wurde beendet.",
-  proposal_already_pending: "Der andere hat gerade etwas vorgeschlagen. Du kannst darüber entscheiden.",
+  proposal_already_pending: "Es läuft gerade eine Abstimmung. Entscheidet erst darüber.",
   proposal_not_pending: "Darüber ist schon entschieden.",
   not_next_open_day: "Es ist schon ein anderer Tag dran.",
   too_long_for_weekday: "Das Rezept ist für einen Wochentag zu lang.",

@@ -75,6 +75,14 @@ describe("day operations while a proposal is pending", () => {
     expect(markLeftoverDay(decided, { member: ME, date: TUE }).ok).toBe(true);
   });
 
+  it("a discarded session no longer holds its dates (OneDinnerPerDay)", () => {
+    const first = plan(aSession([MON, TUE]), MON, aRecipe());
+    const other = { ...plan(aSession([MON, TUE]), MON, aRecipe()), id: sessionId("other") };
+    expect(invariantViolations([first, other]).some((v) => v.startsWith("OneDinnerPerDay"))).toBe(true);
+    const closed = must(closeSession(first, { member: AC })).state;
+    expect(invariantViolations([closed, other])).toEqual([]);
+  });
+
   it("invariantViolations reports a second pending proposal", () => {
     const { session } = voting();
     const pending = session.proposals.find((p) => p.status === "pending");

@@ -159,7 +159,7 @@ describe("migrations", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     expect(fresh(path).db.prepare("pragma user_version").get()).toEqual(version);
-    expect(version).toEqual({ user_version: 2 });
+    expect(version).toEqual({ user_version: 3 });
   });
 });
 
@@ -188,6 +188,17 @@ describe("SqliteDinnerCalendar and one dinner per date", () => {
     expect(await calendar.isDateTaken(MON, sessionId("s2"))).toBe(true);
     expect(await calendar.isDateTaken(MON, first.id)).toBe(false);
     expect(await calendar.isDateTaken(TUE, sessionId("s2"))).toBe(false);
+  });
+
+  it("does not count a discarded session's planned dates, in the calendar or in the database", async () => {
+    const { db, sessions } = fresh();
+    const calendar = new SqliteDinnerCalendar(db);
+    const first = { ...planned(aSession("s1"), MON), status: "open" as const };
+    await sessions.save(first);
+    expect(await calendar.isDateTaken(MON, sessionId("s2"))).toBe(true);
+    await sessions.save({ ...first, status: "closed" });
+    expect(await calendar.isDateTaken(MON, sessionId("s2"))).toBe(false);
+    await expect(sessions.save(planned(aSession("s2"), MON))).resolves.toBeUndefined();
   });
 
   it("refuses a second planned dinner on one date even if a caller forgot to ask", async () => {

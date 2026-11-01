@@ -193,8 +193,11 @@ rule ProposeRecipe {
     requires: day.session.status = open
     requires: day.status = open
     requires: day = day.session.next_open_day
-    -- One pending proposal per day: if both members propose at the same time,
-    -- the first one wins and the other member votes on it or waits.
+    -- One pending proposal at a time: if both members propose at the same
+    -- time, the first one wins and the other member votes on it or waits.
+    -- The guard is per day; together with requiring the next open day and
+    -- the day operations refusing while a vote runs, this keeps
+    -- OnePendingProposalPerSession.
     requires: day.pending_proposals.count = 0
     requires: recipe.meal_type = main
     requires: recipe not in day.session.vetoed_recipes
@@ -425,11 +428,12 @@ invariant NoDessertForDinner {
         day.status = planned implies day.recipe.meal_type = main
 }
 
--- The household cooks once a day.
+-- The household cooks once a day. A discarded session no longer holds its dates.
 invariant OneDinnerPerDay {
     for a in PlanDays:
         for b in PlanDays:
             a != b and a.date = b.date and a.status = planned
+                and a.session.status != closed and b.session.status != closed
                 implies b.status != planned
 }
 
@@ -547,6 +551,6 @@ surface PlanningBoard {
 -- Open Questions
 ------------------------------------------------------------
 open question "LogPlannedMeal fires on every evaluation once a planned day is a day old. After MarkNotCooked removes the entry, nothing in the rules stops the entry from being created again; the implementation remembers which planned dates were logged (MealLogRepository.loggedPlanDates). Should the spec carry that guard?"
-open question "Abandoned sessions: AbandonSession closes a session that was never finalized, yet LogPlannedMeal accepts closed sessions, so its agreed days still become meal-log entries, and its planned days keep their dates taken under OneDinnerPerDay. Should an abandoned session's days be logged and keep blocking their dates? The suggestion ranking (base variety and the recent window) counts planned days of every other session today, abandoned ones included; should it?"
+open question "Abandoned sessions: AbandonSession closes a session that was never finalized, yet LogPlannedMeal accepts closed sessions, so its agreed days still become meal-log entries, and (its dates are free again for planning since S3). Should an abandoned session's days be logged? CloseFinalizedSession also closes, so a finalized plan's dates would be freed as well: decide in S4 whether to keep them blocked. The suggestion ranking (base variety and the recent window) counts planned days of every other session today, abandoned ones included; should it?"
 open question "Current session: the PlanningBoard shows sessions that are open or finalized, and StartSession now only needs no other open session, so a finalized session and a new open one can exist together. Which one does the board show, and how does a member close the finalized one? (The planner shows the open session only; nothing can be finalized before S4.)"
 open question "StartSession accepts any dates, including past dates and dates another finalized or abandoned session already planned; OneDinnerPerDay only fails later at AcceptProposal. Should StartSession refuse such dates up front?"

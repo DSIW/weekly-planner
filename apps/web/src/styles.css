@@ -182,7 +182,11 @@ fieldset.chips {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-.deck-card {
+.swipeable {
+  position: relative;
+}
+.deck-card,
+.proposal-card {
   display: grid;
   gap: 8px;
   padding: 12px;
@@ -191,7 +195,37 @@ fieldset.chips {
   background: var(--surface);
   touch-action: pan-y;
   user-select: none;
+}
+.swipeable {
   cursor: grab;
+}
+.swipeable.will-right {
+  border-color: var(--primary);
+}
+.swipeable.will-left {
+  border-color: var(--error);
+}
+.stamp {
+  position: absolute;
+  top: 14px;
+  padding: 4px 12px;
+  border: 3px solid;
+  border-radius: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: var(--surface);
+  pointer-events: none;
+  z-index: 1;
+}
+.stamp-right {
+  left: 14px;
+  color: var(--primary);
+  transform: rotate(-8deg);
+}
+.stamp-left {
+  right: 14px;
+  color: var(--error);
+  transform: rotate(8deg);
 }
 .deck-card h3 {
   margin: 0;

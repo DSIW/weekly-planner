@@ -23,7 +23,8 @@ export function invariantViolations(
   }
   for (const [i, a] of planned.entries()) {
     for (const b of planned.slice(i + 1)) {
-      if (a.date === b.date) out.push(`OneDinnerPerDay: ${a.date} is planned twice`);
+      const live = a.session.status !== "closed" && b.session.status !== "closed";
+      if (live && a.date === b.date) out.push(`OneDinnerPerDay: ${a.date} is planned twice`);
       if (a.session.id === b.session.id && a.recipe.id === b.recipe.id) {
         out.push(`NoRecipeTwiceInSession: recipe ${a.recipe.id} is planned twice in session ${a.session.id}`);
       }

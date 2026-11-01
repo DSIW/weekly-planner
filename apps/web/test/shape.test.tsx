@@ -76,7 +76,7 @@ describe("shaping the plan on the board", () => {
     });
     renderApp();
     await userEvent.click((await screen.findAllByRole("listitem"))[0]!.querySelector("button.small")!);
-    expect(await screen.findByRole("alert")).toHaveTextContent("vorgeschlagen");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Abstimmung");
   });
 
   it("says so when reopening fails for any other reason", async () => {

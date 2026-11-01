@@ -158,6 +158,25 @@ describe("the swipe deck", () => {
     await waitFor(() => expect(calls.some((c) => c.key === PASS)).toBe(true));
   });
 
+  it("shows what the swipe would do while the card is dragged, and nothing at rest", async () => {
+    server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")) });
+    renderApp();
+    const el = await screen.findByRole("article", { name: "Pasta" });
+    expect(el.querySelector(".stamp")).toBeNull();
+    const at = (type: string, x: number) => fireEvent(el, new MouseEvent(type, { clientX: x, bubbles: true }));
+    at("pointerdown", 200);
+    at("pointermove", 300);
+    expect(el.querySelector(".stamp-right")).toHaveTextContent("Vorschlagen");
+    expect(el).toHaveClass("will-right");
+    at("pointermove", 100);
+    expect(el.querySelector(".stamp-left")).toHaveTextContent("Überspringen");
+    expect(el).toHaveClass("will-left");
+    at("pointermove", 150);
+    expect(el).not.toHaveClass("will-left"); // not far enough yet to count
+    at("pointerup", 150);
+    expect(el.querySelector(".stamp")).toBeNull();
+  });
+
   it("does nothing for a short drag", async () => {
     const calls = server({ ...signedIn, ...current, [DECK]: deckOf(card(1, "Pasta")) });
     renderApp();

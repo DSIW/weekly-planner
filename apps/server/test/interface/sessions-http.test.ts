@@ -592,6 +592,15 @@ describe("shaping the plan over HTTP", () => {
     expect((await leftovers(ac, session.id, SAT)).statusCode).toBe(200);
   });
 
+  it("frees the dates of a discarded plan: the same day can be agreed again in the next session", async () => {
+    const first = (await start(max, [MON, TUE])).json().session;
+    await agree(first.id, MON, pasta);
+    await call("POST", `/sessions/${first.id}/close`, max);
+    const next = (await start(max, [MON, TUE])).json().session;
+    const agreed = await agree(next.id, MON, pasta);
+    expect(day(agreed, MON)).toMatchObject({ status: "planned", recipe: { name: "Pasta" } });
+  });
+
   it("swaps two agreed dishes and refuses a long one on a weekday, with the reason", async () => {
     const { session } = (await start(max, [MON, SAT, SUN])).json();
     await agree(session.id, MON, pasta);

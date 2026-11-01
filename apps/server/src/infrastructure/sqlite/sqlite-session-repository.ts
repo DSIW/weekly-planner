@@ -59,10 +59,12 @@ export class SqliteSessionRepository implements SessionRepository {
         );
       this.db.prepare("delete from plan_day where session_id = ?").run(s.id);
       const insertDay = this.db.prepare(
-        "insert into plan_day (session_id, date, status, recipe_json) values (?, ?, ?, ?)",
+        "insert into plan_day (session_id, date, status, recipe_json, blocks_date) values (?, ?, ?, ?, ?)",
       );
       for (const day of s.days) {
-        insertDay.run(s.id, day.date, day.status, day.recipe ? JSON.stringify(day.recipe) : null);
+        // A discarded session no longer holds its dates.
+        const blocks = day.status === "planned" && s.status !== "closed" ? 1 : 0;
+        insertDay.run(s.id, day.date, day.status, day.recipe ? JSON.stringify(day.recipe) : null, blocks);
       }
       if (own) this.db.exec("commit");
     } catch (error) {

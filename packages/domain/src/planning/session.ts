@@ -58,9 +58,10 @@ export const openDays = (s: PlanningSession): PlanDay[] => s.days.filter((d) => 
 
 export const plannedDays = (s: PlanningSession): PlanDay[] => s.days.filter((d) => d.status === "planned");
 
-/** The day the deck is currently filling: the earliest day that is still open. */
+/** A vote is running somewhere in the session (OnePendingProposalPerSession: at most one). */
 export const hasPendingProposal = (s: PlanningSession): boolean => s.proposals.some((p) => p.status === "pending");
 
+/** The day the deck is currently filling: the earliest day that is still open. */
 export const nextOpenDay = (s: PlanningSession): PlanDay | undefined => openDays(s)[0];
 
 const plannedRecipeIds = (s: PlanningSession): Set<RecipeId> =>

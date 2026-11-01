@@ -31,6 +31,15 @@ const MIGRATIONS: readonly string[] = [
   `
   create unique index one_dinner_per_date on plan_day (date) where status = 'planned';
   `,
+  // 3: a discarded (closed) session no longer holds its dates. First real use: an agreed day of a plan that was
+  // thrown away blocked accepting a dinner on that date.
+  `
+  alter table plan_day add column blocks_date integer not null default 0;
+  update plan_day set blocks_date = 1
+    where status = 'planned' and session_id in (select id from planning_session where status != 'closed');
+  drop index one_dinner_per_date;
+  create unique index one_dinner_per_date on plan_day (date) where blocks_date = 1;
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

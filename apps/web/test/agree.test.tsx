@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, renderApp, server } from "./helpers";
@@ -190,6 +190,43 @@ describe("deciding on the other member's proposal", () => {
     const days = screen.getAllByRole("listitem");
     expect(days[0]).toHaveTextContent(/2\.11\..*Pasta/);
     expect(calls.some((c) => c.key === ACCEPT)).toBe(true);
+  });
+
+  it("accepts on a swipe to the right and vetoes on a swipe to the left, and says what each does", async () => {
+    const calls = server({
+      ...as(max),
+      [CURRENT]: pendingFromAc,
+      [ACCEPT]: pendingFromAc,
+      [VETO]: pendingFromAc,
+    });
+    renderApp();
+    const el = await screen.findByRole("article", { name: "Pasta" });
+    const at = (type: string, x: number) => fireEvent(el, new MouseEvent(type, { clientX: x, bubbles: true }));
+    at("pointerdown", 200);
+    at("pointermove", 320);
+    expect(el.querySelector(".stamp-right")).toHaveTextContent("Passt");
+    at("pointerup", 320);
+    await waitFor(() => expect(calls.some((c) => c.key === ACCEPT)).toBe(true));
+    at("pointerdown", 200);
+    at("pointermove", 80);
+    expect(el.querySelector(".stamp-left")).toHaveTextContent("Nein");
+    at("pointerup", 80);
+    await waitFor(() => expect(calls.some((c) => c.key === VETO)).toBe(true));
+  });
+
+  it("does not let the proposer swipe on their own proposal", async () => {
+    const calls = server({
+      ...as(max),
+      [CURRENT]: { status: 200, body: { session: session({ proposals: [proposal("pending", "2")] }) } },
+    });
+    renderApp();
+    const el = await screen.findByText("Pasta");
+    fireEvent(el, new MouseEvent("pointerdown", { clientX: 200, bubbles: true }));
+    fireEvent(el, new MouseEvent("pointermove", { clientX: 400, bubbles: true }));
+    fireEvent(el, new MouseEvent("pointerup", { clientX: 400, bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(calls.some((c) => c.key === ACCEPT || c.key === VETO)).toBe(false);
+    expect(document.querySelector(".stamp")).toBeNull();
   });
 
   it("shows the plan-ahead hint on a proposal too, so the member who decides knows", async () => {
