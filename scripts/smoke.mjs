@@ -325,7 +325,8 @@ try {
     assert.deepEqual(names(list), ["Curry", "Linsensuppe", "Pasta", "Risotto"]);
     // A search finds the rest too, each with what is against it.
     assert.ok(Array.isArray(list.others) && Array.isArray(list.unavailable));
-    for (const other of list.others) assert.ok(other.hindrances.length > 0, `${other.name} is only listed with a reason`);
+    for (const other of list.others)
+      assert.ok(other.hindrances.length > 0, `${other.name} is only listed with a reason`);
   });
 
   await step("the deck is ranked, and the same for both members on every request", async () => {
