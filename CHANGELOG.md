@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.20](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.19...weekly-planner-v0.1.20) (2026-11-02)
+
+
+### Features
+
+* **import:** title picture, editable tags with household emojis, time field, clean source links ([e6d8321](https://github.com/DSIW/weekly-planner/commit/e6d832154d65d43af9098243546052108c02a013))
+
 ## [0.1.19](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.18...weekly-planner-v0.1.19) (2026-11-01)
 
 
