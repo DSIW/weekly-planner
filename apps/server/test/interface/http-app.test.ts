@@ -10,6 +10,8 @@ import type {
   ImageShelf,
   MatchIngredients,
   MatchTags,
+  ResetFinalizedDay,
+  SuggestNames,
 } from "@weekly-planner/application";
 import { buildApp } from "../../src/interface/http/app.js";
 import { decodeSession, encodeSession } from "../../src/interface/http/session-cookie.js";
@@ -38,6 +40,7 @@ const noSessions = {
   createImportedRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   matchIngredients: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   matchTags: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  suggestNames: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   vetoProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   withdrawProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   refreshRecipes: { execute: async () => {} },
@@ -63,6 +66,7 @@ const noSessions = {
   pushPublicKey: "unused",
   markLeftoverDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   reopenDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  resetFinalizedDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   swapPlannedDays: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   movePlannedDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   planAheadMinutes: 360,
@@ -92,6 +96,8 @@ const app = (
     createImportedRecipe?: Pick<CreateImportedRecipe, "execute">;
     matchIngredients?: Pick<MatchIngredients, "execute">;
     matchTags?: Pick<MatchTags, "execute">;
+    resetFinalizedDay?: Pick<ResetFinalizedDay, "execute">;
+    suggestNames?: Pick<SuggestNames, "execute">;
     draftImages?: ImageShelf;
   } = {},
 ) =>
@@ -504,5 +510,65 @@ describe("the picture of a draft", () => {
     expect((await get("f".repeat(32))).statusCode).toBe(404);
     expect((await get("..%2Fsecret")).statusCode).toBe(404);
     expect((await get(token, {})).statusCode).toBe(404);
+  });
+});
+
+describe("giving up a finalized dinner", () => {
+  const post = async (path: string, use: Pick<ResetFinalizedDay, "execute">, signedIn = true) => {
+    const a = await app({ resetFinalizedDay: use });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: `/plan/api/sessions/${path}`, cookies });
+  };
+  const done: Pick<ResetFinalizedDay, "execute"> = { execute: async () => ({ ok: true, value: true }) };
+
+  it("resets the day for a signed-in member, passing the session and the date on", async () => {
+    const seen: unknown[] = [];
+    const res = await post("s1/days/2026-11-04/reset", {
+      execute: async (cmd) => {
+        seen.push(cmd);
+        return { ok: true, value: true };
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ reset: true });
+    expect(seen).toEqual([{ sessionId: "s1", date: "2026-11-04" }]);
+  });
+
+  it("needs a member, and a real date", async () => {
+    expect((await post("s1/days/2026-11-04/reset", done, false)).statusCode).toBe(401);
+    expect((await post("s1/days/soon/reset", done)).statusCode).toBe(400);
+  });
+
+  it.each([
+    ["day_passed", 409],
+    ["already_released", 409],
+    ["kitchenowl_unavailable", 502],
+    ["unknown_session", 404],
+  ])("answers %s with %i", async (reason, status) => {
+    const res = await post("s1/days/2026-11-04/reset", { execute: async () => ({ ok: false, reason }) });
+    expect(res.statusCode).toBe(status);
+    expect(res.json()).toEqual({ error: reason });
+  });
+});
+
+describe("suggesting names while typing", () => {
+  const post = async (payload: unknown, signedIn = true) => {
+    const a = await app({
+      suggestNames: {
+        execute: async ({ kind, query }) => ({ ok: true, value: [{ name: `${kind}:${query}`, icon: "carrot" }] }),
+      },
+    });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: "/plan/api/import/suggest", payload: payload as object, cookies });
+  };
+
+  it("answers for a member, and refuses anything else", async () => {
+    expect((await post({ kind: "item", query: "ka" })).json()).toEqual({
+      names: [{ name: "item:ka", icon: "carrot" }],
+    });
+    expect((await post({ kind: "tag", query: "" })).statusCode).toBe(200);
+    expect((await post({ kind: "item", query: "ka" }, false)).statusCode).toBe(401);
+    for (const bad of [{}, { kind: "recipe", query: "x" }, { kind: "item" }, { kind: "item", query: "x".repeat(201) }])
+      expect((await post(bad)).statusCode).toBe(400);
   });
 });

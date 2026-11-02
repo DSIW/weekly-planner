@@ -6,6 +6,7 @@ import {
   ExtractorNotConfigured,
   MatchIngredients,
   MatchTags,
+  SuggestNames,
   type DraftImage,
   type ImageShelf,
   type RecipeExtractor,
@@ -313,5 +314,41 @@ describe("the title picture", () => {
     expect(uploaded[0]).toEqual(picture);
     const gone = await create.execute({ member: ME, draft: { ...shown.value, imageToken: "f".repeat(32) } });
     expect(gone.ok && gone.value.photoAttached).toBe(false);
+  });
+});
+
+describe("SuggestNames", () => {
+  const vocab: Vocabulary = {
+    items: ["Karotte", "Karotten", "Zwiebel"],
+    icons: { Karotten: "carrot" },
+    tags: ["🌶️ Scharf"],
+  };
+  const suggest = () => new SuggestNames({ writer: { vocabulary: async () => vocab } });
+
+  it("offers the household's items with their icons, or its tags with their emoji", async () => {
+    expect((await suggest().execute({ kind: "item", query: "karo" })).ok && true).toBe(true);
+    expect(await suggest().execute({ kind: "item", query: "karo" })).toEqual({
+      ok: true,
+      value: [{ name: "Karotten", icon: "carrot" }],
+    });
+    expect(await suggest().execute({ kind: "tag", query: "scha" })).toEqual({
+      ok: true,
+      value: [{ name: "🌶️ Scharf" }],
+    });
+    expect(await suggest().execute({ kind: "item", query: "<b>zwi</b>" })).toEqual({
+      ok: true,
+      value: [{ name: "Zwiebel" }],
+    });
+  });
+
+  it("offers nothing when KitchenOwl cannot be read", async () => {
+    const down = new SuggestNames({
+      writer: {
+        vocabulary: async () => {
+          throw new Error("down");
+        },
+      },
+    });
+    expect(await down.execute({ kind: "item", query: "a" })).toEqual({ ok: false, reason: "kitchenowl_unavailable" });
   });
 });

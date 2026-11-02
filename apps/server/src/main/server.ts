@@ -3,6 +3,7 @@ import {
   CreateImportedRecipe,
   MatchIngredients,
   MatchTags,
+  SuggestNames,
   DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
@@ -12,6 +13,7 @@ import {
   ListRecipes,
   ListTakenDates,
   ReleaseRemovedDinners,
+  ResetFinalizedDay,
   LogPlannedMeals,
   MarkNotCooked,
   RemoveLoggedMeal,
@@ -95,9 +97,10 @@ async function main(): Promise<void> {
   const catalog = new CachedRecipeCatalog(new KitchenOwlRecipeCatalog(client), RECIPE_CACHE_MS);
   const calendar = new SqliteDinnerCalendar(db);
   const exports = new SqliteExportRepository(db);
+  const plannerGateway = new KitchenOwlPlannerGateway(client, config.shoppingListId);
   const exporter = new ExportFinalizedPlan({
     exports,
-    planner: new KitchenOwlPlannerGateway(client, config.shoppingListId),
+    planner: plannerGateway,
     events: hub,
     uow: deps.uow,
   });
@@ -134,6 +137,7 @@ async function main(): Promise<void> {
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
     getCurrentSession: new GetCurrentSession({ sessions, exports }),
     startSession: new StartSession({ ...deps, ids, clock, calendar }, planning),
+    resetFinalizedDay: new ResetFinalizedDay({ ...deps, exports, planner: plannerGateway, clock }),
     listTakenDates: new ListTakenDates({ calendar, clock, release, planner: new KitchenOwlPlannerView(client) }),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
@@ -147,6 +151,7 @@ async function main(): Promise<void> {
     createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter, shelf: draftImages }),
     matchIngredients: new MatchIngredients({ writer: recipeWriter }),
     matchTags: new MatchTags({ writer: recipeWriter }),
+    suggestNames: new SuggestNames({ writer: recipeWriter }),
     draftImages,
     acceptProposal: new AcceptProposal({ ...deps, calendar }, planning),
     agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...deps, calendar }, planning)),

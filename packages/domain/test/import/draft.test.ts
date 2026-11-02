@@ -6,6 +6,8 @@ import {
   IMPORT_LIMITS,
   itemMatcher,
   reviewDraft,
+  suggestItems,
+  suggestTags,
   tagMatcher,
 } from "../../src/index.js";
 
@@ -299,5 +301,38 @@ describe("the title picture", () => {
     expect(draftOf({ imageToken: token }).imageToken).toBe(token);
     expect(draftOf({ imageToken: "https://evil.example/x.png" }).imageToken).toBeUndefined();
     expect(draftOf({ imageToken: 5 }).imageToken).toBeUndefined();
+  });
+});
+
+describe("suggestions while typing", () => {
+  const vocab = {
+    items: ["Karotte", "Karotten", "Karottensaft", "Zwiebel", "Rote Zwiebel", "Knoblauch", "Möhre"],
+    icons: { Karotten: "carrot", Zwiebel: "onion" },
+    tags: [],
+  };
+
+  it("offers names that start with the text first, then those that contain it, the item with an icon for a plural pair", () => {
+    expect(suggestItems(vocab, "zwie").map((i) => i.name)).toEqual(["Zwiebel", "Rote Zwiebel"]);
+    expect(suggestItems(vocab, "karo")).toEqual([{ name: "Karotten", icon: "carrot" }, { name: "Karottensaft" }]);
+  });
+
+  it("ignores case, umlaut spelling and spaces, and offers nothing for nothing", () => {
+    expect(suggestItems(vocab, "  MOEHR ").map((i) => i.name)).toEqual(["Möhre"]);
+    expect(suggestItems(vocab, "")).toEqual([]);
+    expect(suggestItems(vocab, "xyz")).toEqual([]);
+  });
+
+  it("stops at the limit", () => {
+    const many = { items: Array.from({ length: 30 }, (_, i) => `Zutat ${i}`), tags: [] };
+    expect(suggestItems(many, "zutat")).toHaveLength(8);
+    expect(suggestItems(many, "zutat", 3)).toHaveLength(3);
+  });
+
+  it("offers tags by their letters, whatever the emoji, the ones that start with the text first", () => {
+    const tags = ["🌶️ Scharf", "🍲 Suppe", "🥣 Cremesuppe", "🔥 Grillen"];
+    expect(suggestTags(tags, "supp")).toEqual(["🍲 Suppe", "🥣 Cremesuppe"]);
+    expect(suggestTags(tags, "🌶 sch")).toEqual(["🌶️ Scharf"]);
+    expect(suggestTags(tags, "")).toEqual([]);
+    expect(suggestTags(tags, "pizza")).toEqual([]);
   });
 });

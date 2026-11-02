@@ -742,6 +742,12 @@ try {
       ],
       "a tag a member writes finds the household's spelling, emoji included",
     );
+    const offered = await (await call("/import/suggest", { kind: "item", query: "karo" })).json();
+    assert.deepEqual(
+      offered.names.map((n) => [n.name, n.icon ?? null]),
+      [["Karotten", "carrot"]],
+      "typing offers the household's own item, once, with its icon",
+    );
     const missing = await realFetch(`${origin()}/plan/api/import/image/${"f".repeat(32)}`, { headers: { cookie } });
     assert.equal(missing.status, 404, "no picture, nothing served");
     assert.equal(draft.visibility, undefined, "whatever else the model said is dropped");

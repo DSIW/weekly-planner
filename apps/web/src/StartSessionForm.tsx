@@ -14,6 +14,10 @@ interface Props {
   error: string | null;
   /** Dates that already hold a planned dinner: they are shown with that dinner but cannot be picked. */
   takenDates?: TakenDate[];
+  /** Gives up a dinner of the planner's own plan; absent when that is not offered. */
+  onReset?: (sessionId: string, date: string) => void;
+  resetting?: boolean;
+  resetError?: string | null;
   /** Today's date; the form offers the following days. Injected for tests. */
   today?: Date;
 }
@@ -29,9 +33,20 @@ function PlannedName({ taken }: { taken: TakenDate }) {
   );
 }
 
-export function StartSessionForm({ onStart, pending, error, takenDates = [], today }: Props) {
+export function StartSessionForm({
+  onStart,
+  pending,
+  error,
+  takenDates = [],
+  onReset,
+  resetting = false,
+  resetError = null,
+  today,
+}: Props) {
   const links = useLinks();
   const [picked, setPicked] = useState<string[]>([]);
+  // The day whose reset awaits a second tap: giving up a dinner takes it off KitchenOwl's planner.
+  const [asking, setAsking] = useState<string | null>(null);
   const toggle = (date: string) =>
     setPicked((now) => (now.includes(date) ? now.filter((d) => d !== date) : now.length < MAX ? [...now, date] : now));
   return (
@@ -51,9 +66,45 @@ export function StartSessionForm({ onStart, pending, error, takenDates = [], tod
                     </strong>
                   </span>
                 </span>
+                {onReset && t.sessionId !== undefined && (
+                  <span className="row-actions">
+                    {asking === t.date ? (
+                      <>
+                        <button
+                          type="button"
+                          className="secondary small"
+                          disabled={resetting}
+                          onClick={() => {
+                            onReset(t.sessionId as string, t.date);
+                            setAsking(null);
+                          }}
+                        >
+                          Ja, zurücksetzen
+                        </button>
+                        <button type="button" className="secondary small" onClick={() => setAsking(null)}>
+                          Abbrechen
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="secondary small" onClick={() => setAsking(t.date)}>
+                        Zurücksetzen
+                      </button>
+                    )}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
+          {resetError && (
+            <p role="alert" className="error">
+              {resetError}
+            </p>
+          )}
+          {onReset && (
+            <p className="muted">
+              Zurücksetzen nimmt das Essen aus dem Planer in KitchenOwl. Was schon auf der Einkaufsliste steht, bleibt.
+            </p>
+          )}
           {links && (
             <a className="link-button" href={links.list} target="_blank" rel="noopener noreferrer">
               Einkaufsliste in KitchenOwl öffnen

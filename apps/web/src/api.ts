@@ -142,6 +142,9 @@ const KNOWN_REASONS = [
   "already_confirmed",
   "no_recipe",
   "date_in_future",
+  "day_passed",
+  "already_released",
+  "kitchenowl_unavailable",
 ] as const;
 export type SessionError = (typeof KNOWN_REASONS)[number] | "unavailable";
 
@@ -203,6 +206,8 @@ export interface TakenDate {
   date: string;
   recipeName: string;
   recipeId?: number;
+  /** The plan that holds it; absent for a dinner somebody chose in KitchenOwl itself. */
+  sessionId?: string;
 }
 
 /** The dates from today on that already hold a planned dinner, in a plan that is still counted. */
@@ -211,6 +216,11 @@ export async function fetchPlannedDates(): Promise<TakenDate[]> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return ((await res.json()) as { dates: TakenDate[] }).dates;
 }
+
+/** Gives up a finalized dinner: it comes off KitchenOwl's planner and its date is free again. */
+export const resetDay = async (sessionId: string, date: string): Promise<void> => {
+  await command<{ reset: true }>(`/sessions/${sessionId}/days/${date}/reset`);
+};
 
 export const startSession = (dates: string[]) => sessionCommand("/sessions", { dates });
 export const closeSession = (id: string) => sessionCommand(`/sessions/${id}/close`);
@@ -382,6 +392,10 @@ export const matchIngredients = async (names: string[]) =>
 export const matchTags = async (names: string[]) =>
   (await importCall<{ tags: { written: string; name: string; isKnown: boolean }[] }>("/import/match-tags", { names }))
     .tags;
+
+/** The household's items (with icon) or tags that fit the letters typed so far. */
+export const suggestNames = async (kind: "item" | "tag", query: string) =>
+  (await importCall<{ names: { name: string; icon?: string }[] }>("/import/suggest", { kind, query })).names;
 
 /** Where the draft's title picture is served (by the planner itself). */
 export const importImageUrl = (token: string) => `${base}/import/image/${token}`;

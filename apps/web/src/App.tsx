@@ -22,6 +22,7 @@ import {
   proposeRecipe,
   refreshRecipes,
   reopenDay,
+  resetDay,
   retryExport,
   SessionFailed,
   startSession,
@@ -70,6 +71,9 @@ const SESSION_MESSAGES: Record<SessionError, string> = {
   already_confirmed: "Das ist schon als gekocht bestätigt.",
   no_recipe: "Ohne Rezept lässt sich das nicht bestätigen. Wähle „Etwas anderes“.",
   date_in_future: "Eine Mahlzeit in der Zukunft lässt sich nicht eintragen.",
+  day_passed: "Dieser Tag ist schon vorbei.",
+  already_released: "Dieser Tag ist schon zurückgesetzt.",
+  kitchenowl_unavailable: "KitchenOwl ist gerade nicht erreichbar. Es wurde nichts geändert.",
   unavailable: "Das hat nicht geklappt. Bitte später noch einmal versuchen.",
 };
 
@@ -320,6 +324,10 @@ function Planning({ meId }: { meId: string }) {
     onSettled: refetch,
   });
   const close = useMutation({ mutationFn: closeSession, onSettled: refetch });
+  const reset = useMutation({
+    mutationFn: ({ sessionId, date }: { sessionId: string; date: string }) => resetDay(sessionId, date),
+    onSettled: refetch,
+  });
   const agree = useMutation({
     mutationFn: ({ sessionId, proposalId }: { sessionId: string; proposalId: string }) =>
       agreeInPerson(sessionId, proposalId),
@@ -411,6 +419,9 @@ function Planning({ meId }: { meId: string }) {
         pending={start.isPending}
         error={error}
         takenDates={taken.data ?? []}
+        onReset={(sessionId, date) => reset.mutate({ sessionId, date })}
+        resetting={reset.isPending}
+        resetError={messageFor(reset.error)}
       />
     </>
   );

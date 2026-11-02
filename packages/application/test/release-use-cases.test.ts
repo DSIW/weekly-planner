@@ -168,3 +168,66 @@ describe("naming a meal for a day", () => {
     expect((await h.listRecipes.execute()).map((r) => r.id)).toEqual([r1.id]);
   });
 });
+
+describe("ResetFinalizedDay", () => {
+  it("takes the dinner off KitchenOwl's planner and frees its date, leaving the shopping list alone", async () => {
+    const { h, id } = await exportedOnWed();
+    h.events.published.length = 0;
+    const sent = h.planner.batches.length;
+    expect(await h.resetFinalizedDay.execute({ sessionId: id, date: WED })).toEqual({ ok: true, value: true });
+    expect(h.planner.removed).toEqual([{ recipeId: r1.id, date: WED }]);
+    expect(day(h, id, WED).removedInPlanner).toBe(true);
+    expect(h.events.published).toEqual([{ type: "DinnerReleased", sessionId: id, date: WED }]);
+    expect(h.planner.batches).toHaveLength(sent); // what was sent stays sent
+    h.plannerView.dates = new Set();
+    expect(await h.listTakenDates.execute()).toEqual([]);
+  });
+
+  it("changes nothing here when KitchenOwl cannot take the dinner off", async () => {
+    const { h, id } = await exportedOnWed();
+    h.planner.failures.push(new Error("down"));
+    expect(await h.resetFinalizedDay.execute({ sessionId: id, date: WED })).toEqual({
+      ok: false,
+      reason: "kitchenowl_unavailable",
+    });
+    expect(day(h, id, WED).removedInPlanner).toBeUndefined();
+  });
+
+  it("refuses a day that is not a finalized dinner on the planner, one already given up, and one that is over", async () => {
+    const { h, id } = await exportedOnWed();
+    expect(await h.resetFinalizedDay.execute({ sessionId: id, date: SUN })).toMatchObject({ ok: false });
+    expect(await h.resetFinalizedDay.execute({ sessionId: id, date: planDate("2026-12-01") })).toMatchObject({
+      ok: false,
+      reason: "day_not_planned",
+    });
+    expect(await h.resetFinalizedDay.execute({ sessionId: "nope" as never, date: WED })).toEqual({
+      ok: false,
+      reason: "unknown_session",
+    });
+    h.clock.date = planDate("2026-11-05");
+    expect(await h.resetFinalizedDay.execute({ sessionId: id, date: WED })).toEqual({
+      ok: false,
+      reason: "day_passed",
+    });
+    h.clock.date = MON;
+    expect(await h.resetFinalizedDay.execute({ sessionId: id, date: WED })).toMatchObject({ ok: true });
+    expect(await h.resetFinalizedDay.execute({ sessionId: id, date: WED })).toEqual({
+      ok: false,
+      reason: "already_released",
+    });
+    expect(h.planner.removed).toHaveLength(1);
+  });
+
+  it("does not touch KitchenOwl for a dinner that has not been sent yet", async () => {
+    const h = household([r1]);
+    h.clock.date = MON;
+    const s = ok(await h.startSession.execute({ member: AC, dates: [WED] }));
+    const p = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: WED, recipeId: r1.id }));
+    ok(await h.acceptProposal.execute({ member: ME, sessionId: s.id, proposalId: p.proposals[0]!.id }));
+    expect(await h.resetFinalizedDay.execute({ sessionId: s.id, date: WED })).toEqual({
+      ok: false,
+      reason: "session_not_finalized",
+    });
+    expect(h.planner.removed).toEqual([]);
+  });
+});

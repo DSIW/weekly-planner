@@ -30,13 +30,24 @@ function classify(error: unknown): Error {
 /** Adapter: the writes finalizing needs, on KitchenOwl's planner and one shopping list. */
 export class KitchenOwlPlannerGateway implements PlannerGateway {
   constructor(
-    private readonly client: Pick<KitchenOwlClient, "addPlannerRecipe" | "addShoppingListRecipeItems">,
+    private readonly client: Pick<
+      KitchenOwlClient,
+      "addPlannerRecipe" | "removePlannerRecipe" | "addShoppingListRecipeItems"
+    >,
     private readonly shoppingListId: number,
   ) {}
 
   async addPlannerEntry(entry: PlannerEntry): Promise<void> {
     try {
       await this.client.addPlannerRecipe(entry.recipeId, cookingDateOf(entry.date), entry.portions);
+    } catch (error) {
+      throw classify(error);
+    }
+  }
+
+  async removePlannerEntry(entry: Pick<PlannerEntry, "recipeId" | "date">): Promise<void> {
+    try {
+      await this.client.removePlannerRecipe(entry.recipeId, cookingDateOf(entry.date));
     } catch (error) {
       throw classify(error);
     }

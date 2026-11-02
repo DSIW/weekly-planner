@@ -16,6 +16,8 @@ export interface TakenDate {
   readonly recipeName: string;
   /** For the recipe's picture; absent when the dinner is not known by recipe. */
   readonly recipeId?: number;
+  /** The plan that holds the dinner, when the planner itself planned it (one chosen in KitchenOwl has none). */
+  readonly sessionId?: string;
 }
 
 /** Port: what KitchenOwl's planner holds right now. */

@@ -315,22 +315,61 @@ describe("the rest of the review", () => {
     expect(created(calls).tags).toEqual(["🌶️ Scharf"]);
   });
 
-  it("adds a tag, with the household's emoji if it has the tag, and does not add one twice", async () => {
+  const SUGGEST = `POST ${api}/import/suggest`;
+
+  it("offers the household's tags while typing, and adds the one picked, with its emoji", async () => {
     const calls = await read({
       ...answer,
-      [MATCH_TAGS]: { status: 200, body: { tags: [{ written: "x", name: "Grillen", isKnown: false }] } },
+      [SUGGEST]: { status: 200, body: { names: [{ name: "🌶️ Scharf" }, { name: "🔥 Scharfgebraten" }] } },
+      [MATCH_TAGS]: { status: 200, body: { tags: [{ written: "🌶️ Scharf", name: "🌶️ Scharf", isKnown: true }] } },
     });
-    const field = screen.getByRole("textbox", { name: "Neuer Tag" });
-    expect(screen.getByRole("button", { name: "Hinzufügen" })).toBeDisabled();
-    await userEvent.type(field, "Grillen{Enter}");
-    await waitFor(() => expect(screen.getByRole("textbox", { name: "Tag 2" })).toHaveValue("Grillen"));
+    const field = screen.getByRole("combobox", { name: "Neuer Tag" });
+    await userEvent.type(field, "scha");
+    await screen.findByRole("option", { name: "🌶️ Scharf" });
+    const options = within(screen.getByRole("listbox")).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual([
+      "🌶️ Scharf",
+      "🔥 Scharfgebraten",
+      "„scha“ als neuen Tag hinzufügen",
+    ]);
+    expect(calls.find((c) => c.key === SUGGEST)?.body).toEqual({ kind: "tag", query: "scha" });
+    await userEvent.click(options[0]!);
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Tag 2" })).toHaveValue("🌶️ Scharf"));
     expect(field).toHaveValue("");
-    await userEvent.type(field, "grillen");
-    await userEvent.click(screen.getByRole("button", { name: "Hinzufügen" }));
-    await waitFor(() => expect(calls.filter((c) => c.key === MATCH_TAGS)).toHaveLength(2));
-    expect(screen.queryByRole("textbox", { name: "Tag 3" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     await create(calls);
-    expect(created(calls).tags).toEqual(["🍲 Suppe", "Grillen"]);
+    expect(created(calls).tags).toEqual(["🍲 Suppe", "🌶️ Scharf"]);
+  });
+
+  it("picks a suggestion with the arrow keys and Enter, and takes the typed text when none is chosen", async () => {
+    const calls = await read({
+      ...answer,
+      [SUGGEST]: { status: 200, body: { names: [{ name: "🌶️ Scharf" }] } },
+      [MATCH_TAGS]: { status: 200, body: { tags: [{ written: "x", name: "🌶️ Scharf", isKnown: true }] } },
+    });
+    const field = screen.getByRole("combobox", { name: "Neuer Tag" });
+    await userEvent.type(field, "scha");
+    await screen.findByRole("option", { name: "🌶️ Scharf" });
+    await userEvent.keyboard("{ArrowDown}{Enter}");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Tag 2" })).toHaveValue("🌶️ Scharf"));
+    await userEvent.type(field, "Grillen");
+    await screen.findByRole("option", { name: "„Grillen“ als neuen Tag hinzufügen" });
+    await userEvent.keyboard("{Enter}");
+    await waitFor(() => expect(calls.filter((c) => c.key === MATCH_TAGS)).toHaveLength(2));
+    expect(calls.filter((c) => c.key === MATCH_TAGS)[1]?.body).toEqual({ names: ["Grillen"] });
+  });
+
+  it("does not add a tag twice", async () => {
+    const calls = await read({
+      ...answer,
+      [SUGGEST]: { status: 200, body: { names: [{ name: "🍲 Suppe" }] } },
+      [MATCH_TAGS]: { status: 200, body: { tags: [{ written: "x", name: "🍲 Suppe", isKnown: true }] } },
+    });
+    await userEvent.type(screen.getByRole("combobox", { name: "Neuer Tag" }), "suppe");
+    await userEvent.click(await screen.findByRole("option", { name: "🍲 Suppe" }));
+    await waitFor(() => expect(calls.some((c) => c.key === MATCH_TAGS)).toBe(true));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByRole("textbox", { name: "Tag 2" })).not.toBeInTheDocument();
   });
 
   it("removes a tag, also by emptying its field", async () => {
@@ -345,7 +384,7 @@ describe("the rest of the review", () => {
 
   it("offers no more tags once there are twelve", async () => {
     await read(answer, { ...draft, tags: Array.from({ length: 12 }, (_, i) => `Tag ${i}`) });
-    expect(screen.queryByRole("textbox", { name: "Neuer Tag" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Neuer Tag" })).not.toBeInTheDocument();
   });
 
   const TOKEN = "0123456789abcdef0123456789abcdef";
@@ -383,5 +422,71 @@ describe("the rest of the review", () => {
     const img = screen.getByRole("img", { name: "Titelbild" });
     img.dispatchEvent(new Event("error"));
     await waitFor(() => expect(screen.queryByRole("img", { name: "Titelbild" })).not.toBeInTheDocument());
+  });
+});
+
+describe("replacing an ingredient in the review", () => {
+  const SUGGEST = `POST ${api}/import/suggest`;
+  const open = async (routes: Parameters<typeof server>[0]) => {
+    const calls = server({
+      ...base,
+      [DRAFT]: { status: 200, body: { draft } },
+      [CREATE]: { status: 201, body: { recipeId: 1, draft } },
+      ...routes,
+    });
+    await openImport();
+    await paste("Text");
+    await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
+    await screen.findByRole("heading", { name: "Rezept prüfen" });
+    return calls;
+  };
+  const found = { [SUGGEST]: { status: 200, body: { names: [{ name: "Petersilie", icon: "parsley" }] } } };
+
+  it("opens a dialog, finds one of the household's items by typing, and swaps it in, keeping the amount", async () => {
+    const calls = await open(found);
+    await userEvent.click(screen.getByRole("button", { name: "Petersilie ersetzen" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("„Petersilie“ ersetzen");
+    const field = within(dialog).getByRole("combobox", { name: "Neue Zutat" });
+    expect(field).toHaveFocus();
+    await userEvent.type(field, "peter");
+    const option = await within(dialog).findByRole("option", { name: "Petersilie" });
+    expect(calls.find((c) => c.key === SUGGEST)?.body).toEqual({ kind: "item", query: "peter" });
+    await userEvent.click(option);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const tile = within(screen.getByRole("list", { name: "Zutaten" })).getAllByRole("listitem")[1]!;
+    expect(within(tile).getByRole("textbox", { name: "Zutat 2" })).toHaveValue("Petersilie");
+    expect(tile).not.toHaveTextContent("neu");
+    expect(tile).toHaveTextContent("optional");
+  });
+
+  it("takes a name the household does not have as a new item, after looking it up once more", async () => {
+    const calls = await open({
+      [SUGGEST]: { status: 200, body: { names: [] } },
+      [MATCH]: { status: 200, body: { items: [{ written: "Bärlauch", name: "Bärlauch", isNewItem: true }] } },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Linsen ersetzen" }));
+    await userEvent.type(screen.getByRole("combobox", { name: "Neue Zutat" }), "Bärlauch");
+    await userEvent.click(await screen.findByRole("option", { name: "„Bärlauch“ als neue Zutat verwenden" }));
+    const tile = within(screen.getByRole("list", { name: "Zutaten" })).getAllByRole("listitem")[0]!;
+    expect(within(tile).getByRole("textbox", { name: "Zutat 1" })).toHaveValue("Bärlauch");
+    expect(within(tile).getByRole("textbox", { name: "Menge 1" })).toHaveValue("200 g");
+    expect(tile).toHaveTextContent("neu");
+    await waitFor(() => expect(calls.some((c) => c.key === MATCH)).toBe(true));
+  });
+
+  it("closes without a change by the button, Escape or a tap outside", async () => {
+    await open(found);
+    for (const close of [
+      () => userEvent.click(screen.getByRole("button", { name: "Abbrechen" })),
+      () => userEvent.keyboard("{Escape}"),
+      () => userEvent.click(document.querySelector(".modal-backdrop")!),
+    ]) {
+      await userEvent.click(screen.getByRole("button", { name: "Petersilie ersetzen" }));
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+      await close();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    }
+    expect(screen.getByRole("textbox", { name: "Zutat 2" })).toHaveValue("Petersilie");
   });
 });

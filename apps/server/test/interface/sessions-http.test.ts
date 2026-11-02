@@ -31,6 +31,7 @@ import {
   ProposeRecipe,
   RefreshRecipes,
   ReopenDay,
+  ResetFinalizedDay,
   RetryExport,
   SendTestNotification,
   SubscribeToPush,
@@ -132,8 +133,14 @@ const catalog: RecipeCatalog = {
 let logged: string[];
 
 /** What reaches KitchenOwl; `fail` makes the next request throw. */
-const sent: { entries: PlannerEntry[]; batches: (readonly ShoppingListItem[])[]; fail: Error[] } = {
+const sent: {
+  entries: PlannerEntry[];
+  removed: Pick<PlannerEntry, "recipeId" | "date">[];
+  batches: (readonly ShoppingListItem[])[];
+  fail: Error[];
+} = {
   entries: [],
+  removed: [],
   batches: [],
   fail: [],
 };
@@ -142,6 +149,11 @@ const planner: PlannerGateway = {
     const error = sent.fail.shift();
     if (error) throw error;
     sent.entries.push(entry);
+  },
+  async removePlannerEntry(entry) {
+    const error = sent.fail.shift();
+    if (error) throw error;
+    sent.removed.push(entry);
   },
   async addShoppingListItems(items) {
     const error = sent.fail.shift();
@@ -160,6 +172,7 @@ beforeEach(async () => {
   catalogDown = false;
   logged = [];
   sent.entries = [];
+  sent.removed = [];
   sent.batches = [];
   sent.fail = [];
   const deps = { sessions: new SqliteSessionRepository(db), events: hub, uow: new SqliteUnitOfWork(db) };
@@ -224,6 +237,7 @@ beforeEach(async () => {
     createImportedRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     matchIngredients: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     matchTags: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+    suggestNames: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
@@ -233,6 +247,7 @@ beforeEach(async () => {
     getItemIcons: new GetItemIcons(catalog),
     markLeftoverDay: new MarkLeftoverDay(deps),
     reopenDay: new ReopenDay(deps),
+    resetFinalizedDay: new ResetFinalizedDay({ ...deps, exports, planner, clock }),
     swapPlannedDays: new SwapPlannedDays(deps, defaultPlanningConfig),
     movePlannedDay: new MovePlannedDay({ ...deps, calendar }, defaultPlanningConfig),
     planAheadMinutes: defaultPlanningConfig.planAheadMinutes,
@@ -924,6 +939,32 @@ describe("finalizing over HTTP", () => {
     expect((await sessionOf(ac)).status).toBe("open");
   });
 
+  it("lets a member give up a finalized dinner: it comes off KitchenOwl's planner and its date is free", async () => {
+    const id = await planned();
+    await finalize(ac, id);
+    sent.removed.length = 0;
+    expect((await call("GET", "/planned-dates", max)).json().dates[0]).toMatchObject({ date: MON, sessionId: id });
+    const res = await call("POST", `/sessions/${id}/days/${MON}/reset`, max);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ reset: true });
+    expect(sent.removed.map((e) => [e.recipeId, e.date])).toEqual([[pasta.id, MON]]);
+    const dates = (await call("GET", "/planned-dates", max)).json().dates;
+    expect(dates.map((d: { date: string }) => d.date)).toEqual([TUE]);
+    expect((await call("POST", `/sessions/${id}/days/${MON}/reset`, max)).json()).toEqual({
+      error: "already_released",
+    });
+  });
+
+  it("keeps the dinner when KitchenOwl cannot take it off the planner", async () => {
+    const id = await planned();
+    await finalize(ac, id);
+    sent.fail.push(new Error("down"));
+    const res = await call("POST", `/sessions/${id}/days/${MON}/reset`, max);
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toEqual({ error: "kitchenowl_unavailable" });
+    expect(sent.removed).toEqual([]);
+  });
+
   it("finalizes: both phones see the finished export, and the session leaves the board", async () => {
     const id = await planned();
     const res = await finalize(ac, id);
@@ -1327,7 +1368,7 @@ describe("dates that already hold a dinner, over HTTP", () => {
   it("lists the dates of a plan that is still counted, and nothing once that plan is discarded", async () => {
     const id = await takenBy();
     expect((await call("GET", "/planned-dates", ac)).json()).toEqual({
-      dates: [{ date: FUTURE, recipeName: "Pasta", recipeId: 1 }],
+      dates: [{ date: FUTURE, recipeName: "Pasta", recipeId: 1, sessionId: id }],
     });
     await call("POST", `/sessions/${id}/close`, max);
     expect((await call("GET", "/planned-dates", ac)).json()).toEqual({ dates: [] });

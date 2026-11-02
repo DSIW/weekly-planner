@@ -3,6 +3,8 @@ import {
   IMPORT_LIMITS,
   itemMatcher,
   reviewDraft,
+  suggestItems,
+  suggestTags,
   tagMatcher,
   type MemberId,
   type RecipeDraft,
@@ -101,6 +103,31 @@ export class MatchIngredients {
           ...(found?.icon ? { icon: found.icon } : {}),
         };
       }),
+    };
+  }
+}
+
+/** What a member may mean by the letters typed so far, from the household's own items or tags. */
+export class SuggestNames {
+  constructor(private readonly deps: { writer: Pick<RecipeWriter, "vocabulary"> }) {}
+
+  async execute(cmd: {
+    kind: "item" | "tag";
+    query: string;
+  }): Promise<Result<readonly { name: string; icon?: string }[]>> {
+    let vocabulary: Awaited<ReturnType<RecipeWriter["vocabulary"]>>;
+    try {
+      vocabulary = await this.deps.writer.vocabulary();
+    } catch {
+      return { ok: false, reason: "kitchenowl_unavailable" };
+    }
+    const typed = cleanText(cmd.query, IMPORT_LIMITS.maxIngredientName);
+    return {
+      ok: true,
+      value:
+        cmd.kind === "item"
+          ? suggestItems(vocabulary, typed)
+          : suggestTags(vocabulary.tags, typed).map((name) => ({ name })),
     };
   }
 }

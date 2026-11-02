@@ -141,6 +141,19 @@ export class KitchenOwlClient {
     });
   }
 
+  /** Takes a recipe off the household planner for a day (`cookingDate` as when it was put there). */
+  async removePlannerRecipe(recipeId: number, cookingDate: number): Promise<void> {
+    const path = `/household/${this.config.householdId}/planner/recipe/${recipeId}`;
+    const res = await this.request(path, {
+      method: "DELETE",
+      token: this.config.kitchenowlToken,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cooking_date: cookingDate }),
+    });
+    if (res.status === 404) return;
+    if (!res.ok) throw new KitchenOwlError(`KitchenOwl DELETE ${path} failed with HTTP ${res.status}`, res.status);
+  }
+
   /** Adds items to a shopping list; KitchenOwl merges the description into an item that is already on the list. */
   async addShoppingListRecipeItems(
     listId: number,

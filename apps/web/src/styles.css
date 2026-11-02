@@ -1021,3 +1021,83 @@ select {
   display: grid;
   gap: 6px;
 }
+.planned-days .dinner {
+  flex-wrap: wrap;
+}
+.planned-days .row-actions {
+  margin-left: auto;
+}
+.import-tile button.import-replace {
+  right: auto;
+  left: 2px;
+}
+.suggest {
+  position: relative;
+  display: grid;
+  gap: 4px;
+}
+.suggest input {
+  width: 100%;
+  min-width: 0;
+}
+.suggest-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: var(--surface);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.suggest-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.suggest-list .item-icon {
+  font-size: 1.5rem;
+  flex: none;
+}
+.suggest-list li[aria-selected="true"] {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.suggest-list li[aria-selected="true"] .item-icon {
+  color: inherit;
+}
+.suggest-typed {
+  color: var(--muted);
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.5);
+  overflow-y: auto;
+}
+.modal {
+  width: min(420px, 100%);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 20px;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.35);
+}
+.modal h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

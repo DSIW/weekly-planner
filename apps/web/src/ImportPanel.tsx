@@ -10,6 +10,8 @@ import {
   type RecipeDraft,
 } from "./api";
 import { ItemIcon } from "./ItemIcon";
+import { ReplaceIngredient } from "./ReplaceIngredient";
+import { Suggest } from "./Suggest";
 import { useLinks } from "./Links";
 
 const MESSAGES: Record<string, string> = {
@@ -106,7 +108,8 @@ export function ImportPanel() {
   const lookup = useMutation({ mutationFn: (name: string) => matchIngredients([name]) });
   // A tag that is written or renamed is looked up too: the household may have it, with an emoji.
   const tagLookup = useMutation({ mutationFn: (name: string) => matchTags([name]) });
-  const [newTag, setNewTag] = useState("");
+  // The ingredient whose replacement is being chosen in the dialog.
+  const [replacing, setReplacing] = useState<number | null>(null);
 
   if (create.data) {
     const recipeHref = links?.recipe.replace("{id}", String(create.data.recipeId));
@@ -203,13 +206,34 @@ export function ImportPanel() {
           ),
       });
     };
-    const addTag = () => {
-      const name = newTag.trim();
+    const addTag = (typed: string) => {
+      const name = typed.trim();
       if (name === "" || draft.tags.length >= MAX_TAGS) return;
-      setNewTag("");
       tagLookup.mutate(name, {
         onSuccess: ([found]) => setTags((tags) => dedupe([...tags, found?.name ?? name])),
       });
+    };
+    const replaceIngredient = (index: number, picked: { name: string; icon?: string; typed?: boolean }) => {
+      setReplacing(null);
+      setDraft((now) =>
+        now
+          ? {
+              ...now,
+              ingredients: now.ingredients.map((x, n) => {
+                if (n !== index) return x;
+                const { icon: _old, ...rest } = x;
+                return {
+                  ...rest,
+                  name: picked.name,
+                  isNewItem: picked.typed === true,
+                  ...(picked.icon ? { icon: picked.icon } : {}),
+                };
+              }),
+            }
+          : now,
+      );
+      // A name typed out may still be one of the household's items by another spelling.
+      if (picked.typed) rename(index, picked.name);
     };
     return (
       <section className="card import-draft">
@@ -292,18 +316,13 @@ export function ImportPanel() {
           ))}
         </ul>
         {draft.tags.length < MAX_TAGS && (
-          <div className="import-add-tag">
-            <input
-              aria-label="Neuer Tag"
-              placeholder="Tag hinzufügen"
-              value={newTag}
-              onChange={(e) => setNewTag(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && addTag()}
-            />
-            <button type="button" className="secondary" disabled={newTag.trim() === ""} onClick={addTag}>
-              Hinzufügen
-            </button>
-          </div>
+          <Suggest
+            kind="tag"
+            label="Neuer Tag"
+            placeholder="Tag hinzufügen"
+            typedLabel={(text) => `„${text}“ als neuen Tag hinzufügen`}
+            onPick={(picked) => addTag(picked.name)}
+          />
         )}
         <h3>Zutaten</h3>
         <ul className="ingredient-grid" aria-label="Zutaten">
@@ -332,6 +351,14 @@ export function ImportPanel() {
                 {i.optional && <span className="badge">optional</span>}
                 <button
                   type="button"
+                  className="secondary small import-replace"
+                  aria-label={`${i.name} ersetzen`}
+                  onClick={() => setReplacing(index)}
+                >
+                  ⇄
+                </button>
+                <button
+                  type="button"
                   className="secondary small"
                   aria-label={`${i.name} entfernen`}
                   onClick={() => set({ ingredients: draft.ingredients.filter((x) => x !== i) })}
@@ -342,6 +369,13 @@ export function ImportPanel() {
             </li>
           ))}
         </ul>
+        {replacing !== null && draft.ingredients[replacing] && (
+          <ReplaceIngredient
+            name={draft.ingredients[replacing].name}
+            onPick={(picked) => replaceIngredient(replacing, picked)}
+            onClose={() => setReplacing(null)}
+          />
+        )}
         <h3>Schritte</h3>
         <ol className="import-steps" aria-label="Schritte">
           {draft.steps.map((s) => (

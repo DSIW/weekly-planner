@@ -66,6 +66,35 @@ describe("KitchenOwlPlannerGateway", () => {
     expect(cookingDateOf("2026-11-02")).toBe(1_793_620_800_000);
   });
 
+  it("takes a recipe off the planner for its day, the date in the body as it was put there", async () => {
+    const gateway = new KitchenOwlPlannerGateway(await fake(), 2);
+    await gateway.removePlannerEntry({ recipeId: recipeId(41), date: planDate("2026-11-02") });
+    expect(seen).toEqual([
+      {
+        method: "DELETE",
+        url: "/api/household/2/planner/recipe/41",
+        auth: "Bearer tok",
+        body: { cooking_date: Date.parse("2026-11-02T12:00:00Z") },
+      },
+    ]);
+  });
+
+  it("does not mind a dinner that is already off the planner, but not other refusals", async () => {
+    const gateway = new KitchenOwlPlannerGateway(await fake(), 2);
+    status = 404;
+    await expect(
+      gateway.removePlannerEntry({ recipeId: recipeId(1), date: planDate("2026-11-02") }),
+    ).resolves.toBeUndefined();
+    status = 403;
+    await expect(
+      gateway.removePlannerEntry({ recipeId: recipeId(1), date: planDate("2026-11-02") }),
+    ).rejects.toBeInstanceOf(ExportNotApplied);
+    status = 500;
+    await expect(
+      gateway.removePlannerEntry({ recipeId: recipeId(1), date: planDate("2026-11-02") }),
+    ).rejects.toBeInstanceOf(Error);
+  });
+
   it("sends all list items in one request to the configured list, ids only where known", async () => {
     const gateway = new KitchenOwlPlannerGateway(await fake(), 3);
     await gateway.addShoppingListItems([
@@ -107,6 +136,9 @@ describe("KitchenOwlPlannerGateway", () => {
     "leaves a connection lost after sending (%s) unconfirmed: the request may have arrived",
     async (code) => {
       const lost = {
+        removePlannerRecipe: async () => {
+          throw new TypeError("fetch failed", { cause: { code } });
+        },
         addPlannerRecipe: async () => {
           throw new TypeError("fetch failed", { cause: { code } });
         },
@@ -138,6 +170,7 @@ describe("KitchenOwlPlannerGateway", () => {
     const timeout = new KitchenOwlPlannerGateway(
       {
         addPlannerRecipe: async () => Promise.reject(new DOMException("timed out", "TimeoutError")),
+        removePlannerRecipe: async () => {},
         addShoppingListRecipeItems: async () => {},
       },
       2,

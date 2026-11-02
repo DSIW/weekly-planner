@@ -72,6 +72,11 @@ export class FakePlanner implements PlannerGateway {
     this.maybeFail();
     this.entries.push(entry);
   }
+  readonly removed: Pick<PlannerEntry, "recipeId" | "date">[] = [];
+  async removePlannerEntry(entry: Pick<PlannerEntry, "recipeId" | "date">) {
+    this.maybeFail();
+    this.removed.push(entry);
+  }
   async addShoppingListItems(items: readonly ShoppingListItem[]) {
     this.maybeFail();
     this.batches.push(items);

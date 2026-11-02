@@ -6,6 +6,7 @@ import type {
   CreateImportedRecipe,
   MatchIngredients,
   MatchTags,
+  SuggestNames,
   DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
@@ -32,6 +33,7 @@ import type {
   ProposeRecipe,
   RefreshRecipes,
   ReopenDay,
+  ResetFinalizedDay,
   RetryExport,
   SendTestNotification,
   SubscribeToPush,
@@ -76,6 +78,7 @@ interface AppOptions {
   readonly createImportedRecipe: Pick<CreateImportedRecipe, "execute">;
   readonly matchIngredients: Pick<MatchIngredients, "execute">;
   readonly matchTags: Pick<MatchTags, "execute">;
+  readonly suggestNames: Pick<SuggestNames, "execute">;
   /** Where the pictures of drafts are held; without it the pictures are not served. */
   readonly draftImages?: ImageShelf;
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
@@ -87,6 +90,7 @@ interface AppOptions {
   readonly passSuggestion: Pick<PassSuggestion, "execute">;
   readonly markLeftoverDay: Pick<MarkLeftoverDay, "execute">;
   readonly reopenDay: Pick<ReopenDay, "execute">;
+  readonly resetFinalizedDay: Pick<ResetFinalizedDay, "execute">;
   readonly swapPlannedDays: Pick<SwapPlannedDays, "execute">;
   readonly movePlannedDay: Pick<MovePlannedDay, "execute">;
   readonly getRecipePhoto: Pick<GetRecipePhoto, "execute">;
@@ -220,6 +224,7 @@ const moveBody = z.object({ from: z.string(), to: z.string() });
 const importDraftBody = z.object({ address: z.string().max(2000).optional(), text: z.string().max(60_000).optional() });
 const importMatchBody = z.object({ names: z.array(z.string().max(200)).max(60) });
 const importTagsBody = z.object({ names: z.array(z.string().max(200)).max(30) });
+const importSuggestBody = z.object({ kind: z.enum(["item", "tag"]), query: z.string().max(200) });
 const importCreateBody = z.object({ draft: z.record(z.string(), z.unknown()) });
 
 /** Drafts a member may ask for per hour: each one costs money at the language model, so a loop cannot run it dry. */
@@ -263,6 +268,9 @@ const COMMAND_REJECTIONS: Record<string, number> = {
   proposal_not_pending: 409,
   day_not_planned: 409,
   day_already_open: 409,
+  day_passed: 409,
+  already_released: 409,
+  not_exported: 409,
   target_not_open: 409,
   same_day: 422,
   session_not_open: 409,
@@ -395,6 +403,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const result = await options.matchTags.execute({ names: body.data.names });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
     return { tags: result.value };
+  });
+
+  app.post(`${api}/import/suggest`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const body = importSuggestBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.suggestNames.execute(body.data);
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { names: result.value };
   });
 
   // The picture of a draft, for the review: served by the planner, so a phone never loads it from the other site.
@@ -616,6 +633,20 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       return { session: sessionView(result.value, options.planAheadMinutes) };
     });
   }
+
+  // A member gives up a finalized dinner: it is taken off KitchenOwl's planner and its date is free again.
+  app.post<{ Params: { id: string; date: string } }>(`${api}/sessions/:id/days/:date/reset`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    let date: ReturnType<typeof planDate>;
+    try {
+      date = planDate(req.params.date);
+    } catch {
+      return reply.code(400).send({ error: "invalid_request" });
+    }
+    const result = await options.resetFinalizedDay.execute({ sessionId: sessionId(req.params.id), date });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { reset: true };
+  });
 
   app.post<{ Params: { id: string } }>(`${api}/sessions/:id/swap`, async (req, reply) => {
     const member = requireMember(req, reply);

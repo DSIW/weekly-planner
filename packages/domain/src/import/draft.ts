@@ -147,6 +147,56 @@ export function cleanSourceAddress(address: string): string | null {
   return url.toString().replace(/\?$/, "");
 }
 
+const SUGGESTIONS = 8;
+
+/**
+ * The household's items a member may mean while typing: names that start with the text first, then those that contain
+ * it. A plural and its singular count as one item, and the one with an icon is the one offered.
+ */
+export function suggestItems(vocabulary: Vocabulary, typed: string, limit = SUGGESTIONS): ItemMatch[] {
+  const q = fold(typed);
+  if (q === "") return [];
+  const hasIcon = (name: string) => Number(vocabulary.icons?.[name] !== undefined);
+  const hits = vocabulary.items
+    .map((name) => ({ name, key: fold(name) }))
+    .filter((i) => i.key.includes(q))
+    .sort(
+      (a, b) =>
+        Number(b.key.startsWith(q)) - Number(a.key.startsWith(q)) ||
+        hasIcon(b.name) - hasIcon(a.name) ||
+        a.key.length - b.key.length ||
+        a.key.localeCompare(b.key),
+    );
+  const seen = new Set<string>();
+  const out: ItemMatch[] = [];
+  for (const { name, key } of hits) {
+    const stem = stemKey(key);
+    if (seen.has(stem)) continue;
+    seen.add(stem);
+    const icon = vocabulary.icons?.[name];
+    out.push({ name, ...(icon ? { icon } : {}) });
+    if (out.length === limit) break;
+  }
+  return out;
+}
+
+/** The household's tags a member may mean while typing, by their letters (the emoji does not have to be typed). */
+export function suggestTags(known: readonly string[], typed: string, limit = SUGGESTIONS): string[] {
+  const q = tagKey(typed);
+  if (q === "") return [];
+  return known
+    .map((name) => ({ name, key: tagKey(name) }))
+    .filter((t) => t.key.includes(q))
+    .sort(
+      (a, b) =>
+        Number(b.key.startsWith(q)) - Number(a.key.startsWith(q)) ||
+        a.key.length - b.key.length ||
+        a.key.localeCompare(b.key),
+    )
+    .slice(0, limit)
+    .map((t) => t.name);
+}
+
 /** Plain text: no markup, no links, no control characters, one line of spaces, at most `max` characters. */
 export function cleanText(value: unknown, max: number): string {
   if (typeof value !== "string") return "";

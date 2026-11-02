@@ -523,6 +523,52 @@ describe("dates that already hold a dinner (witness r3)", () => {
     await waitFor(() => expect(screen.queryByRole("list", { name: "Schon geplant" })).not.toBeInTheDocument());
   });
 
+  it("can be given up when the planner itself planned them: asked twice, then it is gone", async () => {
+    let dates = [
+      { date: "2026-11-03", recipeName: "Pasta", recipeId: 7, sessionId: "s9" },
+      { date: "2026-11-04", recipeName: "Risotto" },
+    ];
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: () => ({ status: 200, body: { dates } }),
+      [`POST ${api}/sessions/s9/days/2026-11-03/reset`]: () => {
+        dates = [dates[1]!];
+        return { status: 200, body: { reset: true } };
+      },
+    });
+    renderApp();
+    const list = await screen.findByRole("list", { name: "Schon geplant" });
+    const [pasta, risotto] = within(list).getAllByRole("listitem");
+    expect(within(risotto!).queryByRole("button", { name: "Zurücksetzen" })).not.toBeInTheDocument(); // chosen in KitchenOwl
+    await userEvent.click(within(pasta!).getByRole("button", { name: "Zurücksetzen" }));
+    await userEvent.click(within(pasta!).getByRole("button", { name: "Abbrechen" }));
+    expect(calls.some((c) => c.key.includes("/reset"))).toBe(false);
+    await userEvent.click(within(pasta!).getByRole("button", { name: "Zurücksetzen" }));
+    await userEvent.click(within(pasta!).getByRole("button", { name: "Ja, zurücksetzen" }));
+    await waitFor(() => expect(within(list).queryByText("Pasta")).not.toBeInTheDocument());
+    expect(calls.filter((c) => c.key.includes("/reset"))).toHaveLength(1);
+  });
+
+  it("say so when KitchenOwl could not take the dinner off", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: {
+        status: 200,
+        body: { dates: [{ date: "2026-11-03", recipeName: "Pasta", sessionId: "s9", recipeId: 7 }] },
+      },
+      [`POST ${api}/sessions/s9/days/2026-11-03/reset`]: { status: 502, body: { error: "kitchenowl_unavailable" } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Zurücksetzen" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ja, zurücksetzen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "KitchenOwl ist gerade nicht erreichbar. Es wurde nichts geändert.",
+    );
+    expect(screen.getByRole("list", { name: "Schon geplant" })).toHaveTextContent("Pasta");
+  });
+
   it("are not explained when there are none", async () => {
     server({
       ...signedIn,

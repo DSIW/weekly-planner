@@ -32,6 +32,8 @@ export class ExportNotApplied extends Error {
  */
 export interface PlannerGateway {
   addPlannerEntry(entry: PlannerEntry): Promise<void>;
+  /** Takes a dinner off the planner again (a member gave it up). Taking off one that is not there is not an error. */
+  removePlannerEntry(entry: Pick<PlannerEntry, "recipeId" | "date">): Promise<void>;
   /** All items in one request. KitchenOwl adds the amounts to what is already on the list. */
   addShoppingListItems(items: readonly ShoppingListItem[]): Promise<void>;
 }

@@ -15,13 +15,14 @@ export class SqliteDinnerCalendar implements DinnerCalendar {
 
   async takenDatesFrom(from: PlanDate): Promise<readonly TakenDate[]> {
     return this.db
-      .prepare("select date, recipe_json from plan_day where blocks_date = 1 and date >= ? order by date")
+      .prepare("select session_id, date, recipe_json from plan_day where blocks_date = 1 and date >= ? order by date")
       .all(from)
       .map((r) => {
         const recipe = r.recipe_json ? (JSON.parse(r.recipe_json as string) as { id?: number; name: string }) : null;
         return {
           date: planDate(r.date as string),
           recipeName: recipe?.name ?? "",
+          sessionId: r.session_id as string,
           ...(typeof recipe?.id === "number" ? { recipeId: recipe.id } : {}),
         };
       });

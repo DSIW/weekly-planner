@@ -557,6 +557,21 @@ rule ReleaseRemovedDinner {
     ensures: day.removed_in_planner = true
 }
 
+-- A finalized dinner can be given up before its day comes: the members take
+-- it off KitchenOwl's planner from here, and the planner lets go of its date
+-- the way it does when somebody removes it there (ReleaseRemovedDinner). The
+-- shopping list is locked: ingredients already on it stay. A dinner that has
+-- not reached KitchenOwl yet is not touched.
+rule ResetFinalizedDay {
+    when: ResetDay(member, day)
+    requires: day.session.status = finalized
+    requires: day.status = planned
+    requires: not day.removed_in_planner
+    requires: day.date + 1.day > now
+    requires: exists ExportStep{session: day.session, kind: planner_entry, day: day, status: done}
+    ensures: PlannerEntryRemoved(day)
+}
+
 rule ResendUnconfirmedStep {
     when: ResendUnconfirmedStep(member, step)
     requires: step.session.status = finalized
@@ -714,6 +729,7 @@ surface PlanningBoard {
         CorrectLoggedMeal(viewer, entry, base, recipe)
         AddLoggedMeal(viewer, date, base, recipe)
         ReopenDay(viewer, day)
+        ResetDay(viewer, day)
         FinalizePlan(viewer, session, skipped_items)
         SendExportStep(viewer, step)
         ResendUnconfirmedStep(viewer, step)
