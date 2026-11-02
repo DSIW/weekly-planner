@@ -468,7 +468,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const { kitchenowl, householdId } = options.links ?? { kitchenowl: null, householdId: 0 };
     if (kitchenowl === null) return { links: null };
     const home = `${kitchenowl}/household/${householdId}`;
-    return { links: { recipe: `${home}/recipes/details/{id}`, list: `${home}/items` } };
+    return { links: { recipe: `${home}/recipes/details/{id}`, list: `${home}/items`, home: `${kitchenowl}/` } };
   });
 
   const requireMember = (req: FastifyRequest, reply: { code(n: number): { send(b: unknown): unknown } }) => {

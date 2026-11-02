@@ -625,6 +625,17 @@ describe("links to KitchenOwl", () => {
     );
   });
 
+  it("put a Küche link to KitchenOwl's start page in the header", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: { status: 200, body: { dates: [] } },
+      [LINKS]: { status: 200, body: { links: { ...links, home: "https://ko.test/" } } },
+    });
+    renderApp();
+    expect(await screen.findByRole("link", { name: "Küche" })).toHaveAttribute("href", "https://ko.test/");
+  });
+
   it("are not shown when the server does not know where KitchenOwl is", async () => {
     server({
       ...signedIn,

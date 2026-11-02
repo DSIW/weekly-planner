@@ -465,6 +465,17 @@ li.review {
   align-items: center;
   gap: 8px;
 }
+.bar-link {
+  display: inline-flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
 .notify {
   display: grid;
   gap: 8px;

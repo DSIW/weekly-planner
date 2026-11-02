@@ -471,6 +471,11 @@ export function App() {
         <header className="bar">
           <h1>Hallo, {me.data.name}</h1>
           <div className="bar-actions">
+            {links.data?.home && (
+              <a className="bar-link" href={links.data.home}>
+                Küche
+              </a>
+            )}
             <Notifications />
             <button type="button" className="secondary" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
               Abmelden

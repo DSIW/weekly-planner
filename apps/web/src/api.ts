@@ -5,6 +5,8 @@ interface Member {
 
 export type LoginError = "invalid_credentials" | "missing_credentials" | "not_in_household" | "unavailable";
 
+import type { KitchenOwlLinks } from "./Links";
+
 const base = `${import.meta.env.BASE_URL}api`;
 
 /** The signed-in member, or null when nobody is signed in. */
@@ -16,10 +18,10 @@ export async function fetchMe(): Promise<Member | null> {
 }
 
 /** Where KitchenOwl's pages are, or null when the server does not know. */
-export async function fetchLinks(): Promise<{ recipe: string; list: string } | null> {
+export async function fetchLinks(): Promise<KitchenOwlLinks | null> {
   const res = await fetch(`${base}/links`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return ((await res.json()) as { links: { recipe: string; list: string } | null }).links;
+  return ((await res.json()) as { links: KitchenOwlLinks | null }).links;
 }
 
 export class LoginFailed extends Error {
