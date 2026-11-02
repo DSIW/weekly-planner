@@ -162,3 +162,48 @@ export function recipeFromStructuredData(html: string): string | null {
 export function pageToSourceText(html: string): string {
   return recipeFromStructuredData(html) ?? htmlToText(html);
 }
+
+const imageLink = (v: unknown, depth = 0): string | null => {
+  if (depth > 3) return null;
+  if (typeof v === "string") return v.trim() === "" ? null : v.trim();
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      const found = imageLink(x, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+  return isObject(v) ? imageLink(v.url ?? v.contentUrl, depth + 1) : null;
+};
+
+const metaImage = (html: string): string | null => {
+  for (const tag of html.match(/<meta\b[^>]*>/gi) ?? []) {
+    if (!/(?:property|name)\s*=\s*["'](?:og:image(?::secure_url)?|twitter:image)["']/i.test(tag)) continue;
+    const content = /\bcontent\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+    const value = decodeEntities(content?.[1] ?? content?.[2] ?? "").trim();
+    if (value !== "") return value;
+  }
+  return null;
+};
+
+/** The link of the recipe's title picture: the structured data's `image`, else the page's `og:image`; an absolute web link or null. */
+export function recipeImageUrl(html: string, pageUrl: string): string | null {
+  let found: string | null = null;
+  for (const match of html.matchAll(scripts)) {
+    try {
+      const recipe = findRecipe(JSON.parse((match[1] ?? "").replace(/^\s*<!--|-->\s*$/g, "")));
+      found = recipe ? imageLink(recipe.image) : null;
+    } catch {
+      // not JSON: the next block
+    }
+    if (found) break;
+  }
+  found ??= metaImage(html);
+  if (!found) return null;
+  try {
+    const url = new URL(decodeEntities(found), pageUrl);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}

@@ -3,6 +3,7 @@ import {
   type RawRecipe,
   authResponseSchema,
   createdRecipeSchema,
+  uploadedFileSchema,
   itemListSchema,
   nameListSchema,
   householdSchema,
@@ -34,6 +35,8 @@ export interface NewRecipe {
   readonly time?: number;
   readonly yields: number;
   readonly source?: string;
+  /** The file name `uploadPhoto` gave. */
+  readonly photo?: string;
   readonly items: readonly { name: string; description: string; optional: boolean }[];
   readonly tags: readonly string[];
 }
@@ -115,6 +118,18 @@ export class KitchenOwlClient {
     const parsed = createdRecipeSchema.safeParse(await res.json());
     if (!parsed.success) throw new KitchenOwlError("unexpected created recipe shape");
     return parsed.data.id;
+  }
+
+  /** Stores a picture in KitchenOwl; returns the file name a recipe's `photo` takes. */
+  async uploadPhoto(bytes: Uint8Array, contentType: string): Promise<string> {
+    const extension = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }[contentType] ?? "bin";
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), `recipe.${extension}`);
+    const res = await this.request("/upload", { method: "POST", token: this.config.kitchenowlToken, body: form });
+    if (!res.ok) throw new KitchenOwlError(`KitchenOwl POST /upload failed with HTTP ${res.status}`, res.status);
+    const parsed = uploadedFileSchema.safeParse(await res.json());
+    if (!parsed.success) throw new KitchenOwlError("unexpected upload answer shape");
+    return parsed.data.filename;
   }
 
   /** Puts a recipe on the household planner. `cookingDate` is a Unix time in milliseconds. */

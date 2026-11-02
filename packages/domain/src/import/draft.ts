@@ -14,6 +14,9 @@ export const IMPORT_LIMITS = {
   maxIngredientName: 80,
   maxAmount: 40,
   maxRedirects: 3,
+  maxTags: 12,
+  maxTag: 40,
+  maxImageBytes: 5_000_000,
 } as const;
 
 export interface DraftIngredient {
@@ -35,11 +38,14 @@ export interface RecipeDraft {
   readonly mealType: MealType;
   readonly base: Base;
   readonly diet: Diet;
-  /** Only tags the household already has. */
+  /** As KitchenOwl spells them, emoji included; a name it already has takes its spelling. */
   readonly tags: readonly string[];
   readonly totalMinutes?: number;
   readonly yields?: number;
+  /** Where it came from, without tracking parameters. */
   readonly source?: string;
+  /** The title picture of the page, kept by the planner until the recipe is created; see `ImageShelf`. */
+  readonly imageToken?: string;
 }
 
 /** What the household's KitchenOwl already holds: names a draft is checked against. */
@@ -101,6 +107,46 @@ export function itemMatcher(vocabulary: Vocabulary): (written: string) => ItemMa
   };
 }
 
+/** A tag compared by its letters only: "🌶️ Scharf", "scharf" and "Scharf!" are one tag. */
+const tagKey = (s: string): string =>
+  fold(s)
+    .replace(/[^\p{L}\p{N} ]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+interface TagMatch {
+  readonly name: string;
+  readonly isKnown: boolean;
+}
+
+/** The household's tag a written one stands for, with its own spelling and emoji, else the tag as written. */
+export function tagMatcher(known: readonly string[]): (written: string) => TagMatch {
+  const byKey = new Map<string, string>();
+  for (const tag of known) if (!byKey.has(tagKey(tag))) byKey.set(tagKey(tag), tag);
+  return (written) => {
+    const found = byKey.get(tagKey(written));
+    return found === undefined ? { name: written, isKnown: false } : { name: found, isKnown: true };
+  };
+}
+
+const TRACKING = /^(utm_.*|fbclid|gclid|dclid|msclkid|yclid|igshid|mc_cid|mc_eid|_ga|_gl|srsltid|ref_src|oly_.*)$/i;
+
+/** A link as a source note: no tracking parameters, no fragment; null when it is not a web link. */
+export function cleanSourceAddress(address: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  url.username = "";
+  url.password = "";
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) if (TRACKING.test(key)) url.searchParams.delete(key);
+  return url.toString().replace(/\?$/, "");
+}
+
 /** Plain text: no markup, no links, no control characters, one line of spaces, at most `max` characters. */
 export function cleanText(value: unknown, max: number): string {
   if (typeof value !== "string") return "";
@@ -127,7 +173,13 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
  * refused. Text is cleaned, an ingredient named like a known item takes that item's name, any other is marked new,
  * and a tag the household does not have is dropped.
  */
-export function reviewDraft(raw: unknown, vocabulary: Vocabulary, source?: string): Result<RecipeDraft> {
+export function reviewDraft(
+  raw: unknown,
+  vocabulary: Vocabulary,
+  source?: string,
+  /** `newTags`: tags the household does not have are kept (a member wrote them); a model's answer may not invent any. */
+  options: { newTags?: boolean } = {},
+): Result<RecipeDraft> {
   if (!isObject(raw)) return reject("not_a_recipe");
   const name = cleanText(raw.name, IMPORT_LIMITS.maxName);
   const steps = (Array.isArray(raw.steps) ? raw.steps : [])
@@ -161,19 +213,25 @@ export function reviewDraft(raw: unknown, vocabulary: Vocabulary, source?: strin
   if (ingredients.length === 0) return reject("not_a_recipe");
   if (ingredients.length > IMPORT_LIMITS.maxIngredients) return reject("too_many_ingredients");
 
-  const ownTags = new Map(vocabulary.tags.map((t) => [fold(t), t]));
-  const tags = [
-    ...new Set(
-      (Array.isArray(raw.tags) ? raw.tags : []).flatMap((t) => {
-        const tag = typeof t === "string" ? ownTags.get(fold(t)) : undefined;
-        return tag ? [tag] : [];
-      }),
-    ),
-  ];
+  const matchTag = tagMatcher(vocabulary.tags);
+  const tags: string[] = [];
+  const seenTags = new Set<string>();
+  for (const t of Array.isArray(raw.tags) ? raw.tags : []) {
+    const written = cleanText(t, IMPORT_LIMITS.maxTag);
+    if (written === "") continue;
+    const found = matchTag(written);
+    if (!found.isKnown && !options.newTags) continue;
+    const key = tagKey(found.name);
+    if (key === "" || seenTags.has(key)) continue;
+    seenTags.add(key);
+    tags.push(found.name);
+  }
+  tags.splice(IMPORT_LIMITS.maxTags);
   const subtitle = cleanText(raw.subtitle, IMPORT_LIMITS.maxName * 2);
   const totalMinutes = minutes(raw.totalMinutes, 1440);
   const yields = minutes(raw.yields, 50);
-  const sourceText = source === undefined ? "" : source.slice(0, 500);
+  const sourceText = (source === undefined ? null : cleanSourceAddress(source))?.slice(0, 500) ?? "";
+  const imageToken = typeof raw.imageToken === "string" && /^[0-9a-f]{32}$/.test(raw.imageToken) ? raw.imageToken : "";
   return succeed({
     name,
     ...(subtitle ? { subtitle } : {}),
@@ -186,5 +244,6 @@ export function reviewDraft(raw: unknown, vocabulary: Vocabulary, source?: strin
     ...(totalMinutes === undefined ? {} : { totalMinutes }),
     ...(yields === undefined ? {} : { yields }),
     ...(sourceText ? { source: sourceText } : {}),
+    ...(imageToken ? { imageToken } : {}),
   });
 }

@@ -20,8 +20,9 @@ const draft: RecipeDraft = {
   source: "https://example.org/linsen",
 };
 
-function setup(tags = ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 Suppe", "🍝 Pasta"]) {
+function setup(tags = ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 Suppe", "🍝 Pasta"], failUpload = false) {
   const calls = { items: 0, tags: 0 };
+  const uploads: { bytes: Uint8Array; type: string }[] = [];
   const created: NewRecipe[] = [];
   let now = 0;
   const client = {
@@ -33,6 +34,11 @@ function setup(tags = ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 S
       calls.tags++;
       return tags;
     },
+    async uploadPhoto(bytes: Uint8Array, type: string) {
+      if (failUpload) throw new Error("refused");
+      uploads.push({ bytes, type });
+      return "abc123.png";
+    },
     async createRecipe(r: NewRecipe) {
       created.push(r);
       return 42;
@@ -40,6 +46,7 @@ function setup(tags = ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 S
   };
   return {
     calls,
+    uploads,
     created,
     advance: (ms: number) => (now += ms),
     writer: new KitchenOwlRecipeWriter(client, () => now),
@@ -73,7 +80,7 @@ describe("KitchenOwlRecipeWriter", () => {
 
   it("creates the recipe the way the planner reads it: tags for meal type, diet and new, steps, amounts, source", async () => {
     const { writer, created } = setup();
-    expect(await writer.create(draft)).toEqual({ recipeId: 42 });
+    expect(await writer.create(draft)).toEqual({ recipeId: 42, photoAttached: false });
     expect(created).toEqual([
       {
         name: "Linsensuppe",
@@ -103,6 +110,30 @@ describe("KitchenOwlRecipeWriter", () => {
     const { writer, created } = setup(["🍽 Hauptgericht", "🌱 Vegan", "🆕 Neu"]);
     await writer.create({ ...draft, tags: [] });
     expect(created[0]?.tags).toEqual(["🍽 Hauptgericht", "🌱 Vegan", "🆕 Neu"]);
+  });
+
+  it("creates a tag the member wrote, and never lets one stand in for a meal type, diet or state", async () => {
+    const { writer, created } = setup();
+    await writer.create({ ...draft, tags: ["🍲 Suppe", "Grillen", "✅ Erprobt", "🥩 Fleisch"] });
+    expect(created[0]?.tags).toEqual(["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 Suppe", "Grillen"]);
+  });
+
+  it("uploads the title picture and sets it as the recipe's photo", async () => {
+    const { writer, created, uploads } = setup();
+    const bytes = Uint8Array.from([1, 2, 3]);
+    expect(await writer.create(draft, { bytes, contentType: "image/png" })).toEqual({
+      recipeId: 42,
+      photoAttached: true,
+    });
+    expect(uploads).toEqual([{ bytes, type: "image/png" }]);
+    expect(created[0]).toMatchObject({ photo: "abc123.png" });
+  });
+
+  it("still creates the recipe when KitchenOwl does not take the picture", async () => {
+    const { writer, created } = setup(undefined, true);
+    const r = await writer.create(draft, { bytes: Uint8Array.from([1]), contentType: "image/png" });
+    expect(r).toEqual({ recipeId: 42, photoAttached: false });
+    expect(created[0]).not.toHaveProperty("photo");
   });
 
   it("reads the vocabulary again after a recipe was created: its new items are known now", async () => {

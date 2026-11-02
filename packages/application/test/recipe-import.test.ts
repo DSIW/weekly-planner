@@ -5,6 +5,9 @@ import {
   DraftRecipeImport,
   ExtractorNotConfigured,
   MatchIngredients,
+  MatchTags,
+  type DraftImage,
+  type ImageShelf,
   type RecipeExtractor,
   type RecipeSource,
   type RecipeWriter,
@@ -28,6 +31,7 @@ function setup(
     extract?: RecipeExtractor["extract"];
     read?: RecipeSource["read"];
     vocabulary?: () => Promise<Vocabulary>;
+    fetchImage?: (address: string) => Promise<DraftImage | null>;
   } = {},
 ) {
   const extracted: { text: string; vocabulary: Vocabulary }[] = [];
@@ -41,18 +45,32 @@ function setup(
         return answer();
       }),
   };
+  const uploaded: (DraftImage | undefined)[] = [];
   const writer: RecipeWriter = {
     vocabulary: over.vocabulary ?? (async () => vocabulary),
-    create: async (draft) => {
+    create: async (draft, image) => {
       created.push(draft);
-      return { recipeId: 99 };
+      uploaded.push(image);
+      return { recipeId: 99, photoAttached: image !== undefined };
     },
   };
+  const kept = new Map<string, DraftImage>();
+  const shelf: ImageShelf = {
+    keep: (image) => {
+      const token = `${kept.size}`.padStart(32, "0");
+      kept.set(token, image);
+      return token;
+    },
+    get: (token) => kept.get(token) ?? null,
+  };
+  const fetcher = { fetch: over.fetchImage ?? (async () => null) };
   return {
     extracted,
     created,
-    draft: new DraftRecipeImport({ source, extractor, writer }),
-    create: new CreateImportedRecipe({ writer }),
+    uploaded,
+    shelf,
+    draft: new DraftRecipeImport({ source, extractor, writer, images: { fetcher, shelf } }),
+    create: new CreateImportedRecipe({ writer, shelf }),
   };
 }
 
@@ -157,7 +175,11 @@ describe("CreateImportedRecipe", () => {
     });
     expect(r.ok && r.value.recipeId).toBe(99);
     expect(created).toHaveLength(1);
-    expect(created[0]).toMatchObject({ name: "Pasta", tags: ["🍲 Suppe"], source: "https://example.org/r" });
+    expect(created[0]).toMatchObject({
+      name: "Pasta",
+      tags: ["🍲 Suppe", "🍕 Pizza"],
+      source: "https://example.org/r",
+    });
     expect(created[0]).not.toHaveProperty("visibility");
     expect(created[0]?.ingredients[0]).toMatchObject({ name: "Spaghetti", isNewItem: false });
   });
@@ -223,5 +245,73 @@ describe("MatchIngredients", () => {
       },
     });
     expect(await down.execute({ names: ["Salz"] })).toEqual({ ok: false, reason: "kitchenowl_unavailable" });
+  });
+});
+
+describe("MatchTags", () => {
+  const tags = () => new MatchTags({ writer: { vocabulary: async () => ({ items: [], tags: ["🌶️ Scharf"] }) } });
+
+  it("gives the household's spelling, with its emoji, or the tag as written", async () => {
+    const r = await tags().execute({ names: ["scharf", " Grillen ", "<b>x</b>", ""] });
+    expect(r.ok && r.value).toEqual([
+      { written: "scharf", name: "🌶️ Scharf", isKnown: true },
+      { written: "Grillen", name: "Grillen", isKnown: false },
+      { written: "x", name: "x", isKnown: false },
+      { written: "", name: "", isKnown: false },
+    ]);
+  });
+});
+
+describe("the title picture", () => {
+  const picture: DraftImage = { bytes: new Uint8Array([0xff, 0xd8, 0xff]), contentType: "image/jpeg" };
+  const withImage = { read: async () => ({ ok: true as const, text: "t", imageUrl: "https://example.org/a.jpg" }) };
+
+  it("is fetched from the page's picture link, kept, and named in the draft by a token", async () => {
+    const asked: string[] = [];
+    const { draft, shelf } = setup({
+      ...withImage,
+      fetchImage: async (a) => {
+        asked.push(a);
+        return picture;
+      },
+    });
+    const r = await draft.execute({ member: ME, address: "https://example.org/r" });
+    expect(asked).toEqual(["https://example.org/a.jpg"]);
+    const token = r.ok ? r.value.imageToken : undefined;
+    expect(token).toMatch(/^[0-9a-f]{32}$/);
+    expect(shelf.get(token ?? "")).toEqual(picture);
+  });
+
+  it("leaves the draft without a picture when it cannot be had", async () => {
+    for (const fetchImage of [
+      async () => null,
+      async () => {
+        throw new Error("boom");
+      },
+    ]) {
+      const { draft } = setup({ ...withImage, fetchImage });
+      const r = await draft.execute({ member: ME, address: "https://example.org/r" });
+      expect(r.ok && r.value.imageToken).toBeUndefined();
+    }
+  });
+
+  it("is not looked for when the text was pasted", async () => {
+    const { draft } = setup({
+      fetchImage: async () => {
+        throw new Error("must not be asked");
+      },
+    });
+    expect((await draft.execute({ member: ME, text: "Rezept" })).ok).toBe(true);
+  });
+
+  it("goes to KitchenOwl with the recipe; a token that is gone creates the recipe without it", async () => {
+    const { draft, create, uploaded } = setup({ ...withImage, fetchImage: async () => picture });
+    const shown = await draft.execute({ member: ME, address: "https://example.org/r" });
+    if (!shown.ok) throw new Error(shown.reason);
+    const r = await create.execute({ member: ME, draft: shown.value });
+    expect(r.ok && r.value.photoAttached).toBe(true);
+    expect(uploaded[0]).toEqual(picture);
+    const gone = await create.execute({ member: ME, draft: { ...shown.value, imageToken: "f".repeat(32) } });
+    expect(gone.ok && gone.value.photoAttached).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import {
   AcceptProposal,
   CreateImportedRecipe,
   MatchIngredients,
+  MatchTags,
   DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
@@ -51,7 +52,8 @@ import { KitchenOwlClient } from "../infrastructure/kitchenowl/client.js";
 import { KitchenOwlHouseholdDirectory } from "../infrastructure/kitchenowl/kitchenowl-household-directory.js";
 import { KitchenOwlPlannerGateway } from "../infrastructure/kitchenowl/kitchenowl-planner-gateway.js";
 import { LlmRecipeExtractor } from "../infrastructure/import/llm-extractor.js";
-import { WebRecipeSource } from "../infrastructure/import/web-recipe-source.js";
+import { MemoryImageShelf } from "../infrastructure/import/image-shelf.js";
+import { WebImageFetcher, WebRecipeSource } from "../infrastructure/import/web-recipe-source.js";
 import { KitchenOwlRecipeWriter } from "../infrastructure/kitchenowl/kitchenowl-recipe-writer.js";
 import { KitchenOwlPlannerView } from "../infrastructure/kitchenowl/kitchenowl-planner-view.js";
 import { KitchenOwlRecipeCatalog } from "../infrastructure/kitchenowl/kitchenowl-recipe-catalog.js";
@@ -127,6 +129,7 @@ async function main(): Promise<void> {
     clock,
   });
   const recipeWriter = new KitchenOwlRecipeWriter(client);
+  const draftImages = new MemoryImageShelf();
   const app = await buildApp({
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
     getCurrentSession: new GetCurrentSession({ sessions, exports }),
@@ -139,9 +142,12 @@ async function main(): Promise<void> {
       source: new WebRecipeSource(),
       extractor: new LlmRecipeExtractor(config.llm),
       writer: recipeWriter,
+      images: { fetcher: new WebImageFetcher(), shelf: draftImages },
     }),
-    createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter }),
+    createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter, shelf: draftImages }),
     matchIngredients: new MatchIngredients({ writer: recipeWriter }),
+    matchTags: new MatchTags({ writer: recipeWriter }),
+    draftImages,
     acceptProposal: new AcceptProposal({ ...deps, calendar }, planning),
     agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...deps, calendar }, planning)),
     vetoProposal: new VetoProposal(deps),

@@ -10,7 +10,8 @@
 --   creating the recipe.
 -- Excludes:
 --   - Planning (weekly-planning.allium reads the recipe afterwards)
---   - Photos and screenshots as a source
+--   - Photos and screenshots as a source (the title picture of a web page is
+--     not a source: it is only the recipe's photo)
 --   - Bulk import of an existing collection (Notion, KptnCook)
 -- Dependencies: none
 
@@ -54,10 +55,24 @@ value RecipeDraft {
     meal_type: main | side | dessert | baking | breakfast | snack | drink | prep
     base: pasta | rice | potatoes | grains | bread | other
     diet: vegan | vegetarian | fish | meat
-    tags: Set<KnownTag>           -- only tags KitchenOwl already has
+    -- A tag KitchenOwl has is spelled the way it spells it, emoji included.
+    -- The model may only choose such tags; a member may rename, add and
+    -- remove tags, and a name KitchenOwl does not have becomes a new tag.
+    tags: Set<String>
+    -- The time is a field of its own, never a tag.
     total_minutes: Integer?
     yields: Integer?
+    -- The link without tracking parameters (utm_*, fbclid, ...) and fragment.
     source: String?
+    -- The page's own title picture (structured data, else og:image), read as
+    -- safely as the page; JPEG, PNG or WebP by its bytes, bounded in size.
+    -- Without one, or when it cannot be had, the draft has no picture.
+    image: DraftImage?
+}
+
+value DraftImage {
+    bytes: Integer
+    format: jpeg | png | webp
 }
 
 ------------------------------------------------------------
@@ -69,6 +84,8 @@ config {
     max_steps: Integer = 40
     max_ingredients: Integer = 60
     max_fetch_redirects: Integer = 3
+    max_tags: Integer = 12
+    max_image_bytes: Integer = 5000000
 }
 
 ------------------------------------------------------------
@@ -93,8 +110,8 @@ rule CheckDraft {
     requires: draft.steps.count >= 1 and draft.steps.count <= config.max_steps
     requires: draft.ingredients.count >= 1 and draft.ingredients.count <= config.max_ingredients
     -- Each ingredient named like a known item is that item; any other is new.
-    -- Text carries no links or markup; tags outside the household's own are
-    -- dropped.
+    -- Text carries no links or markup; tags the household does not have are
+    -- dropped from the model's answer.
     ensures: DraftShown(draft)
 }
 
@@ -105,6 +122,8 @@ rule CreateImportedRecipe {
     requires: draft.name != ""
     requires: draft.steps.count >= 1
     requires: draft.ingredients.count >= 1
+    -- The picture goes along as the recipe's photo; if KitchenOwl does not
+    -- take it, the recipe is created without.
     ensures: KitchenOwlRecipeCreated(draft)
 }
 

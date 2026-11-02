@@ -66,7 +66,28 @@ export interface FetchLimits {
   maxRedirects: number;
 }
 
-export type Page = { ok: true; html: string } | { ok: false; reason: SourceFailure };
+export type Page = { ok: true; html: string; url: string } | { ok: false; reason: SourceFailure };
+
+type Body = { ok: true; body: Buffer; contentType: string; url: string } | { ok: false; reason: SourceFailure };
+
+/** What a request asks for and which answers it accepts. */
+interface Kind {
+  accept: string;
+  allows: (contentType: string) => boolean;
+  /** The failure for an answer of another kind. */
+  wrong: SourceFailure;
+}
+
+const PAGE: Kind = {
+  accept: "text/html,application/xhtml+xml",
+  allows: (t) => /^(text\/html|application\/xhtml\+xml)/i.test(t),
+  wrong: "not_a_page",
+};
+const PICTURE: Kind = {
+  accept: "image/jpeg,image/png,image/webp",
+  allows: (t) => /^image\//i.test(t),
+  wrong: "not_a_page",
+};
 
 interface Options extends FetchLimits {
   /** Which addresses may be connected to; public ones only, unless a test says otherwise. */
@@ -89,11 +110,11 @@ function decode(buffer: Buffer, contentType: string): string {
 }
 
 /**
- * Reads one web page, safely: http(s) on the default ports only, to public addresses only (checked for the address
- * actually connected to, so a name that resolves into the home network is refused too, on every redirect), no
- * credentials, bounded in size, time and redirects, HTML only.
+ * Reads one thing from the web, safely: http(s) on the default ports only, to public addresses only (checked for the
+ * address actually connected to, so a name that resolves into the home network is refused too, on every redirect), no
+ * credentials, bounded in size, time and redirects, and only the kind of answer asked for.
  */
-export async function fetchPage(address: string, options: Options): Promise<Page> {
+async function fetchBody(address: string, options: Options, kind: Kind): Promise<Body> {
   const allowed = options.allowed ?? isPublicAddress;
   const deadline = Date.now() + options.timeoutMs;
 
@@ -110,9 +131,9 @@ export async function fetchPage(address: string, options: Options): Promise<Page
     });
   }) as typeof dns.lookup;
 
-  const get = (url: URL, redirects: number): Promise<Page> =>
+  const get = (url: URL, redirects: number): Promise<Body> =>
     new Promise((resolve) => {
-      const done = (page: Page) => resolve(page);
+      const done = (page: Body) => resolve(page);
       if (url.protocol !== "http:" && url.protocol !== "https:") return done({ ok: false, reason: "invalid_address" });
       if (url.username || url.password) return done({ ok: false, reason: "invalid_address" });
       const defaultPort = url.protocol === "https:" ? "443" : "80";
@@ -131,7 +152,7 @@ export async function fetchPage(address: string, options: Options): Promise<Page
           lookup,
           headers: {
             "User-Agent": "weekly-planner-recipe-import/1.0",
-            Accept: "text/html,application/xhtml+xml",
+            Accept: kind.accept,
             "Accept-Encoding": "identity",
           },
         },
@@ -154,9 +175,9 @@ export async function fetchPage(address: string, options: Options): Promise<Page
             res.resume();
             return done({ ok: false, reason: "unreachable" });
           }
-          if (!/^(text\/html|application\/xhtml\+xml)/i.test(contentType)) {
+          if (!kind.allows(contentType)) {
             res.resume();
-            return done({ ok: false, reason: "not_a_page" });
+            return done({ ok: false, reason: kind.wrong });
           }
           const chunks: Buffer[] = [];
           let size = 0;
@@ -168,7 +189,7 @@ export async function fetchPage(address: string, options: Options): Promise<Page
             }
             chunks.push(chunk);
           });
-          res.on("end", () => done({ ok: true, html: decode(Buffer.concat(chunks), contentType) }));
+          res.on("end", () => done({ ok: true, body: Buffer.concat(chunks), contentType, url: url.toString() }));
           res.on("error", () => done({ ok: false, reason: "unreachable" }));
         },
       );
@@ -188,4 +209,32 @@ export async function fetchPage(address: string, options: Options): Promise<Page
     return { ok: false, reason: "invalid_address" };
   }
   return get(url, 0);
+}
+
+/** Reads one web page, safely (see `fetchBody`): HTML only. */
+export async function fetchPage(address: string, options: Options): Promise<Page> {
+  const got = await fetchBody(address, options, PAGE);
+  return got.ok ? { ok: true, html: decode(got.body, got.contentType), url: got.url } : got;
+}
+
+export type Picture =
+  | { ok: true; bytes: Buffer; contentType: "image/jpeg" | "image/png" | "image/webp" }
+  | { ok: false; reason: SourceFailure };
+
+/** What a picture really is, by its first bytes; null for anything else (an SVG, HTML, a script). */
+export function pictureType(bytes: Uint8Array): "image/jpeg" | "image/png" | "image/webp" | null {
+  const at = (i: number) => bytes[i] ?? -1;
+  if (at(0) === 0xff && at(1) === 0xd8 && at(2) === 0xff) return "image/jpeg";
+  if (at(0) === 0x89 && at(1) === 0x50 && at(2) === 0x4e && at(3) === 0x47) return "image/png";
+  const ascii = (from: number, to: number) => String.fromCharCode(...Array.from(bytes.subarray(from, to)));
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "image/webp";
+  return null;
+}
+
+/** Reads one picture, safely (see `fetchBody`): JPEG, PNG or WebP, judged by its bytes. */
+export async function fetchPicture(address: string, options: Options): Promise<Picture> {
+  const got = await fetchBody(address, options, PICTURE);
+  if (!got.ok) return got;
+  const contentType = pictureType(got.body);
+  return contentType ? { ok: true, bytes: got.body, contentType } : { ok: false, reason: "not_a_page" };
 }

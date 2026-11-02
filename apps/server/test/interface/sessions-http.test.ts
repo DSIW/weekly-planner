@@ -223,6 +223,7 @@ beforeEach(async () => {
     draftRecipeImport: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     createImportedRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     matchIngredients: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+    matchTags: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),

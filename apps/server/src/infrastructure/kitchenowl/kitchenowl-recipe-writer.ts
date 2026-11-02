@@ -1,4 +1,4 @@
-import type { RecipeWriter } from "@weekly-planner/application";
+import type { DraftImage, RecipeWriter } from "@weekly-planner/application";
 import type { RecipeDraft, Vocabulary } from "@weekly-planner/domain";
 import type { KitchenOwlClient, NewRecipe } from "./client.js";
 import { canon, freeTags, tagsForDraft } from "./recipe-translator.js";
@@ -16,7 +16,7 @@ export class KitchenOwlRecipeWriter implements RecipeWriter {
   private cached: { at: number; items: string[]; icons: Record<string, string>; tags: string[] } | null = null;
 
   constructor(
-    private readonly client: Pick<KitchenOwlClient, "listItems" | "listTagNames" | "createRecipe">,
+    private readonly client: Pick<KitchenOwlClient, "listItems" | "listTagNames" | "createRecipe" | "uploadPhoto">,
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -37,22 +37,26 @@ export class KitchenOwlRecipeWriter implements RecipeWriter {
     return { items, icons, tags: freeTags(tags) };
   }
 
-  async create(draft: RecipeDraft): Promise<{ recipeId: number }> {
+  async create(draft: RecipeDraft, image?: DraftImage): Promise<{ recipeId: number; photoAttached: boolean }> {
     const { tags: existing } = await this.names();
     // A tag that the household already spells in its own way keeps that spelling.
     const spelled = new Map(existing.map((t) => [canon(t), t]));
-    const tags = [...new Set([...tagsForDraft(draft), ...draft.tags].map((t) => spelled.get(canon(t)) ?? t))];
+    // The tags the rules read come from meal type, base and diet; a member's own tags are never one of those.
+    const tags = [...new Set([...tagsForDraft(draft), ...freeTags(draft.tags)].map((t) => spelled.get(canon(t)) ?? t))];
+    // A picture that KitchenOwl does not take must not cost the recipe.
+    const photo = image ? await this.client.uploadPhoto(image.bytes, image.contentType).catch(() => null) : null;
     const recipe: NewRecipe = {
       name: draft.name,
       description: descriptionOf(draft),
       yields: draft.yields ?? 2,
       ...(draft.totalMinutes === undefined ? {} : { time: draft.totalMinutes }),
       ...(draft.source === undefined ? {} : { source: draft.source }),
+      ...(photo === null ? {} : { photo }),
       items: draft.ingredients.map((i) => ({ name: i.name, description: i.amount, optional: i.optional })),
       tags,
     };
     const recipeId = await this.client.createRecipe(recipe);
     this.cached = null; // the new items and tags are part of the vocabulary now
-    return { recipeId };
+    return { recipeId, photoAttached: photo !== null };
   }
 }

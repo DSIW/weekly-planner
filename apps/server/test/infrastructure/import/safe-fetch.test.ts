@@ -1,7 +1,12 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { fetchPage, isPublicAddress } from "../../../src/infrastructure/import/safe-fetch.js";
+import {
+  fetchPage,
+  fetchPicture,
+  isPublicAddress,
+  pictureType,
+} from "../../../src/infrastructure/import/safe-fetch.js";
 import { WebRecipeSource } from "../../../src/infrastructure/import/web-recipe-source.js";
 
 describe("isPublicAddress", () => {
@@ -92,6 +97,14 @@ beforeAll(async () => {
       res.writeHead(302, { location: "http://10.0.0.1/secret" });
       return res.end();
     }
+    const picture = (bytes: number[], type = "image/png") => {
+      res.writeHead(200, { "content-type": type });
+      res.end(Buffer.from(bytes));
+    };
+    if (url === "/pic.png") return picture([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    if (url === "/pic-lies.png") return picture([0x3c, 0x73, 0x76, 0x67]); // "<svg" said to be a PNG
+    if (url === "/pic.svg") return picture([0x3c, 0x73, 0x76, 0x67], "image/svg+xml");
+    if (url === "/pic-big.png") return picture([0x89, 0x50, 0x4e, 0x47, ...new Array(6000).fill(0)]);
     if (url === "/slow") return void setTimeout(() => html("late"), 3000);
     if (url === "/empty") return html("<script>only code</script>");
     res.writeHead(500);
@@ -104,12 +117,18 @@ afterAll(() => new Promise<void>((r) => server.close(() => r())));
 
 describe("fetchPage", () => {
   it("reads a page, in the charset it says", async () => {
-    expect(await fetchPage(`${base}/ok`, { ...limits, ...open })).toEqual({ ok: true, html: "<p>Hallo Käse</p>" });
-    expect(await fetchPage(`${base}/latin`, { ...limits, ...open })).toEqual({ ok: true, html: "<p>Käse</p>" });
+    expect(await fetchPage(`${base}/ok`, { ...limits, ...open })).toMatchObject({
+      ok: true,
+      html: "<p>Hallo Käse</p>",
+    });
+    expect(await fetchPage(`${base}/latin`, { ...limits, ...open })).toMatchObject({ ok: true, html: "<p>Käse</p>" });
   });
 
   it("follows redirects up to the limit, and gives up on a loop", async () => {
-    expect(await fetchPage(`${base}/r1`, { ...limits, ...open })).toEqual({ ok: true, html: "<p>Hallo Käse</p>" });
+    expect(await fetchPage(`${base}/r1`, { ...limits, ...open })).toMatchObject({
+      ok: true,
+      html: "<p>Hallo Käse</p>",
+    });
     expect(await fetchPage(`${base}/r1`, { ...limits, ...open, maxRedirects: 1 })).toEqual({
       ok: false,
       reason: "unreachable",
@@ -173,5 +192,44 @@ describe("WebRecipeSource", () => {
       ok: false,
       reason: "address_not_public",
     });
+  });
+});
+
+describe("fetchPicture", () => {
+  it("reads a picture and says what it is by its bytes", async () => {
+    const r = await fetchPicture(`${base}/pic.png`, { ...limits, ...open });
+    expect(r.ok && r.contentType).toBe("image/png");
+    expect(r.ok && [...r.bytes]).toEqual([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  });
+
+  it("refuses an SVG, a page, a lie about the type, too much and an error", async () => {
+    expect(await fetchPicture(`${base}/pic.svg`, { ...limits, ...open })).toEqual({ ok: false, reason: "not_a_page" });
+    expect(await fetchPicture(`${base}/pic-lies.png`, { ...limits, ...open })).toEqual({
+      ok: false,
+      reason: "not_a_page",
+    });
+    expect(await fetchPicture(`${base}/ok`, { ...limits, ...open })).toEqual({ ok: false, reason: "not_a_page" });
+    expect(await fetchPicture(`${base}/pic-big.png`, { ...limits, ...open })).toEqual({
+      ok: false,
+      reason: "too_large",
+    });
+    expect(await fetchPicture(`${base}/missing`, { ...limits, ...open })).toEqual({ ok: false, reason: "unreachable" });
+  });
+
+  it("does not connect to the machine itself", async () => {
+    expect(await fetchPicture(`${base}/pic.png`, { ...limits, allowedPort: () => true })).toEqual({
+      ok: false,
+      reason: "address_not_public",
+    });
+  });
+});
+
+describe("pictureType", () => {
+  it("knows JPEG, PNG and WebP, and nothing else", () => {
+    expect(pictureType(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0]))).toBe("image/jpeg");
+    expect(pictureType(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]))).toBe("image/png");
+    expect(pictureType(Buffer.from("RIFF\0\0\0\0WEBPVP8 "))).toBe("image/webp");
+    expect(pictureType(Buffer.from("GIF89a"))).toBeNull();
+    expect(pictureType(new Uint8Array())).toBeNull();
   });
 });

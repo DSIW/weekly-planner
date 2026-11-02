@@ -338,6 +338,8 @@ export interface RecipeDraft {
   totalMinutes?: number;
   yields?: number;
   source?: string;
+  /** The page's title picture, held by the planner until the recipe is created. */
+  imageToken?: string;
 }
 
 /** The import was refused; `reason` is the server's word for why. */
@@ -376,6 +378,14 @@ export const matchIngredients = async (names: string[]) =>
     )
   ).items;
 
+/** The household's spelling, emoji included, of each typed tag; `isKnown` is false for a tag KitchenOwl does not have. */
+export const matchTags = async (names: string[]) =>
+  (await importCall<{ tags: { written: string; name: string; isKnown: boolean }[] }>("/import/match-tags", { names }))
+    .tags;
+
+/** Where the draft's title picture is served (by the planner itself). */
+export const importImageUrl = (token: string) => `${base}/import/image/${token}`;
+
 /** Creates the recipe a member confirmed in KitchenOwl. */
 export const createImport = (draft: RecipeDraft) =>
-  importCall<{ recipeId: number; draft: RecipeDraft }>("/import/create", { draft });
+  importCall<{ recipeId: number; draft: RecipeDraft; photoAttached: boolean }>("/import/create", { draft });

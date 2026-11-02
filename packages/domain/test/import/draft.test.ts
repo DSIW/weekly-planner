@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { cleanText, fold, IMPORT_LIMITS, itemMatcher, reviewDraft } from "../../src/index.js";
+import {
+  cleanSourceAddress,
+  cleanText,
+  fold,
+  IMPORT_LIMITS,
+  itemMatcher,
+  reviewDraft,
+  tagMatcher,
+} from "../../src/index.js";
 
 const vocabulary = {
   items: ["Zwiebel", "Möhre", "Olivenöl", "Spaghetti"],
@@ -234,5 +242,62 @@ describe("itemMatcher", () => {
       { name: "Karotten", amount: "2", optional: false, isNewItem: false, icon: "carrot" },
       { name: "Safran", amount: "1 Prise", optional: false, isNewItem: true },
     ]);
+  });
+});
+
+describe("tags a member edits", () => {
+  const known = ["🌶️ Scharf", "🍲 Suppe"];
+
+  it("finds the household's tag, with its emoji, whatever way it is written", () => {
+    const match = tagMatcher(known);
+    for (const written of ["scharf", "Scharf!", "🌶 SCHARF"])
+      expect(match(written)).toEqual({ name: "🌶️ Scharf", isKnown: true });
+    expect(match("Grillen")).toEqual({ name: "Grillen", isKnown: false });
+  });
+
+  it("keeps a tag a member wrote, but never one a model made up", () => {
+    const vocab = { items: ["Zwiebel"], tags: known };
+    const body = { ...raw(), tags: ["suppe", "Grillen"] };
+    const fromModel = reviewDraft(body, vocab);
+    expect(fromModel.ok && fromModel.value.tags).toEqual(["🍲 Suppe"]);
+    const fromMember = reviewDraft(body, vocab, undefined, { newTags: true });
+    expect(fromMember.ok && fromMember.value.tags).toEqual(["🍲 Suppe", "Grillen"]);
+  });
+
+  it("limits how many tags and how long", () => {
+    const many = Array.from({ length: 30 }, (_, i) => `Tag ${i}`);
+    const d = reviewDraft({ ...raw(), tags: [...many, "x".repeat(200)] }, vocabulary, undefined, { newTags: true });
+    expect(d.ok && d.value.tags.length).toBe(IMPORT_LIMITS.maxTags);
+    const long = reviewDraft({ ...raw(), tags: ["x".repeat(200)] }, vocabulary, undefined, { newTags: true });
+    expect(long.ok && long.value.tags[0]?.length).toBe(IMPORT_LIMITS.maxTag);
+  });
+});
+
+describe("the source link", () => {
+  it("loses tracking parameters and the fragment, and keeps the rest", () => {
+    expect(cleanSourceAddress("https://example.org/rezept?id=7&utm_source=x&utm_medium=y&fbclid=abc#zutaten")).toBe(
+      "https://example.org/rezept?id=7",
+    );
+    expect(cleanSourceAddress("https://example.org/rezept?utm_campaign=x")).toBe("https://example.org/rezept");
+    expect(cleanSourceAddress("https://u:p@example.org/a")).toBe("https://example.org/a");
+  });
+
+  it("is nothing for what is not a web link", () => {
+    expect(cleanSourceAddress("javascript:alert(1)")).toBeNull();
+    expect(cleanSourceAddress("kein link")).toBeNull();
+  });
+
+  it("is the cleaned link in a draft, and absent when it is not one", () => {
+    expect(draftOf({}, "https://example.org/r?utm_source=a").source).toBe("https://example.org/r");
+    expect(draftOf({}, "nonsense").source).toBeUndefined();
+  });
+});
+
+describe("the title picture", () => {
+  it("is kept only as a token of the planner's own making", () => {
+    const token = "0123456789abcdef0123456789abcdef";
+    expect(draftOf({ imageToken: token }).imageToken).toBe(token);
+    expect(draftOf({ imageToken: "https://evil.example/x.png" }).imageToken).toBeUndefined();
+    expect(draftOf({ imageToken: 5 }).imageToken).toBeUndefined();
   });
 });

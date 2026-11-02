@@ -5,6 +5,7 @@ import {
   isoMinutes,
   pageToSourceText,
   recipeFromStructuredData,
+  recipeImageUrl,
 } from "../../../src/infrastructure/import/page-text.js";
 
 const ld = (data: unknown) => `<script type="application/ld+json">${JSON.stringify(data)}</script>`;
@@ -102,5 +103,52 @@ describe("pageToSourceText", () => {
   it("prefers the structured recipe, else the page text", () => {
     expect(pageToSourceText(`<p>Nav</p>${ld(recipe)}`)).toContain("Strukturierte Rezeptdaten");
     expect(pageToSourceText("<p>Nur Text</p>")).toBe("Nur Text");
+  });
+});
+
+describe("recipeImageUrl", () => {
+  const page = "https://example.org/rezepte/linsen";
+
+  it("takes the recipe's image, however the structured data writes it", () => {
+    for (const image of [
+      "https://cdn.example.org/a.jpg",
+      ["https://cdn.example.org/a.jpg", "https://cdn.example.org/b.jpg"],
+      { "@type": "ImageObject", url: "https://cdn.example.org/a.jpg" },
+      [{ url: "https://cdn.example.org/a.jpg" }],
+    ])
+      expect(recipeImageUrl(ld({ ...recipe, image }), page)).toBe("https://cdn.example.org/a.jpg");
+  });
+
+  it("resolves a link against the page", () => {
+    expect(recipeImageUrl(ld({ ...recipe, image: "/bilder/a.jpg" }), page)).toBe("https://example.org/bilder/a.jpg");
+    expect(recipeImageUrl(ld({ ...recipe, image: "//cdn.example.org/a.jpg" }), page)).toBe(
+      "https://cdn.example.org/a.jpg",
+    );
+  });
+
+  it("falls back to og:image, whatever the order of the attributes, and decodes it", () => {
+    expect(recipeImageUrl('<meta property="og:image" content="https://x.example/a.jpg?w=1&amp;h=2">', page)).toBe(
+      "https://x.example/a.jpg?w=1&h=2",
+    );
+    expect(recipeImageUrl("<meta content='https://x.example/b.jpg' name='twitter:image'>", page)).toBe(
+      "https://x.example/b.jpg",
+    );
+    expect(recipeImageUrl(`${ld(recipe)}<meta property="og:image" content="/c.jpg">`, page)).toBe(
+      "https://example.org/c.jpg",
+    );
+  });
+
+  it("is null without a picture, and for a link that is not a web link", () => {
+    expect(recipeImageUrl(ld(recipe), page)).toBeNull();
+    expect(recipeImageUrl("<p>Hallo</p>", page)).toBeNull();
+    expect(recipeImageUrl(ld({ ...recipe, image: "data:image/png;base64,AAAA" }), page)).toBeNull();
+    expect(recipeImageUrl(ld({ ...recipe, image: "javascript:alert(1)" }), page)).toBeNull();
+    expect(recipeImageUrl('<meta property="og:image" content="">', page)).toBeNull();
+  });
+
+  it("skips a block that is not JSON", () => {
+    expect(
+      recipeImageUrl(`<script type="application/ld+json">{nope</script>${ld({ ...recipe, image: "/d.jpg" })}`, page),
+    ).toBe("https://example.org/d.jpg");
   });
 });

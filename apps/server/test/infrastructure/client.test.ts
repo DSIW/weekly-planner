@@ -189,6 +189,39 @@ describe("KitchenOwlClient: items, tags and creating a recipe", () => {
     });
   });
 
+  it("uploads a picture as a form file and gives the name KitchenOwl keeps it under", async () => {
+    let seen: { url: string; method?: string; auth: string | null; file: File | null } | undefined;
+    const f = (async (url: string | URL | Request, init?: RequestInit) => {
+      const form = init?.body as FormData;
+      seen = {
+        url: String(url),
+        ...(init?.method ? { method: init.method } : {}),
+        auth: new Headers(init?.headers).get("authorization"),
+        file: form.get("file") as File | null,
+      };
+      return new Response(JSON.stringify({ filename: "abc.png", blur_hash: "x" }));
+    }) as typeof fetch;
+    const name = await new KitchenOwlClient(cfg, f).uploadPhoto(Uint8Array.from([1, 2, 3]), "image/png");
+    expect(name).toBe("abc.png");
+    expect(seen?.url).toBe("https://ko.test/api/upload");
+    expect(seen?.method).toBe("POST");
+    expect(seen?.auth).toBe("Bearer tok");
+    expect(seen?.file?.type).toBe("image/png");
+    expect(seen?.file?.name).toBe("recipe.png");
+    expect(seen?.file?.size).toBe(3);
+  });
+
+  it("raises an error when an upload is refused or answered oddly", async () => {
+    await expect(
+      new KitchenOwlClient(cfg, json({}, 413)).uploadPhoto(new Uint8Array(), "image/png"),
+    ).rejects.toMatchObject({
+      status: 413,
+    });
+    await expect(new KitchenOwlClient(cfg, json({})).uploadPhoto(new Uint8Array(), "image/png")).rejects.toBeInstanceOf(
+      KitchenOwlError,
+    );
+  });
+
   it("raises an error with the status when KitchenOwl refuses, and for an answer without an id", async () => {
     await expect(new KitchenOwlClient(cfg, json({}, 400)).createRecipe(recipe)).rejects.toMatchObject({ status: 400 });
     await expect(new KitchenOwlClient(cfg, json({ name: "x" })).createRecipe(recipe)).rejects.toBeInstanceOf(

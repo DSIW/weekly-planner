@@ -51,3 +51,6 @@ export const authResponseSchema = z.object({ access_token: z.string().min(1) });
 export const userSchema = z.object({ id: z.number().int(), name: z.string(), username: z.string() });
 
 export const householdSchema = z.object({ member: z.array(z.object({ id: z.number().int() })).default([]) });
+
+/** What KitchenOwl answers to a file upload: the name the file is kept under. */
+export const uploadedFileSchema = z.object({ filename: z.string().min(1) });

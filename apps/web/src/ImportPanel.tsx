@@ -1,6 +1,14 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
-import { createImport, draftImport, ImportFailed, matchIngredients, type RecipeDraft } from "./api";
+import {
+  createImport,
+  draftImport,
+  ImportFailed,
+  importImageUrl,
+  matchIngredients,
+  matchTags,
+  type RecipeDraft,
+} from "./api";
 import { ItemIcon } from "./ItemIcon";
 import { useLinks } from "./Links";
 
@@ -24,25 +32,63 @@ const messageFor = (e: unknown): string =>
   MESSAGES[e instanceof ImportFailed ? e.reason : "unavailable"] ??
   "Das hat nicht geklappt. Bitte später noch einmal versuchen.";
 
+// The names the household's KitchenOwl gives these tags, emoji included (the server keeps the household's own spelling).
 const MEAL: Record<string, string> = {
-  main: "Hauptgericht",
-  side: "Beilage",
-  dessert: "Dessert",
-  baking: "Backen",
-  breakfast: "Frühstück",
-  snack: "Snack",
-  drink: "Getränk",
-  prep: "Mise en place",
+  main: "🍽️ Hauptgericht",
+  side: "🥦 Beilage",
+  dessert: "🍦 Dessert",
+  baking: "🍰 Backen",
+  breakfast: "🥞 Frühstück",
+  snack: "🍿 Snack",
+  drink: "🍸 Getränk",
+  prep: "🔪 Mise en place",
 };
-const DIET: Record<string, string> = { vegan: "Vegan", vegetarian: "Vegetarisch", fish: "Fisch", meat: "Fleisch" };
+const DIET: Record<string, string> = {
+  vegan: "🌱 Vegan",
+  vegetarian: "🥬 Vegetarisch",
+  fish: "🐟 Fisch",
+  meat: "🥩 Fleisch",
+};
 const BASE: Record<string, string> = {
-  pasta: "Pasta",
-  rice: "Reis",
-  potatoes: "Kartoffeln",
-  grains: "Getreide",
-  bread: "Brot",
+  pasta: "🍝 Pasta",
+  rice: "🍚 Reis",
+  potatoes: "🥔 Kartoffeln",
+  grains: "🌾 Getreide",
+  bread: "🥖 Brot",
   other: "Sonstiges",
 };
+const MAX_TAGS = 12;
+
+/** A whole number from a field, or nothing when it is empty or not one. */
+const wholeNumber = (typed: string, max: number): number | undefined => {
+  const n = Number(typed);
+  return typed.trim() !== "" && Number.isInteger(n) && n >= 1 && n <= max ? n : undefined;
+};
+
+function Choice({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: Record<string, string>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <select value={value} onChange={(e) => onChange(e.target.value)}>
+        {Object.entries(options).map(([key, name]) => (
+          <option key={key} value={key}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
 
 const isLink = (s: string): boolean => /^https?:\/\/\S+$/i.test(s);
 
@@ -58,6 +104,9 @@ export function ImportPanel() {
   const create = useMutation({ mutationFn: createImport });
   // A renamed ingredient is looked up again: it may be one of the household's items now, with its icon.
   const lookup = useMutation({ mutationFn: (name: string) => matchIngredients([name]) });
+  // A tag that is written or renamed is looked up too: the household may have it, with an emoji.
+  const tagLookup = useMutation({ mutationFn: (name: string) => matchTags([name]) });
+  const [newTag, setNewTag] = useState("");
 
   if (create.data) {
     const recipeHref = links?.recipe.replace("{id}", String(create.data.recipeId));
@@ -67,6 +116,9 @@ export function ImportPanel() {
         <p role="status" className="success">
           „{create.data.draft.name}“ ist jetzt in KitchenOwl.
         </p>
+        {create.data.draft.imageToken !== undefined && !create.data.photoAttached && (
+          <p className="muted">Das Titelbild konnte nicht übernommen werden.</p>
+        )}
         {recipeHref && (
           <a className="link-button" href={recipeHref} target="_blank" rel="noopener noreferrer">
             In KitchenOwl öffnen
@@ -121,28 +173,138 @@ export function ImportPanel() {
         },
       });
     };
-    const facts = [
-      MEAL[draft.mealType],
-      BASE[draft.base],
-      DIET[draft.diet],
-      draft.totalMinutes ? `${draft.totalMinutes} Min.` : null,
-      draft.yields ? `${draft.yields} Portionen` : null,
-    ].filter((f): f is string => Boolean(f));
+    const dropImage = () =>
+      setDraft((now) => {
+        if (!now) return now;
+        const { imageToken: _gone, ...rest } = now;
+        return rest;
+      });
+    const setTags = (change: (tags: string[]) => string[]) =>
+      setDraft((now) => (now ? { ...now, tags: change(now.tags) } : now));
+    const dedupe = (tags: string[]) => {
+      const seen = new Set<string>();
+      return tags.filter((t) => {
+        const key = t.toLowerCase();
+        const fresh = !seen.has(key);
+        seen.add(key);
+        return fresh;
+      });
+    };
+    const renameTag = (index: number, typed: string) => {
+      const name = typed.trim();
+      if (name === "") return setTags((tags) => tags.filter((_, n) => n !== index));
+      tagLookup.mutate(name, {
+        onSuccess: ([found]) =>
+          // Only if the field still holds what was looked up.
+          setDraft((now) =>
+            now && now.tags[index]?.trim() === name && found
+              ? { ...now, tags: dedupe(now.tags.map((t, n) => (n === index ? found.name : t))) }
+              : now,
+          ),
+      });
+    };
+    const addTag = () => {
+      const name = newTag.trim();
+      if (name === "" || draft.tags.length >= MAX_TAGS) return;
+      setNewTag("");
+      tagLookup.mutate(name, {
+        onSuccess: ([found]) => setTags((tags) => dedupe([...tags, found?.name ?? name])),
+      });
+    };
     return (
       <section className="card import-draft">
         <h2>Rezept prüfen</h2>
+        {draft.imageToken !== undefined && (
+          <figure className="import-photo">
+            <img
+              src={importImageUrl(draft.imageToken)}
+              alt="Titelbild"
+              // The picture is held for a while only: when it is gone, the recipe is created without it.
+              onError={dropImage}
+            />
+            <button type="button" className="secondary" onClick={dropImage}>
+              Bild entfernen
+            </button>
+          </figure>
+        )}
         <label>
           Name
           <input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
         </label>
         {draft.subtitle && <p className="muted">{draft.subtitle}</p>}
-        <ul className="chips" aria-label="Eigenschaften">
-          {[...facts, ...draft.tags].map((f) => (
-            <li key={f} className="badge">
-              {f}
+        <div className="import-facts">
+          <Choice label="Art" value={draft.mealType} options={MEAL} onChange={(mealType) => set({ mealType })} />
+          <Choice label="Basis" value={draft.base} options={BASE} onChange={(base) => set({ base })} />
+          <Choice label="Ernährung" value={draft.diet} options={DIET} onChange={(diet) => set({ diet })} />
+          <label>
+            Zeit (Min.)
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={1440}
+              value={draft.totalMinutes ?? ""}
+              onChange={(e) => {
+                const { totalMinutes: _old, ...rest } = draft;
+                const minutes = wholeNumber(e.target.value, 1440);
+                setDraft(minutes === undefined ? rest : { ...rest, totalMinutes: minutes });
+              }}
+            />
+          </label>
+          <label>
+            Portionen
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={50}
+              value={draft.yields ?? ""}
+              onChange={(e) => {
+                const { yields: _old, ...rest } = draft;
+                const yields = wholeNumber(e.target.value, 50);
+                setDraft(yields === undefined ? rest : { ...rest, yields });
+              }}
+            />
+          </label>
+        </div>
+        <h3>Tags</h3>
+        <ul className="import-tags" aria-label="Tags">
+          {draft.tags.map((tag, index) => (
+            // Names can be edited, so a tag is identified by its place.
+            // biome-ignore lint/suspicious/noArrayIndexKey: the name is what the member is changing
+            <li key={index}>
+              <input
+                aria-label={`Tag ${index + 1}`}
+                value={tag}
+                onChange={(e) => setTags((tags) => tags.map((t, n) => (n === index ? e.target.value : t)))}
+                onBlur={() => renameTag(index, tag)}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+              />
+              <button
+                type="button"
+                className="secondary small"
+                aria-label={`${tag} entfernen`}
+                onClick={() => setTags((tags) => tags.filter((_, n) => n !== index))}
+              >
+                ✕
+              </button>
             </li>
           ))}
         </ul>
+        {draft.tags.length < MAX_TAGS && (
+          <div className="import-add-tag">
+            <input
+              aria-label="Neuer Tag"
+              placeholder="Tag hinzufügen"
+              value={newTag}
+              onChange={(e) => setNewTag(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTag()}
+            />
+            <button type="button" className="secondary" disabled={newTag.trim() === ""} onClick={addTag}>
+              Hinzufügen
+            </button>
+          </div>
+        )}
         <h3>Zutaten</h3>
         <ul className="ingredient-grid" aria-label="Zutaten">
           {draft.ingredients.map((i, index) => (

@@ -8,6 +8,7 @@ const DRAFT = `POST ${api}/import/draft`;
 const CREATE = `POST ${api}/import/create`;
 const LINKS = `GET ${api}/links`;
 const MATCH = `POST ${api}/import/match`;
+const MATCH_TAGS = `POST ${api}/import/match-tags`;
 const base = {
   [`GET ${api}/me`]: { status: 200, body: { member: { id: "2", name: "Max" } } },
   [`GET ${api}/sessions/current`]: { status: 200, body: { session: null } },
@@ -73,9 +74,16 @@ describe("recipe import", () => {
     expect(tiles[1]).toHaveTextContent("neu");
     expect(tiles[1]).toHaveTextContent("optional");
     expect(within(screen.getByRole("list", { name: "Schritte" })).getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByRole("list", { name: "Eigenschaften" })).toHaveTextContent(
-      "HauptgerichtSonstigesVegan40 Min.4 Portionen🍲 Suppe",
-    );
+    // Meal type, base and diet carry the emoji of the household's tags; time and portions are fields, not tags.
+    expect(screen.getByRole("combobox", { name: "Art" })).toHaveDisplayValue("🍽️ Hauptgericht");
+    expect(screen.getByRole("combobox", { name: "Basis" })).toHaveDisplayValue("Sonstiges");
+    expect(screen.getByRole("combobox", { name: "Ernährung" })).toHaveDisplayValue("🌱 Vegan");
+    expect(screen.getByRole("spinbutton", { name: "Zeit (Min.)" })).toHaveValue(40);
+    expect(screen.getByRole("spinbutton", { name: "Portionen" })).toHaveValue(4);
+    const tags = within(screen.getByRole("list", { name: "Tags" })).getAllByRole("listitem");
+    expect(tags).toHaveLength(1);
+    expect(within(tags[0]!).getByRole("textbox", { name: "Tag 1" })).toHaveValue("🍲 Suppe");
+    expect(screen.getByText("Quelle: https://example.org/linsen")).toBeInTheDocument();
     expect(calls.some((c) => c.key === CREATE)).toBe(false); // nothing is created before the member says yes
 
     await userEvent.click(screen.getByRole("button", { name: "In KitchenOwl anlegen" }));
@@ -247,5 +255,133 @@ describe("renaming an ingredient in the review", () => {
     const tiles = within(screen.getByRole("list", { name: "Zutaten" })).getAllByRole("listitem");
     await waitFor(() => expect(tiles[0]?.querySelector(".item-icon")).toHaveAttribute("data-icon", "onion"));
     expect(tiles[1]?.querySelector(".item-icon")).toHaveClass("letter"); // a new item has no icon yet
+  });
+});
+
+describe("the rest of the review", () => {
+  const read = async (routes: Parameters<typeof server>[0], shown: object = draft) => {
+    const calls = server({ ...base, [DRAFT]: { status: 200, body: { draft: shown } }, ...routes });
+    await openImport();
+    await paste("Text");
+    await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
+    await screen.findByRole("heading", { name: "Rezept prüfen" });
+    return calls;
+  };
+  const created = (calls: { key: string; body?: unknown }[]) =>
+    (
+      (calls.find((c) => c.key === CREATE) ?? { body: { draft: {} } }).body as {
+        draft: typeof draft & { imageToken?: string };
+      }
+    ).draft;
+  const create = async (calls: { key: string }[]) => {
+    await userEvent.click(screen.getByRole("button", { name: "In KitchenOwl anlegen" }));
+    await waitFor(() => expect(calls.some((c) => c.key === CREATE)).toBe(true));
+  };
+  const answer = { [CREATE]: { status: 201, body: { recipeId: 1, draft, photoAttached: true } } };
+
+  it("lets a member change time and portions, and take them away", async () => {
+    const calls = await read(answer);
+    const time = screen.getByRole("spinbutton", { name: "Zeit (Min.)" });
+    await userEvent.clear(time);
+    await userEvent.type(time, "25");
+    await userEvent.clear(screen.getByRole("spinbutton", { name: "Portionen" }));
+    await create(calls);
+    const sent = created(calls);
+    expect(sent.totalMinutes).toBe(25);
+    expect(sent).not.toHaveProperty("yields");
+  });
+
+  it("lets a member change the kind of dish, the base and the diet", async () => {
+    const calls = await read(answer);
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Art" }), "side");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Basis" }), "rice");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Ernährung" }), "meat");
+    await create(calls);
+    expect(created(calls)).toMatchObject({ mealType: "side", base: "rice", diet: "meat" });
+  });
+
+  it("renames a tag to the household's spelling, with its emoji", async () => {
+    const calls = await read({
+      ...answer,
+      [MATCH_TAGS]: { status: 200, body: { tags: [{ written: "scharf", name: "🌶️ Scharf", isKnown: true }] } },
+    });
+    const tag = screen.getByRole("textbox", { name: "Tag 1" });
+    await userEvent.clear(tag);
+    await userEvent.type(tag, "scharf");
+    await userEvent.tab();
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Tag 1" })).toHaveValue("🌶️ Scharf"));
+    expect(calls.find((c) => c.key === MATCH_TAGS)?.body).toEqual({ names: ["scharf"] });
+    await create(calls);
+    expect(created(calls).tags).toEqual(["🌶️ Scharf"]);
+  });
+
+  it("adds a tag, with the household's emoji if it has the tag, and does not add one twice", async () => {
+    const calls = await read({
+      ...answer,
+      [MATCH_TAGS]: { status: 200, body: { tags: [{ written: "x", name: "Grillen", isKnown: false }] } },
+    });
+    const field = screen.getByRole("textbox", { name: "Neuer Tag" });
+    expect(screen.getByRole("button", { name: "Hinzufügen" })).toBeDisabled();
+    await userEvent.type(field, "Grillen{Enter}");
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Tag 2" })).toHaveValue("Grillen"));
+    expect(field).toHaveValue("");
+    await userEvent.type(field, "grillen");
+    await userEvent.click(screen.getByRole("button", { name: "Hinzufügen" }));
+    await waitFor(() => expect(calls.filter((c) => c.key === MATCH_TAGS)).toHaveLength(2));
+    expect(screen.queryByRole("textbox", { name: "Tag 3" })).not.toBeInTheDocument();
+    await create(calls);
+    expect(created(calls).tags).toEqual(["🍲 Suppe", "Grillen"]);
+  });
+
+  it("removes a tag, also by emptying its field", async () => {
+    const calls = await read(answer, { ...draft, tags: ["🍲 Suppe", "🌶️ Scharf", "Grillen"] });
+    await userEvent.click(screen.getByRole("button", { name: "🌶️ Scharf entfernen" }));
+    await userEvent.clear(screen.getByRole("textbox", { name: "Tag 2" }));
+    await userEvent.tab();
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Tag 3" })).not.toBeInTheDocument());
+    await create(calls);
+    expect(created(calls).tags).toEqual(["🍲 Suppe"]);
+  });
+
+  it("offers no more tags once there are twelve", async () => {
+    await read(answer, { ...draft, tags: Array.from({ length: 12 }, (_, i) => `Tag ${i}`) });
+    expect(screen.queryByRole("textbox", { name: "Neuer Tag" })).not.toBeInTheDocument();
+  });
+
+  const TOKEN = "0123456789abcdef0123456789abcdef";
+
+  it("shows the title picture from the planner, and creates the recipe without it when removed", async () => {
+    const calls = await read(answer, { ...draft, imageToken: TOKEN });
+    expect(screen.getByRole("img", { name: "Titelbild" })).toHaveAttribute("src", `${api}/import/image/${TOKEN}`);
+    await userEvent.click(screen.getByRole("button", { name: "Bild entfernen" }));
+    expect(screen.queryByRole("img", { name: "Titelbild" })).not.toBeInTheDocument();
+    await create(calls);
+    expect(created(calls)).not.toHaveProperty("imageToken");
+  });
+
+  it("sends the picture's token along, and says when the picture did not make it", async () => {
+    const calls = await read(
+      {
+        [CREATE]: { status: 201, body: { recipeId: 1, draft: { ...draft, imageToken: TOKEN }, photoAttached: false } },
+      },
+      { ...draft, imageToken: TOKEN },
+    );
+    await create(calls);
+    expect(created(calls).imageToken).toBe(TOKEN);
+    expect(await screen.findByText("Das Titelbild konnte nicht übernommen werden.")).toBeInTheDocument();
+  });
+
+  it("does not mention a picture there never was", async () => {
+    const calls = await read({ [CREATE]: { status: 201, body: { recipeId: 1, draft, photoAttached: false } } });
+    await create(calls);
+    await screen.findByText(/ist jetzt in KitchenOwl/);
+    expect(screen.queryByText(/Titelbild/)).not.toBeInTheDocument();
+  });
+
+  it("lets go of a picture the browser cannot load", async () => {
+    await read(answer, { ...draft, imageToken: TOKEN });
+    const img = screen.getByRole("img", { name: "Titelbild" });
+    img.dispatchEvent(new Event("error"));
+    await waitFor(() => expect(screen.queryByRole("img", { name: "Titelbild" })).not.toBeInTheDocument());
   });
 });

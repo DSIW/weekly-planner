@@ -4,7 +4,13 @@ import { join } from "node:path";
 import type { SignIn } from "@weekly-planner/application";
 import { memberId } from "@weekly-planner/domain";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CreateImportedRecipe, DraftRecipeImport, MatchIngredients } from "@weekly-planner/application";
+import type {
+  CreateImportedRecipe,
+  DraftRecipeImport,
+  ImageShelf,
+  MatchIngredients,
+  MatchTags,
+} from "@weekly-planner/application";
 import { buildApp } from "../../src/interface/http/app.js";
 import { decodeSession, encodeSession } from "../../src/interface/http/session-cookie.js";
 
@@ -31,6 +37,7 @@ const noSessions = {
   draftRecipeImport: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   createImportedRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   matchIngredients: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  matchTags: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   vetoProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   withdrawProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   refreshRecipes: { execute: async () => {} },
@@ -84,6 +91,8 @@ const app = (
     draftRecipeImport?: Pick<DraftRecipeImport, "execute">;
     createImportedRecipe?: Pick<CreateImportedRecipe, "execute">;
     matchIngredients?: Pick<MatchIngredients, "execute">;
+    matchTags?: Pick<MatchTags, "execute">;
+    draftImages?: ImageShelf;
   } = {},
 ) =>
   buildApp({
@@ -387,12 +396,12 @@ describe("recipe import", () => {
     const createImportedRecipe: Pick<CreateImportedRecipe, "execute"> = {
       execute: async (cmd) => {
         seen.push(cmd);
-        return { ok: true, value: { recipeId: 173, draft: draft as never } };
+        return { ok: true, value: { recipeId: 173, draft: draft as never, photoAttached: true } };
       },
     };
     const res = await post("/import/create", { draft }, { createImportedRecipe });
     expect(res.statusCode).toBe(201);
-    expect(res.json()).toEqual({ recipeId: 173, draft });
+    expect(res.json()).toEqual({ recipeId: 173, draft, photoAttached: true });
     expect(seen).toEqual([{ member: "2", draft }]);
     expect((await post("/import/create", { draft: "x" }, { createImportedRecipe })).statusCode).toBe(400);
     expect((await post("/import/create", {}, { createImportedRecipe })).statusCode).toBe(400);
@@ -442,5 +451,58 @@ describe("matching renamed ingredients", () => {
       { names: Array(61).fill("a") },
     ])
       expect((await post(bad)).statusCode, JSON.stringify(bad).slice(0, 30)).toBe(400);
+  });
+});
+
+describe("matching tags", () => {
+  const post = async (payload: unknown, signedIn = true) => {
+    const a = await app({
+      matchTags: {
+        execute: async ({ names }) => ({
+          ok: true,
+          value: names.map((w) => ({ written: w, name: `🌶️ ${w}`, isKnown: true })),
+        }),
+      },
+    });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: "/plan/api/import/match-tags", payload: payload as object, cookies });
+  };
+
+  it("answers for each name, for the signed-in member only, and refuses a malformed request", async () => {
+    const res = await post({ names: ["Scharf"] });
+    expect(res.json()).toEqual({ tags: [{ written: "Scharf", name: "🌶️ Scharf", isKnown: true }] });
+    expect((await post({ names: ["Scharf"] }, false)).statusCode).toBe(401);
+    for (const bad of [{}, { names: "x" }, { names: [1] }, { names: Array(31).fill("a") }])
+      expect((await post(bad)).statusCode).toBe(400);
+  });
+});
+
+describe("the picture of a draft", () => {
+  const token = "0123456789abcdef0123456789abcdef";
+  const shelf: ImageShelf = {
+    keep: () => token,
+    get: (t) => (t === token ? { bytes: Uint8Array.from([0x89, 0x50, 0x4e, 0x47]), contentType: "image/png" } : null),
+  };
+  const get = async (path: string, over: { draftImages?: ImageShelf } = { draftImages: shelf }, signedIn = true) => {
+    const a = await app(over);
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "GET", url: `/plan/api/import/image/${path}`, cookies });
+  };
+
+  it("is served to a member as the picture it is, and may not be run or kept", async () => {
+    const res = await get(token);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("image/png");
+    expect(res.headers["cache-control"]).toBe("private, no-store");
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    expect(res.headers["content-security-policy"]).toContain("sandbox");
+    expect([...res.rawPayload]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  it("is not served to anyone else, nor for a token that is unknown, malformed or without a shelf", async () => {
+    expect((await get(token, { draftImages: shelf }, false)).statusCode).toBe(401);
+    expect((await get("f".repeat(32))).statusCode).toBe(404);
+    expect((await get("..%2Fsecret")).statusCode).toBe(404);
+    expect((await get(token, {})).statusCode).toBe(404);
   });
 });

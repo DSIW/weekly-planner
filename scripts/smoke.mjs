@@ -733,6 +733,17 @@ try {
       ],
       "a renamed ingredient finds the household's own item, not the stray one",
     );
+    const tagged = await (await call("/import/match-tags", { names: ["suppe", "Grillen"] })).json();
+    assert.deepEqual(
+      tagged.tags.map((t) => [t.name, t.isKnown]),
+      [
+        ["🍲 Suppe", true],
+        ["Grillen", false],
+      ],
+      "a tag a member writes finds the household's spelling, emoji included",
+    );
+    const missing = await realFetch(`${origin()}/plan/api/import/image/${"f".repeat(32)}`, { headers: { cookie } });
+    assert.equal(missing.status, 404, "no picture, nothing served");
     assert.equal(draft.visibility, undefined, "whatever else the model said is dropped");
     assert.equal(imported.recipes.length, 0, "nothing is created before the member confirms");
     assert.equal(imported.llm[0].auth, "Bearer llm-key");

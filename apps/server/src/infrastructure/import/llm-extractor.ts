@@ -52,7 +52,7 @@ Write everything in German.
 - mealType: main for a dinner dish; side, dessert, baking, breakfast, snack or drink where that fits better; prep for a preparation that is not a dish on its own (stock, confit, sauce base).
 - base: the main carbohydrate: pasta, rice, potatoes, grains or bread; otherwise other.
 - diet: meat if any meat, poultry, sausage or bacon is in it; else fish if fish or seafood is; else vegetarian if it has dairy, egg or honey; else vegan.
-- tags: only from the list of allowed tags, at most 4, only when they clearly fit; otherwise [].
+- tags: only from the list of allowed tags, at most 4, only when they clearly fit; otherwise []. Never a tag about duration or effort: the time has its own field.
 - totalMinutes: total time in minutes including waiting, from the source or a sensible estimate; yields: the number of portions the amounts are for.`;
 
 const clip = (list: readonly string[]) => list.join("; ");
