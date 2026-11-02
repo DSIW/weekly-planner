@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   createImport,
@@ -104,7 +104,14 @@ export function ImportPanel() {
     mutationFn: (text: string) => draftImport(isLink(text) ? { address: text } : { text }),
     onSuccess: setDraft,
   });
-  const create = useMutation({ mutationFn: createImport });
+  const client = useQueryClient();
+  const create = useMutation({
+    mutationFn: createImport,
+    // The new recipe is there for every list that offers recipes, and for the next check for look-alikes.
+    onSuccess: () => {
+      for (const key of ["session", "meal-log", "related"]) void client.invalidateQueries({ queryKey: [key] });
+    },
+  });
   // A renamed ingredient is looked up again: it may be one of the household's items now, with its icon.
   const lookup = useMutation({ mutationFn: (name: string) => matchIngredients([name]) });
   // A tag that is written or renamed is looked up too: the household may have it, with an emoji.

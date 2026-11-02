@@ -149,7 +149,7 @@ async function main(): Promise<void> {
       writer: recipeWriter,
       images: { fetcher: new WebImageFetcher(), shelf: draftImages },
     }),
-    createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter, shelf: draftImages }),
+    createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter, shelf: draftImages, catalog }),
     matchIngredients: new MatchIngredients({ writer: recipeWriter }),
     matchTags: new MatchTags({ writer: recipeWriter }),
     suggestNames: new SuggestNames({ writer: recipeWriter }),

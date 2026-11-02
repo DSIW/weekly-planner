@@ -168,7 +168,14 @@ export class MatchTags {
  * rule CreateImportedRecipe: what a member confirmed is checked again (a phone's word is not trusted) and created.
  */
 export class CreateImportedRecipe {
-  constructor(private readonly deps: { writer: RecipeWriter; shelf?: ImageShelf }) {}
+  constructor(
+    private readonly deps: {
+      writer: RecipeWriter;
+      shelf?: ImageShelf;
+      /** Told to read the recipes again: the planner offers a new recipe at once, not when its copy runs out. */
+      catalog?: Pick<RecipeCatalog, "refresh">;
+    },
+  ) {}
 
   async execute(cmd: {
     member: MemberId;
@@ -189,6 +196,8 @@ export class CreateImportedRecipe {
     const image = imageToken === undefined ? null : (this.deps.shelf?.get(imageToken) ?? null);
     try {
       const { recipeId, photoAttached } = await this.deps.writer.create(checked.value, image ?? undefined);
+      // The recipe exists now; failing to refresh only means it shows up when the catalogue renews itself.
+      await this.deps.catalog?.refresh().catch(() => undefined);
       return { ok: true, value: { recipeId, draft: checked.value, photoAttached } };
     } catch {
       return { ok: false, reason: "kitchenowl_unavailable" };

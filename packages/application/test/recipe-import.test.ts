@@ -355,6 +355,50 @@ describe("SuggestNames", () => {
   });
 });
 
+describe("a created recipe and the catalogue", () => {
+  it("makes the catalogue read the recipes again, so the planner offers the new one at once", async () => {
+    let refreshed = 0;
+    const { writer } = (() => {
+      const w: RecipeWriter = {
+        vocabulary: async () => vocabulary,
+        create: async () => ({ recipeId: 5, photoAttached: false }),
+      };
+      return { writer: w };
+    })();
+    const create = new CreateImportedRecipe({
+      writer,
+      catalog: {
+        refresh: async () => {
+          refreshed++;
+        },
+      },
+    });
+    const draft = { ...answer(), source: "https://example.org/r" };
+    expect((await create.execute({ member: ME, draft })).ok).toBe(true);
+    expect(refreshed).toBe(1);
+    // A refusal creates nothing and refreshes nothing.
+    await create.execute({ member: ME, draft: { ...draft, ingredients: [] } });
+    expect(refreshed).toBe(1);
+  });
+
+  it("still reports the recipe as created when the catalogue cannot be refreshed", async () => {
+    const writer: RecipeWriter = {
+      vocabulary: async () => vocabulary,
+      create: async () => ({ recipeId: 5, photoAttached: false }),
+    };
+    const create = new CreateImportedRecipe({
+      writer,
+      catalog: {
+        refresh: async () => {
+          throw new Error("down");
+        },
+      },
+    });
+    const r = await create.execute({ member: ME, draft: answer() });
+    expect(r.ok && r.value.recipeId).toBe(5);
+  });
+});
+
 describe("FindRelatedRecipes", () => {
   const r1 = aRecipe(1, { name: "Rote Linsensuppe", source: "https://example.org/linsen" });
   const catalog = (entries: Awaited<ReturnType<RecipeCatalog["listAll"]>>) =>
