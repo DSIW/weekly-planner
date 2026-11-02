@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.23...weekly-planner-v0.1.24) (2026-11-02)
+
+
+### Bug Fixes
+
+* **import:** offer a newly imported recipe in the planner at once ([4af63e9](https://github.com/DSIW/weekly-planner/commit/4af63e9b0f2ba5a9e750d66cbc4d49fa1d97bb37))
+
 ## [0.1.23](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.22...weekly-planner-v0.1.23) (2026-11-02)
 
 
