@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.20...weekly-planner-v0.1.21) (2026-11-02)
+
+
+### Features
+
+* reset a finalized dinner, autocomplete for tags, replace an imported ingredient ([c0e39b8](https://github.com/DSIW/weekly-planner/commit/c0e39b8c70f188cb50568cbfa22ddd18abdb75a7))
+
 ## [0.1.20](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.19...weekly-planner-v0.1.20) (2026-11-02)
 
 
