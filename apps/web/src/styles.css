@@ -6,6 +6,7 @@
   --text: #1c1b1f;
   --muted: #5f6368;
   --error: #b3261e;
+  --warn: #9a5b00;
   --outline: #c4c7c5;
   color-scheme: light dark;
 }
@@ -18,6 +19,7 @@
     --text: #e6e1e5;
     --muted: #a6aaa7;
     --error: #f2b8b5;
+    --warn: #e0a44a;
     --outline: #444a46;
   }
 }
@@ -1130,4 +1132,8 @@ select {
 }
 button.found-other {
   border-style: dashed;
+}
+/* A warning, not a refusal: amber text with a sign, no more than that. */
+.recipe-line-text .warn {
+  color: var(--warn);
 }

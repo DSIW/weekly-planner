@@ -636,7 +636,7 @@ describe("searching for a recipe that is not offered", () => {
     await userEvent.type(screen.getByLabelText("Rezept suchen"), "coq");
     expect(await screen.findByText("Weitere Treffer")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Coq au vin/ })).toHaveTextContent(
-      "Zu lang für einen Wochentag (90 Min.)",
+      "⚠︎ 90 Min. – lang für einen Wochentag",
     );
     expect(screen.getByText(/In KitchenOwl fehlt noch: die Ernährung/)).toBeInTheDocument();
     expect(screen.queryByText("Kein Rezept gefunden.")).not.toBeInTheDocument();

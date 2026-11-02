@@ -105,7 +105,12 @@ export function RecipePicker({
               >
                 <RecipeLine
                   recipe={r}
-                  detail={<>Zu lang für einen Wochentag ({r.minutes} Min.). Tippen, um es trotzdem vorzuschlagen.</>}
+                  detail={
+                    <span className="warn">
+                      <span aria-hidden="true">⚠︎ </span>
+                      {r.minutes} Min. – lang für einen Wochentag
+                    </span>
+                  }
                 />
               </button>
             );
