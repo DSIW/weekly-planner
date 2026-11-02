@@ -180,7 +180,7 @@ describe("KitchenOwlClient: items, tags and creating a recipe", () => {
       };
       return new Response(JSON.stringify({ id: 173, name: "Pasta", items: [] }));
     }) as typeof fetch;
-    expect(await new KitchenOwlClient(cfg, f).createRecipe(recipe)).toBe(173);
+    expect(await new KitchenOwlClient(cfg, f).createRecipe(recipe)).toEqual({ id: 173, items: [] });
     expect(seen).toEqual({
       url: "https://ko.test/api/household/2/recipe",
       method: "POST",
@@ -209,6 +209,23 @@ describe("KitchenOwlClient: items, tags and creating a recipe", () => {
     expect(seen?.file?.type).toBe("image/png");
     expect(seen?.file?.name).toBe("recipe.png");
     expect(seen?.file?.size).toBe(3);
+  });
+
+  it("gives back the items of a created recipe, and sets an item's icon", async () => {
+    let seen: { url: string; body: unknown; auth: string | null } | undefined;
+    const f = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen = {
+        url: String(url),
+        body: JSON.parse(String(init?.body)),
+        auth: new Headers(init?.headers).get("authorization"),
+      };
+      return new Response(JSON.stringify({ id: 5, items: [{ id: 9, name: "Safran", icon: null }] }));
+    }) as typeof fetch;
+    const client = new KitchenOwlClient(cfg, f);
+    expect(await client.createRecipe(recipe)).toEqual({ id: 5, items: [{ id: 9, name: "Safran", icon: null }] });
+    await client.setItemIcon(9, "carrot");
+    expect(seen).toEqual({ url: "https://ko.test/api/item/9", body: { icon: "carrot" }, auth: "Bearer tok" });
+    await expect(new KitchenOwlClient(cfg, json({}, 404)).setItemIcon(9, "x")).rejects.toMatchObject({ status: 404 });
   });
 
   it("raises an error when an upload is refused or answered oddly", async () => {

@@ -43,6 +43,9 @@ value DraftIngredient {
     optional: Boolean
     -- True when no known item has this name: KitchenOwl will create it.
     is_new_item: not exists KnownItem{name: name}
+    -- A known item brings its own icon. A new one gets a suggested icon, only
+    -- one that KitchenOwl's items already use, saved on the item it creates.
+    icon: String?
 }
 
 -- What the language model made of the source, after the checks below. It is
@@ -109,7 +112,9 @@ rule CheckDraft {
     requires: draft.name != ""
     requires: draft.steps.count >= 1 and draft.steps.count <= config.max_steps
     requires: draft.ingredients.count >= 1 and draft.ingredients.count <= config.max_ingredients
-    -- Each ingredient named like a known item is that item; any other is new.
+    -- Each ingredient named like a known item is that item (a plural, another
+    -- spelling of umlauts, or a slip of a letter or two in a longer name
+    -- counts as named like it); any other is new.
     -- Text carries no links or markup; tags the household does not have are
     -- dropped from the model's answer.
     ensures: DraftShown(draft)

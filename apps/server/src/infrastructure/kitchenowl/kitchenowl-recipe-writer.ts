@@ -16,7 +16,10 @@ export class KitchenOwlRecipeWriter implements RecipeWriter {
   private cached: { at: number; items: string[]; icons: Record<string, string>; tags: string[] } | null = null;
 
   constructor(
-    private readonly client: Pick<KitchenOwlClient, "listItems" | "listTagNames" | "createRecipe" | "uploadPhoto">,
+    private readonly client: Pick<
+      KitchenOwlClient,
+      "listItems" | "listTagNames" | "createRecipe" | "uploadPhoto" | "setItemIcon"
+    >,
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -55,7 +58,14 @@ export class KitchenOwlRecipeWriter implements RecipeWriter {
       items: draft.ingredients.map((i) => ({ name: i.name, description: i.amount, optional: i.optional })),
       tags,
     };
-    const recipeId = await this.client.createRecipe(recipe);
+    const created = await this.client.createRecipe(recipe);
+    const recipeId = created.id;
+    // A new item gets the icon that was suggested for it; the recipe is there either way, so a failure costs the icon.
+    for (const ingredient of draft.ingredients) {
+      if (!ingredient.isNewItem || !ingredient.icon) continue;
+      const item = created.items.find((i) => i.name.toLowerCase() === ingredient.name.toLowerCase());
+      if (item && !item.icon) await this.client.setItemIcon(item.id, ingredient.icon).catch(() => undefined);
+    }
     this.cached = null; // the new items and tags are part of the vocabulary now
     return { recipeId, photoAttached: photo !== null };
   }

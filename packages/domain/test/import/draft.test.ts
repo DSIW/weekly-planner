@@ -4,6 +4,7 @@ import {
   cleanText,
   fold,
   IMPORT_LIMITS,
+  iconsInUse,
   itemMatcher,
   reviewDraft,
   suggestItems,
@@ -334,5 +335,72 @@ describe("suggestions while typing", () => {
     expect(suggestTags(tags, "🌶 sch")).toEqual(["🌶️ Scharf"]);
     expect(suggestTags(tags, "")).toEqual([]);
     expect(suggestTags(tags, "pizza")).toEqual([]);
+  });
+});
+
+describe("an icon for a new ingredient", () => {
+  const vocab = { items: ["Karotten", "Linsen"], icons: { Karotten: "carrot", Linsen: "lentils" }, tags: [] };
+  const withIcons = (ingredients: object[]) => {
+    const r = reviewDraft({ ...raw(), ingredients }, vocab);
+    if (!r.ok) throw new Error(r.reason);
+    return r.value.ingredients;
+  };
+
+  it("is kept for a new ingredient when it is one of the icons the household's items use", () => {
+    expect(withIcons([{ name: "Safran", amount: "1 Prise", icon: "lentils" }])).toEqual([
+      { name: "Safran", amount: "1 Prise", optional: false, isNewItem: true, icon: "lentils" },
+    ]);
+  });
+
+  it("is dropped when it is not one of those, or not text", () => {
+    for (const icon of ["bogus", "", 5, null, { x: 1 }])
+      expect(withIcons([{ name: "Safran", amount: "", icon }])[0]).not.toHaveProperty("icon");
+  });
+
+  it("never replaces the icon of a known item", () => {
+    expect(withIcons([{ name: "Karotte", amount: "", icon: "lentils" }])[0]).toMatchObject({ icon: "carrot" });
+  });
+
+  it("lists the icons in use once, in order", () => {
+    expect(iconsInUse({ items: [], icons: { A: "b", B: "a", C: "b" }, tags: [] })).toEqual(["a", "b"]);
+    expect(iconsInUse({ items: [], tags: [] })).toEqual([]);
+  });
+});
+
+describe("matching an ingredient written with a slip", () => {
+  const vocab = {
+    items: ["Champignons", "Zwiebel", "Mehl", "Mohn", "Eis", "Ei", "Petersilie", "Pfeffer", "Paprika", "Salz"],
+    icons: { Champignons: "mushroom", Zwiebel: "onion" },
+    tags: [],
+  };
+  const match = itemMatcher(vocab);
+
+  it("finds the household's item for a near miss and for the singular", () => {
+    expect(match("Champion")).toEqual({ name: "Champignons", icon: "mushroom" });
+    expect(match("Champignon")).toEqual({ name: "Champignons", icon: "mushroom" });
+    expect(match("champignion")?.name).toBe("Champignons");
+    expect(match("Petersillie")?.name).toBe("Petersilie");
+    expect(match("Zwibel")?.name).toBe("Zwiebel");
+  });
+
+  it("does not turn one word into another: short words and different words stay apart", () => {
+    expect(match("Mohl")).toBeNull();
+    expect(match("Mehr")).toBeNull();
+    expect(match("Salt")).toBeNull();
+    expect(match("Papaya")).toBeNull();
+    expect(match("Reis")).toBeNull();
+    expect(match("Ei")?.name).toBe("Ei");
+    expect(match("Eis")?.name).toBe("Eis");
+  });
+
+  it("needs the same first letter", () => {
+    expect(match("Hampignons")).toBeNull();
+  });
+
+  it("is used in a draft, so the ingredient is the household's and not new", () => {
+    const d = reviewDraft({ ...raw(), ingredients: [{ name: "Champion", amount: "250 g" }] }, vocab);
+    expect(d.ok && d.value.ingredients).toEqual([
+      { name: "Champignons", amount: "250 g", optional: false, isNewItem: false, icon: "mushroom" },
+    ]);
   });
 });

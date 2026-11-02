@@ -43,8 +43,11 @@ export const nameListSchema = z.array(z.object({ name: z.string() }));
 /** Items of the household: the name to match a draft with, and the icon the phones draw. */
 export const itemListSchema = z.array(z.object({ name: z.string(), icon: z.string().nullish() }));
 
-/** A created recipe: the id is all the planner needs back. */
-export const createdRecipeSchema = z.object({ id: z.number().int() });
+/** A created recipe: its id, and its items (some may be new, without an icon yet). */
+export const createdRecipeSchema = z.object({
+  id: z.number().int(),
+  items: z.array(z.object({ id: z.number().int(), name: z.string(), icon: z.string().nullish() })).default([]),
+});
 
 export const authResponseSchema = z.object({ access_token: z.string().min(1) });
 

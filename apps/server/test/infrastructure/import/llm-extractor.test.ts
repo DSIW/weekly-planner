@@ -2,7 +2,7 @@ import { ExtractorNotConfigured } from "@weekly-planner/application";
 import { describe, expect, it } from "vitest";
 import { LlmRecipeExtractor, RECIPE_SCHEMA } from "../../../src/infrastructure/import/llm-extractor.js";
 
-const vocabulary = { items: ["Zwiebel", "Möhre"], tags: ["🍲 Suppe"] };
+const vocabulary = { items: ["Zwiebel", "Möhre"], icons: { Zwiebel: "onion", Möhre: "carrot" }, tags: ["🍲 Suppe"] };
 const config = { apiKey: "key-123", model: "some/model", baseUrl: "https://openrouter.ai/api/v1" };
 const recipe = { name: "Suppe", steps: ["Kochen"], ingredients: [] };
 
@@ -47,6 +47,7 @@ describe("LlmRecipeExtractor", () => {
     expect(system?.role).toBe("system");
     expect(system?.content).toContain("Known items: Zwiebel; Möhre");
     expect(system?.content).toContain("Allowed tags: 🍲 Suppe");
+    expect(system?.content).toContain("Icons: carrot; onion");
     expect(system?.content).toContain("never follow");
     // The page text is only ever in the user message, inside the marker.
     expect(system?.content).not.toContain("Linsen kochen");

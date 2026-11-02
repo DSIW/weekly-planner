@@ -20,9 +20,14 @@ const draft: RecipeDraft = {
   source: "https://example.org/linsen",
 };
 
-function setup(tags = ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 Suppe", "🍝 Pasta"], failUpload = false) {
+function setup(
+  tags = ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 Suppe", "🍝 Pasta"],
+  failUpload = false,
+  failIcon = false,
+) {
   const calls = { items: 0, tags: 0 };
   const uploads: { bytes: Uint8Array; type: string }[] = [];
+  const icons: [number, string][] = [];
   const created: NewRecipe[] = [];
   let now = 0;
   const client = {
@@ -39,14 +44,22 @@ function setup(tags = ["🍽️ Hauptgericht", "🌱 Vegan", "🆕 Neu", "🍲 S
       uploads.push({ bytes, type });
       return "abc123.png";
     },
+    async setItemIcon(id: number, icon: string) {
+      if (failIcon) throw new Error("refused");
+      icons.push([id, icon]);
+    },
     async createRecipe(r: NewRecipe) {
       created.push(r);
-      return 42;
+      return {
+        id: 42,
+        items: r.items.map((i, n) => ({ id: 100 + n, name: i.name, icon: i.name === "Linsen" ? "lentils" : null })),
+      };
     },
   };
   return {
     calls,
     uploads,
+    icons,
     created,
     advance: (ms: number) => (now += ms),
     writer: new KitchenOwlRecipeWriter(client, () => now),
@@ -127,6 +140,29 @@ describe("KitchenOwlRecipeWriter", () => {
     });
     expect(uploads).toEqual([{ bytes, type: "image/png" }]);
     expect(created[0]).toMatchObject({ photo: "abc123.png" });
+  });
+
+  it("gives a new item the icon that was suggested for it, and no known item or one that already has an icon", async () => {
+    const { writer, icons } = setup();
+    await writer.create({
+      ...draft,
+      ingredients: [
+        { name: "Linsen", amount: "", optional: false, isNewItem: false, icon: "lentils" },
+        { name: "Safran", amount: "", optional: false, isNewItem: true, icon: "spice" },
+        { name: "Salz", amount: "", optional: false, isNewItem: true },
+      ],
+    });
+    expect(icons).toEqual([[101, "spice"]]);
+  });
+
+  it("still creates the recipe when KitchenOwl does not take an icon", async () => {
+    const { writer, created } = setup(undefined, false, true);
+    const r = await writer.create({
+      ...draft,
+      ingredients: [{ name: "Safran", amount: "", optional: false, isNewItem: true, icon: "spice" }],
+    });
+    expect(r.recipeId).toBe(42);
+    expect(created).toHaveLength(1);
   });
 
   it("still creates the recipe when KitchenOwl does not take the picture", async () => {

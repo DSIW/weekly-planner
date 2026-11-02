@@ -26,7 +26,10 @@ export interface DraftIngredient {
   readonly optional: boolean;
   /** No known item has this name: KitchenOwl will create it. */
   readonly isNewItem: boolean;
-  /** KitchenOwl's icon key of the known item ("carrot"); the phones draw it. */
+  /**
+   * KitchenOwl's icon key ("carrot"); the phones draw it. Of a known item it is the item's own; of a new one it is a
+   * suggestion, one of the icons the household's items already use, which is saved on the item when it is created.
+   */
   readonly icon?: string;
 }
 
@@ -70,12 +73,38 @@ export const fold = (s: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-/** "Karotte" and "Karotten", "Zwiebel" and "Zwiebeln": a plural ending is dropped from a name of four letters or more. */
+const ENDINGS = ["en", "n", "e", "s"];
+
+/** "Karotte" and "Karotten", "Zwiebel" and "Zwiebeln", "Champignon" and "Champignons": a plural ending is dropped. */
 const stemKey = (folded: string): string => {
-  for (const ending of ["en", "n", "e"])
+  for (const ending of ENDINGS)
     if (folded.endsWith(ending) && folded.length - ending.length >= 4) return folded.slice(0, -ending.length);
   return folded;
 };
+
+/** The stem of the stem: "Champignons" and "Champion" end up close enough for `looseMatch` to find. */
+const looseKey = (folded: string): string => stemKey(stemKey(folded));
+
+/** Edit distance, given up on above `max` (returns max + 1). */
+function distance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++)
+      row[j] = Math.min(
+        (previous[j] as number) + 1,
+        (row[j - 1] as number) + 1,
+        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    if (Math.min(...row) > max) return max + 1;
+    previous = row;
+  }
+  return previous[b.length] as number;
+}
+
+/** How many letters may differ in a word of this length for it to still be taken as the same: a slip, not another word. */
+const slips = (length: number): number => (length >= 8 ? 2 : length >= 5 ? 1 : 0);
 
 export interface ItemMatch {
   readonly name: string;
@@ -93,14 +122,24 @@ export function itemMatcher(vocabulary: Vocabulary): (written: string) => ItemMa
     const key = stemKey(fold(item));
     byStem.set(key, [...(byStem.get(key) ?? []), item]);
   }
+  const loose = vocabulary.items.map((name) => ({ name, key: looseKey(fold(name)) }));
+  const hasIcon = (name: string) => Number(vocabulary.icons?.[name] !== undefined);
   return (written) => {
     const folded = fold(written);
     const candidates = byStem.get(stemKey(folded)) ?? [];
-    const best = [...candidates].sort(
-      (a, b) =>
-        Number(vocabulary.icons?.[b] !== undefined) - Number(vocabulary.icons?.[a] !== undefined) ||
-        Number(fold(b) === folded) - Number(fold(a) === folded),
+    let best = [...candidates].sort(
+      (a, b) => hasIcon(b) - hasIcon(a) || Number(fold(b) === folded) - Number(fold(a) === folded),
     )[0];
+    if (best === undefined) {
+      // A slip of the pen ("Champion" for "Champignons"): the closest item, if it is close enough and begins alike.
+      const key = looseKey(folded);
+      const near = loose
+        .filter((i) => i.key[0] === key[0])
+        .map((i) => ({ name: i.name, d: distance(key, i.key, 2), allowed: slips(Math.max(key.length, i.key.length)) }))
+        .filter((i) => i.d <= i.allowed)
+        .sort((a, b) => a.d - b.d || hasIcon(b.name) - hasIcon(a.name) || a.name.length - b.name.length);
+      best = near[0]?.name;
+    }
     if (best === undefined) return null;
     const icon = vocabulary.icons?.[best];
     return { name: best, ...(icon ? { icon } : {}) };
@@ -242,6 +281,7 @@ export function reviewDraft(
   if (steps.length > IMPORT_LIMITS.maxSteps) return reject("too_many_steps");
 
   const match = itemMatcher(vocabulary);
+  const usable = new Set(Object.values(vocabulary.icons ?? {}));
   const ingredients: DraftIngredient[] = [];
   const seen = new Set<string>();
   for (const entry of Array.isArray(raw.ingredients) ? raw.ingredients : []) {
@@ -257,7 +297,13 @@ export function reviewDraft(
       amount: cleanText(entry.amount, IMPORT_LIMITS.maxAmount),
       optional: entry.optional === true,
       isNewItem: found === null,
-      ...(found?.icon ? { icon: found.icon } : {}),
+      ...(found
+        ? found.icon
+          ? { icon: found.icon }
+          : {}
+        : typeof entry.icon === "string" && usable.has(entry.icon)
+          ? { icon: entry.icon }
+          : {}),
     });
   }
   if (ingredients.length === 0) return reject("not_a_recipe");
@@ -297,3 +343,7 @@ export function reviewDraft(
     ...(imageToken ? { imageToken } : {}),
   });
 }
+
+/** The icons the household's items use: the ones a suggestion for a new ingredient may be. */
+export const iconsInUse = (vocabulary: Vocabulary): string[] =>
+  [...new Set(Object.values(vocabulary.icons ?? {}))].sort();

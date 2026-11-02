@@ -1,3 +1,4 @@
+import type { z } from "zod";
 import {
   rawRecipeListSchema,
   type RawRecipe,
@@ -104,9 +105,9 @@ export class KitchenOwlClient {
 
   /**
    * Creates a recipe. KitchenOwl finds each item and tag by name and creates the ones it does not have; the recipe is
-   * private to the household. Returns the new recipe's id.
+   * private to the household. Returns the new recipe's id and its items.
    */
-  async createRecipe(recipe: NewRecipe): Promise<number> {
+  async createRecipe(recipe: NewRecipe): Promise<z.infer<typeof createdRecipeSchema>> {
     const path = `/household/${this.config.householdId}/recipe`;
     const res = await this.request(path, {
       method: "POST",
@@ -117,7 +118,19 @@ export class KitchenOwlClient {
     if (!res.ok) throw new KitchenOwlError(`KitchenOwl POST ${path} failed with HTTP ${res.status}`, res.status);
     const parsed = createdRecipeSchema.safeParse(await res.json());
     if (!parsed.success) throw new KitchenOwlError("unexpected created recipe shape");
-    return parsed.data.id;
+    return parsed.data;
+  }
+
+  /** Gives an item (one a recipe just created) its icon. */
+  async setItemIcon(itemId: number, icon: string): Promise<void> {
+    const path = `/item/${itemId}`;
+    const res = await this.request(path, {
+      method: "POST",
+      token: this.config.kitchenowlToken,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ icon }),
+    });
+    if (!res.ok) throw new KitchenOwlError(`KitchenOwl POST ${path} failed with HTTP ${res.status}`, res.status);
   }
 
   /** Stores a picture in KitchenOwl; returns the file name a recipe's `photo` takes. */
