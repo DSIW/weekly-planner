@@ -2,14 +2,17 @@ import {
   cleanText,
   IMPORT_LIMITS,
   itemMatcher,
+  relatedRecipes,
   reviewDraft,
   suggestItems,
   suggestTags,
   tagMatcher,
   type MemberId,
   type RecipeDraft,
+  type RelatedRecipe,
   type Result,
 } from "@weekly-planner/domain";
+import type { RecipeCatalog } from "../ports/recipe-catalog.js";
 import {
   ExtractorNotConfigured,
   type ImageFetcher,
@@ -190,5 +193,47 @@ export class CreateImportedRecipe {
     } catch {
       return { ok: false, reason: "kitchenowl_unavailable" };
     }
+  }
+}
+
+/**
+ * rule FindRelatedRecipes: the household's recipes that look like a draft, for the member to see before creating it.
+ * Only informs: it never stops a recipe from being created.
+ */
+export class FindRelatedRecipes {
+  constructor(private readonly deps: { catalog: Pick<RecipeCatalog, "listAll"> }) {}
+
+  async execute(cmd: {
+    name: string;
+    ingredients: readonly string[];
+    source?: string;
+  }): Promise<Result<readonly RelatedRecipe[]>> {
+    let entries: Awaited<ReturnType<RecipeCatalog["listAll"]>>;
+    try {
+      entries = await this.deps.catalog.listAll();
+    } catch {
+      return { ok: false, reason: "kitchenowl_unavailable" };
+    }
+    const known = entries.map((e) =>
+      e.kind === "ready"
+        ? {
+            id: e.recipe.id as number,
+            name: e.recipe.name,
+            ingredients: (e.recipe.ingredients ?? []).map((i) => i.name),
+            ...(e.recipe.source ? { source: e.recipe.source } : {}),
+          }
+        : { id: e.recipeId as number, name: e.name, ingredients: [] },
+    );
+    return {
+      ok: true,
+      value: relatedRecipes(
+        {
+          name: cleanText(cmd.name, IMPORT_LIMITS.maxName),
+          ingredients: cmd.ingredients.map((i) => cleanText(i, IMPORT_LIMITS.maxIngredientName)),
+          ...(cmd.source === undefined ? {} : { source: cmd.source }),
+        },
+        known,
+      ),
+    };
   }
 }

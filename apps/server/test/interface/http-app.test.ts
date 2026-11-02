@@ -12,6 +12,7 @@ import type {
   MatchTags,
   ResetFinalizedDay,
   SuggestNames,
+  FindRelatedRecipes,
 } from "@weekly-planner/application";
 import { buildApp } from "../../src/interface/http/app.js";
 import { decodeSession, encodeSession } from "../../src/interface/http/session-cookie.js";
@@ -41,6 +42,7 @@ const noSessions = {
   matchIngredients: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   matchTags: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   suggestNames: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  findRelatedRecipes: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   vetoProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   withdrawProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   refreshRecipes: { execute: async () => {} },
@@ -98,6 +100,7 @@ const app = (
     matchTags?: Pick<MatchTags, "execute">;
     resetFinalizedDay?: Pick<ResetFinalizedDay, "execute">;
     suggestNames?: Pick<SuggestNames, "execute">;
+    findRelatedRecipes?: Pick<FindRelatedRecipes, "execute">;
     draftImages?: ImageShelf;
   } = {},
 ) =>
@@ -569,6 +572,42 @@ describe("suggesting names while typing", () => {
     expect((await post({ kind: "tag", query: "" })).statusCode).toBe(200);
     expect((await post({ kind: "item", query: "ka" }, false)).statusCode).toBe(401);
     for (const bad of [{}, { kind: "recipe", query: "x" }, { kind: "item" }, { kind: "item", query: "x".repeat(201) }])
+      expect((await post(bad)).statusCode).toBe(400);
+  });
+});
+
+describe("recipes that look like a draft", () => {
+  const related = [{ id: 7, name: "Linsensuppe", reasons: ["similar_name"], sharedIngredients: 0 }];
+  const post = async (payload: unknown, signedIn = true, seen: unknown[] = []) => {
+    const a = await app({
+      findRelatedRecipes: {
+        execute: async (cmd) => {
+          seen.push(cmd);
+          return { ok: true, value: related as never };
+        },
+      },
+    });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: "/plan/api/import/related", payload: payload as object, cookies });
+  };
+
+  it("answers for a member with what looks alike, passing the draft's name, ingredients and source on", async () => {
+    const seen: unknown[] = [];
+    const res = await post({ name: "Linsensuppe", ingredients: ["Linsen"], source: "https://x.example/r" }, true, seen);
+    expect(res.json()).toEqual({ related });
+    expect(seen).toEqual([{ name: "Linsensuppe", ingredients: ["Linsen"], source: "https://x.example/r" }]);
+    await post({ name: "A", ingredients: [] }, true, seen);
+    expect(seen[1]).toEqual({ name: "A", ingredients: [] });
+  });
+
+  it("needs a member and a well-formed request", async () => {
+    expect((await post({ name: "A", ingredients: [] }, false)).statusCode).toBe(401);
+    for (const bad of [
+      {},
+      { name: "A" },
+      { name: "A", ingredients: "x" },
+      { name: "A", ingredients: Array(61).fill("a") },
+    ])
       expect((await post(bad)).statusCode).toBe(400);
   });
 });

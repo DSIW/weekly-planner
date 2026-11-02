@@ -120,6 +120,15 @@ rule CheckDraft {
     ensures: DraftShown(draft)
 }
 
+-- Before deciding, the member is told which recipes the household already
+-- has that look like the draft: the same source link, a similar name, or most
+-- of the ingredients in common (staples do not count). This only informs; it
+-- never blocks creating, because the member may well want it anyway.
+rule FindRelatedRecipes {
+    when: DraftShown(draft)
+    ensures: RelatedRecipesShown(draft, recipes_like(draft))
+}
+
 -- Nothing is created without a member having seen the draft and said yes.
 rule CreateImportedRecipe {
     when: CreateImportedRecipe(member, draft)

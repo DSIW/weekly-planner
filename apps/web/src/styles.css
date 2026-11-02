@@ -1101,3 +1101,21 @@ select {
   margin: 0;
   overflow-wrap: anywhere;
 }
+.related {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--outline);
+  border-left: 4px solid var(--primary);
+  border-radius: 12px;
+}
+.related h3 {
+  margin: 0;
+}
+.related ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}

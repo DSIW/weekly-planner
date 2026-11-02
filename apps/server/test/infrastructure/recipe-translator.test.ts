@@ -184,6 +184,12 @@ describe("ingredients", () => {
     ]);
   });
 
+  it("keeps the link a recipe came from, and none when it has none", () => {
+    expect(deriveRecipe(raw(tags, { source: "https://example.org/r" })).recipe?.source).toBe("https://example.org/r");
+    expect(deriveRecipe(raw(tags, { source: "" })).recipe).not.toHaveProperty("source");
+    expect(deriveRecipe(raw(tags, { source: null })).recipe).not.toHaveProperty("source");
+  });
+
   it("carry the name of their category, when the source has one", () => {
     const { recipe } = deriveRecipe(
       raw(tags, {

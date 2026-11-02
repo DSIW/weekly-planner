@@ -7,6 +7,7 @@ import type {
   MatchIngredients,
   MatchTags,
   SuggestNames,
+  FindRelatedRecipes,
   DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
@@ -79,6 +80,7 @@ interface AppOptions {
   readonly matchIngredients: Pick<MatchIngredients, "execute">;
   readonly matchTags: Pick<MatchTags, "execute">;
   readonly suggestNames: Pick<SuggestNames, "execute">;
+  readonly findRelatedRecipes: Pick<FindRelatedRecipes, "execute">;
   /** Where the pictures of drafts are held; without it the pictures are not served. */
   readonly draftImages?: ImageShelf;
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
@@ -225,6 +227,11 @@ const importDraftBody = z.object({ address: z.string().max(2000).optional(), tex
 const importMatchBody = z.object({ names: z.array(z.string().max(200)).max(60) });
 const importTagsBody = z.object({ names: z.array(z.string().max(200)).max(30) });
 const importSuggestBody = z.object({ kind: z.enum(["item", "tag"]), query: z.string().max(200) });
+const importRelatedBody = z.object({
+  name: z.string().max(300),
+  ingredients: z.array(z.string().max(200)).max(60),
+  source: z.string().max(2000).optional(),
+});
 const importCreateBody = z.object({ draft: z.record(z.string(), z.unknown()) });
 
 /** Drafts a member may ask for per hour: each one costs money at the language model, so a loop cannot run it dry. */
@@ -412,6 +419,20 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const result = await options.suggestNames.execute(body.data);
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
     return { names: result.value };
+  });
+
+  // Recipes the household already has that look like the draft: told before creating, never a block.
+  app.post(`${api}/import/related`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    const body = importRelatedBody.safeParse(req.body);
+    if (!body.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.findRelatedRecipes.execute({
+      name: body.data.name,
+      ingredients: body.data.ingredients,
+      ...(body.data.source === undefined ? {} : { source: body.data.source }),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { related: result.value };
   });
 
   // The picture of a draft, for the review: served by the planner, so a phone never loads it from the other site.

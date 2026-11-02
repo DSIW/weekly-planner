@@ -490,3 +490,80 @@ describe("replacing an ingredient in the review", () => {
     expect(screen.getByRole("textbox", { name: "Zutat 2" })).toHaveValue("Petersilie");
   });
 });
+
+describe("recipes the household already has", () => {
+  const RELATED = `POST ${api}/import/related`;
+  const open = async (routes: Parameters<typeof server>[0]) => {
+    const calls = server({
+      ...base,
+      [DRAFT]: { status: 200, body: { draft } },
+      [CREATE]: { status: 201, body: { recipeId: 1, draft } },
+      [LINKS]: {
+        status: 200,
+        body: { links: { recipe: "https://ko.test/household/2/recipes/details/{id}", list: "x" } },
+      },
+      ...routes,
+    });
+    await openImport();
+    await paste("Text");
+    await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
+    await screen.findByRole("heading", { name: "Rezept prüfen" });
+    return calls;
+  };
+
+  it("tells which look alike and why, with links, and leaves the decision to the member", async () => {
+    const calls = await open({
+      [RELATED]: {
+        status: 200,
+        body: {
+          related: [
+            { id: 7, name: "Rote Linsensuppe", reasons: ["similar_name", "shared_ingredients"], sharedIngredients: 5 },
+          ],
+        },
+      },
+    });
+    const box = await screen.findByRole("region", { name: "Ähnliche Rezepte" });
+    expect(box).toHaveTextContent("Ähnliche Rezepte in KitchenOwl");
+    expect(box).toHaveTextContent("ähnlicher Name, 5 gleiche Zutaten");
+    expect(box).toHaveTextContent("Du entscheidest, ob du es trotzdem anlegen möchtest.");
+    expect(within(box).getByRole("link", { name: "Rote Linsensuppe" })).toHaveAttribute(
+      "href",
+      "https://ko.test/household/2/recipes/details/7",
+    );
+    expect(calls.find((c) => c.key === RELATED)?.body).toEqual({
+      name: "Linsensuppe",
+      ingredients: ["Linsen", "Petersilie"],
+      source: "https://example.org/linsen",
+    });
+    // Nothing is blocked: the recipe can still be created.
+    expect(screen.getByRole("button", { name: "In KitchenOwl anlegen" })).toBeEnabled();
+  });
+
+  it("says plainly that the recipe is already there when it came from the same link", async () => {
+    await open({
+      [RELATED]: {
+        status: 200,
+        body: { related: [{ id: 7, name: "Linsensuppe", reasons: ["same_source"], sharedIngredients: 0 }] },
+      },
+    });
+    const box = await screen.findByRole("region", { name: "Ähnliche Rezepte" });
+    expect(box).toHaveTextContent("Dieses Rezept gibt es schon");
+    expect(box).toHaveTextContent("gleiche Quelle");
+  });
+
+  it("says nothing when nothing looks alike, or when the check did not work", async () => {
+    await open({ [RELATED]: { status: 200, body: { related: [] } } });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(screen.queryByRole("region", { name: "Ähnliche Rezepte" })).not.toBeInTheDocument();
+  });
+
+  it("looks again, a moment after the name was changed", async () => {
+    const calls = await open({ [RELATED]: { status: 200, body: { related: [] } } });
+    await waitFor(() => expect(calls.filter((c) => c.key === RELATED)).toHaveLength(1));
+    const name = screen.getByRole("textbox", { name: "Name" });
+    await userEvent.clear(name);
+    await userEvent.type(name, "Gemüsepfanne");
+    await waitFor(() => expect(calls.filter((c) => c.key === RELATED)).toHaveLength(2));
+    expect(calls.filter((c) => c.key === RELATED)[1]?.body).toMatchObject({ name: "Gemüsepfanne" });
+  });
+});

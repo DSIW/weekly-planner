@@ -115,6 +115,7 @@ export function deriveRecipe(raw: RawRecipe): DerivedRecipe {
           wantsToTry: has(TAG.wants),
           yields: raw.yields && raw.yields > 0 ? raw.yields : 2,
           tags: raw.tags.map((t) => t.name.trim()).filter((n) => n !== "" && !hiddenTags.has(canon(n))),
+          ...(raw.source ? { source: raw.source } : {}),
           ingredients: raw.items.map((i) => ({
             id: i.id,
             name: i.name,

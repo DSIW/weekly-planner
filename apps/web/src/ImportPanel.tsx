@@ -10,6 +10,7 @@ import {
   type RecipeDraft,
 } from "./api";
 import { ItemIcon } from "./ItemIcon";
+import { RelatedRecipes } from "./RelatedRecipes";
 import { ReplaceIngredient } from "./ReplaceIngredient";
 import { Suggest } from "./Suggest";
 import { useLinks } from "./Links";
@@ -382,6 +383,7 @@ export function ImportPanel() {
             <li key={s}>{s}</li>
           ))}
         </ol>
+        <RelatedRecipes name={draft.name} ingredients={draft.ingredients.map((i) => i.name)} source={draft.source} />
         {draft.source && <p className="muted">Quelle: {draft.source}</p>}
         {create.isError && (
           <p role="alert" className="error">

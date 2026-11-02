@@ -397,6 +397,18 @@ export const matchTags = async (names: string[]) =>
 export const suggestNames = async (kind: "item" | "tag", query: string) =>
   (await importCall<{ names: { name: string; icon?: string }[] }>("/import/suggest", { kind, query })).names;
 
+/** A recipe the household already has that looks like a draft, and why. */
+export interface RelatedRecipe {
+  id: number;
+  name: string;
+  reasons: ("same_source" | "similar_name" | "shared_ingredients")[];
+  sharedIngredients: number;
+}
+
+/** The household's recipes that look like this draft (same source, similar name, shared ingredients). */
+export const relatedRecipes = async (draft: { name: string; ingredients: string[]; source?: string }) =>
+  (await importCall<{ related: RelatedRecipe[] }>("/import/related", draft)).related;
+
 /** Where the draft's title picture is served (by the planner itself). */
 export const importImageUrl = (token: string) => `${base}/import/image/${token}`;
 

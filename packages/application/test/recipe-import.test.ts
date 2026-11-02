@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { IMPORT_LIMITS, type RecipeDraft, type Vocabulary } from "@weekly-planner/domain";
+import { IMPORT_LIMITS, recipeId, type RecipeDraft, type Vocabulary } from "@weekly-planner/domain";
 import {
   CreateImportedRecipe,
   DraftRecipeImport,
   ExtractorNotConfigured,
+  FindRelatedRecipes,
   MatchIngredients,
   MatchTags,
   SuggestNames,
@@ -13,7 +14,8 @@ import {
   type RecipeSource,
   type RecipeWriter,
 } from "../src/index.js";
-import { ME } from "./support/in-memory.js";
+import type { RecipeCatalog } from "../src/index.js";
+import { ME, aRecipe } from "./support/in-memory.js";
 
 const vocabulary: Vocabulary = { items: ["Zwiebel", "Spaghetti"], tags: ["🍲 Suppe"] };
 const answer = (over: Record<string, unknown> = {}) => ({
@@ -350,5 +352,38 @@ describe("SuggestNames", () => {
       },
     });
     expect(await down.execute({ kind: "item", query: "a" })).toEqual({ ok: false, reason: "kitchenowl_unavailable" });
+  });
+});
+
+describe("FindRelatedRecipes", () => {
+  const r1 = aRecipe(1, { name: "Rote Linsensuppe", source: "https://example.org/linsen" });
+  const catalog = (entries: Awaited<ReturnType<RecipeCatalog["listAll"]>>) =>
+    new FindRelatedRecipes({ catalog: { listAll: async () => entries } });
+
+  it("names the recipes the household has that look like the draft, those still needing data too", async () => {
+    const find = catalog([
+      { kind: "ready", recipe: r1 },
+      { kind: "needs-data", recipeId: recipeId(2), name: "Linsensuppe mit Würstchen", problems: [] },
+      { kind: "ready", recipe: aRecipe(3, { name: "Pizza" }) },
+    ]);
+    const r = await find.execute({ name: "<b>Linsensuppe</b>", ingredients: [], source: "https://example.org/other" });
+    expect(r.ok && r.value.map((x) => [x.id, x.reasons])).toEqual([
+      [2, ["similar_name"]],
+      [1, ["similar_name"]],
+    ]);
+    const same = await find.execute({ name: "Etwas", ingredients: [], source: "https://example.org/linsen?utm_x=1" });
+    expect(same.ok && same.value.map((x) => [x.id, x.reasons])).toEqual([[1, ["same_source"]]]);
+  });
+
+  it("says nothing is related for an empty household, and that KitchenOwl cannot be read when it cannot", async () => {
+    expect(await catalog([]).execute({ name: "Linsensuppe", ingredients: [] })).toEqual({ ok: true, value: [] });
+    const down = new FindRelatedRecipes({
+      catalog: {
+        listAll: async () => {
+          throw new Error("down");
+        },
+      },
+    });
+    expect(await down.execute({ name: "x", ingredients: [] })).toEqual({ ok: false, reason: "kitchenowl_unavailable" });
   });
 });

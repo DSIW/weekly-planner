@@ -748,6 +748,12 @@ try {
       [["Karotten", "carrot"]],
       "typing offers the household's own item, once, with its icon",
     );
+    const alike = await (await call("/import/related", { name: "Pasta al Pomodoro", ingredients: ["Tomate"] })).json();
+    assert.deepEqual(
+      alike.related.map((r) => [r.id, r.reasons]),
+      [[1, ["similar_name"]]],
+      "a recipe the household already has is named before creating",
+    );
     const missing = await realFetch(`${origin()}/plan/api/import/image/${"f".repeat(32)}`, { headers: { cookie } });
     assert.equal(missing.status, 404, "no picture, nothing served");
     assert.equal(draft.visibility, undefined, "whatever else the model said is dropped");

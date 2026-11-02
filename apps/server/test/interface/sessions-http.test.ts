@@ -238,6 +238,7 @@ beforeEach(async () => {
     matchIngredients: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     matchTags: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     suggestNames: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+    findRelatedRecipes: { execute: async () => ({ ok: false as const, reason: "unused" }) },
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),

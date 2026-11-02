@@ -76,7 +76,7 @@ export const fold = (s: string): string =>
 const ENDINGS = ["en", "n", "e", "s"];
 
 /** "Karotte" and "Karotten", "Zwiebel" and "Zwiebeln", "Champignon" and "Champignons": a plural ending is dropped. */
-const stemKey = (folded: string): string => {
+export const stemKey = (folded: string): string => {
   for (const ending of ENDINGS)
     if (folded.endsWith(ending) && folded.length - ending.length >= 4) return folded.slice(0, -ending.length);
   return folded;

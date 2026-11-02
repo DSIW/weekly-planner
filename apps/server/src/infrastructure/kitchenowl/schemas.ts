@@ -10,6 +10,7 @@ const rawRecipeSchema = z.object({
   cook_time: z.number().nullish(),
   yields: z.number().nullish(),
   photo: z.string().nullish(),
+  source: z.string().nullish(),
   tags: z.array(z.object({ name: z.string() })).default([]),
   items: z
     .array(
