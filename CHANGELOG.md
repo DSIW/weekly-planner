@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.26](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.25...weekly-planner-v0.1.26) (2026-11-02)
+
+
+### Features
+
+* shorter, amber warning for a recipe that is too long for a weekday ([f39ada1](https://github.com/DSIW/weekly-planner/commit/f39ada1adc34e4a8ee23257f9feef34d69f40c69))
+
 ## [0.1.25](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.24...weekly-planner-v0.1.25) (2026-11-02)
 
 
