@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.21...weekly-planner-v0.1.22) (2026-11-02)
+
+
+### Features
+
+* **import:** suggest an icon for new ingredients, match ingredients written with a slip ([49f6fab](https://github.com/DSIW/weekly-planner/commit/49f6fab9fce49750baa1b9328f705c3852c29718))
+
 ## [0.1.21](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.20...weekly-planner-v0.1.21) (2026-11-02)
 
 
