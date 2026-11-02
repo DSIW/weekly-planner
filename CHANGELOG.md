@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.22...weekly-planner-v0.1.23) (2026-11-02)
+
+
+### Features
+
+* **import:** tell which existing recipes look like an imported one ([0af26a7](https://github.com/DSIW/weekly-planner/commit/0af26a76dabf9c9875f912370fbc0bdc7310abeb))
+
 ## [0.1.22](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.21...weekly-planner-v0.1.22) (2026-11-02)
 
 
