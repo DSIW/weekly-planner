@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.27](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.26...weekly-planner-v0.1.27) (2026-11-02)
+
+
+### Bug Fixes
+
+* main tabs in one row of three equal tabs ([79b63d3](https://github.com/DSIW/weekly-planner/commit/79b63d322e56f95b325e4036d9c945a571553fb3))
+
 ## [0.1.26](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.25...weekly-planner-v0.1.26) (2026-11-02)
 
 
