@@ -607,3 +607,76 @@ describe("failed actions in the agreeing flow are visible", () => {
     expect(await screen.findByText(/Rezepte konnten nicht geladen werden/)).toBeInTheDocument();
   });
 });
+
+describe("searching for a recipe that is not offered", () => {
+  const coq = recipe(5, "Coq au vin", { minutes: 90 });
+  const tiramisu = recipe(6, "Tiramisu", { minutes: 30 });
+  const rejected = recipe(7, "Abgelehntes Curry", { minutes: 30 });
+  const everything = {
+    status: 200,
+    body: {
+      date: "2026-11-02",
+      recipes: [pasta],
+      others: [
+        { ...coq, hindrances: ["too_long_for_weekday"] },
+        { ...tiramisu, hindrances: ["not_a_dinner"] },
+        { ...rejected, hindrances: ["vetoed"] },
+      ],
+      unavailable: [{ id: 9, name: "Coq Ersatz", problems: ["no diet tag"] }],
+    },
+  };
+
+  it("keeps the plain list as it was and finds the rest only when searching", async () => {
+    server({ ...as(max), [CURRENT]: { status: 200, body: { session: session() } }, [RECIPES]: everything });
+    renderApp();
+    await showList();
+    await screen.findByRole("button", { name: /Pasta/ });
+    expect(screen.queryByText(/Coq au vin/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Weitere Treffer")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Rezept suchen"), "coq");
+    expect(await screen.findByText("Weitere Treffer")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Coq au vin/ })).toHaveTextContent(
+      "Zu lang für einen Wochentag (90 Min.)",
+    );
+    expect(screen.getByText(/In KitchenOwl fehlt noch: die Ernährung/)).toBeInTheDocument();
+    expect(screen.queryByText("Kein Rezept gefunden.")).not.toBeInTheDocument();
+  });
+
+  it("proposes a too long recipe after the warning, and says that it was chosen despite the time", async () => {
+    let current = session();
+    const calls = server({
+      ...as(max),
+      [CURRENT]: () => ({ status: 200, body: { session: current } }),
+      [RECIPES]: everything,
+      [PROPOSE]: () => {
+        current = session({ proposals: [proposal()] });
+        return { status: 201, body: { session: current } };
+      },
+    });
+    renderApp();
+    await showList();
+    await userEvent.type(await screen.findByLabelText("Rezept suchen"), "coq au");
+    await userEvent.click(await screen.findByRole("button", { name: /Coq au vin/ }));
+    await waitFor(() => expect(calls.some((c) => c.key === PROPOSE)).toBe(true));
+    expect(calls.find((c) => c.key === PROPOSE)?.body).toEqual({ date: "2026-11-02", recipeId: 5, despiteTime: true });
+  });
+
+  it("names why a dessert or a vetoed recipe cannot be proposed, and offers no button for it", async () => {
+    server({ ...as(max), [CURRENT]: { status: 200, body: { session: session() } }, [RECIPES]: everything });
+    renderApp();
+    await showList();
+    await userEvent.type(await screen.findByLabelText("Rezept suchen"), "a");
+    expect(await screen.findByText(/Kein Hauptgericht/)).toBeInTheDocument();
+    expect(screen.getByText("In dieser Planung schon abgelehnt.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Tiramisu/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Abgelehntes Curry/ })).not.toBeInTheDocument();
+  });
+
+  it("does not need the new fields: an older server's answer still works", async () => {
+    server({ ...as(max), [CURRENT]: { status: 200, body: { session: session() } }, [RECIPES]: list });
+    renderApp();
+    await showList();
+    await userEvent.type(await screen.findByLabelText("Rezept suchen"), "zzz");
+    expect(screen.getByText("Kein Rezept gefunden.")).toBeInTheDocument();
+  });
+});

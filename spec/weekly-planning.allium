@@ -237,8 +237,14 @@ rule StartSession {
 -- The plan is a shopping aid and a source of ideas. Whether a dish was really
 -- cooked is only recorded when a member says so (ConfirmCooked); a finalized
 -- plan alone proves nothing.
+-- The deck and the list offer only what passes these rules. A member who
+-- searches by name finds every recipe, though, and may propose one that is
+-- too long for a weekday after being warned (despite_time): the time limit is
+-- advice for what is offered, not a ban on what the two decide. The other
+-- rules are not waived: a dessert is no dinner, and a dish that was vetoed,
+-- passed or planned stays out of this plan.
 rule ProposeRecipe {
-    when: ProposeRecipe(member, day, recipe)
+    when: ProposeRecipe(member, day, recipe, despite_time)
     requires: day.session.status = open
     requires: day.status = open
     requires: day = day.session.next_open_day
@@ -257,6 +263,7 @@ rule ProposeRecipe {
         day.is_weekend
         or recipe.total_time = null
         or recipe.total_time <= config.weekday_time_limit
+        or despite_time
     ensures: Proposal.created(
         session: day.session,
         day: day,
@@ -714,7 +721,7 @@ surface PlanningBoard {
 
     provides:
         StartSession(viewer, dates)
-        ProposeRecipe(viewer, day, recipe)
+        ProposeRecipe(viewer, day, recipe, despite_time)
         PassSuggestion(viewer, session, recipe)
         AcceptProposal(viewer, proposal)
         AgreeInPerson(viewer, proposal)

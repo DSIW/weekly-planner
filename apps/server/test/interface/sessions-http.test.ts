@@ -425,7 +425,7 @@ describe("agreeing a dinner over HTTP", () => {
 
   it("offers the next open day's dinners by name: no desserts, no long recipes on a weekday", async () => {
     const { session } = (await start(max, [MON, TUE])).json();
-    expect(await eligible(ac, session.id)).toEqual({
+    expect(await eligible(ac, session.id)).toMatchObject({
       date: MON,
       recipes: [
         {

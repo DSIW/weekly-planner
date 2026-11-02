@@ -232,8 +232,8 @@ export const swapDays = (sessionId: string, a: string, b: string) =>
   sessionCommand(`/sessions/${sessionId}/swap`, { a, b });
 export const moveDay = (sessionId: string, from: string, to: string) =>
   sessionCommand(`/sessions/${sessionId}/move`, { from, to });
-export const proposeRecipe = (sessionId: string, date: string, recipeId: number) =>
-  sessionCommand(`/sessions/${sessionId}/proposals`, { date, recipeId });
+export const proposeRecipe = (sessionId: string, date: string, recipeId: number, despiteTime = false) =>
+  sessionCommand(`/sessions/${sessionId}/proposals`, { date, recipeId, ...(despiteTime ? { despiteTime } : {}) });
 export const acceptProposal = (sessionId: string, proposalId: string) =>
   sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/accept`);
 /** "We agreed in the room": the proposer settles the dish without the other member confirming on a phone. */
@@ -267,10 +267,23 @@ export const itemIconsUrl = `${base}/item-icons`;
 export const photoUrl = (recipeId: number) => `${base}/recipes/${recipeId}/photo`;
 
 /** The recipes that may be proposed for the next open day, by name. */
-export async function fetchEligibleRecipes(sessionId: string): Promise<{ date: string; recipes: RecipeView[] }> {
+/** What keeps a recipe from being offered for the day. Only a time too long for a weekday may be overruled. */
+export type Hindrance = "not_a_dinner" | "vetoed" | "waiting" | "passed" | "planned" | "too_long_for_weekday";
+
+/** The recipes for the next open day: those offered, and the rest, found only by searching. */
+export interface EligibleRecipes {
+  date: string;
+  recipes: RecipeView[];
+  others: (RecipeView & { hindrances: Hindrance[] })[];
+  /** In KitchenOwl but lacking what the planner needs; `problems` says what. */
+  unavailable: { id: number; name: string; problems: string[] }[];
+}
+
+export async function fetchEligibleRecipes(sessionId: string): Promise<EligibleRecipes> {
   const res = await fetch(`${base}/sessions/${sessionId}/recipes`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as { date: string; recipes: RecipeView[] };
+  const body = (await res.json()) as Partial<EligibleRecipes> & { date: string; recipes: RecipeView[] };
+  return { ...body, others: body.others ?? [], unavailable: body.unavailable ?? [] };
 }
 
 /** Asks the server to read the recipes from KitchenOwl again, after someone fixed a tag or a time there. */

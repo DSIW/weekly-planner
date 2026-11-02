@@ -219,7 +219,7 @@ const retryBody = z.object({ resendUnconfirmed: z.boolean().optional() }).defaul
 const passBody = z.object({ recipeId: z.number().int() });
 const recipeParam = z.object({ id: z.coerce.number().int() });
 
-const proposalBody = z.object({ date: z.string(), recipeId: z.number().int() });
+const proposalBody = z.object({ date: z.string(), recipeId: z.number().int(), despiteTime: z.boolean().optional() });
 const swapBody = z.object({ a: z.string(), b: z.string() });
 const moveBody = z.object({ from: z.string(), to: z.string() });
 
@@ -586,7 +586,13 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (!requireMember(req, reply)) return reply;
     const list = await options.listEligibleRecipes.execute({ sessionId: sessionId(req.params.id) });
     if (!list) return reply.code(404).send({ error: "not_found" });
-    return { date: list.date, recipes: list.recipes.map((r) => recipeView(r, options.planAheadMinutes)) };
+    return {
+      date: list.date,
+      recipes: list.recipes.map((r) => recipeView(r, options.planAheadMinutes)),
+      // What a search may find besides: every other recipe with what is against it, and those lacking data.
+      others: list.others.map((o) => ({ ...recipeView(o.recipe, options.planAheadMinutes), hindrances: o.hindrances })),
+      unavailable: list.unavailable,
+    };
   });
 
   app.post<{ Params: { id: string } }>(`${api}/sessions/:id/proposals`, async (req, reply) => {
@@ -605,6 +611,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       sessionId: sessionId(req.params.id),
       date,
       recipeId: recipeId(body.data.recipeId),
+      ...(body.data.despiteTime ? { despiteTime: true } : {}),
     });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
     return reply.code(201).send({ session: sessionView(result.value, options.planAheadMinutes) });

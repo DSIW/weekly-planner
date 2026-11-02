@@ -1119,3 +1119,15 @@ select {
   gap: 4px;
   overflow-wrap: anywhere;
 }
+.found-heading {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  color: var(--muted);
+}
+.found-other[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: default;
+}
+button.found-other {
+  border-style: dashed;
+}

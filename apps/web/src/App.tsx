@@ -126,7 +126,8 @@ function Proposing({
   });
   const settle = { onSuccess: apply, onSettled: refetch };
   const propose = useMutation({
-    mutationFn: (v: { date: string; recipeId: number }) => proposeRecipe(session.id, v.date, v.recipeId),
+    mutationFn: (v: { date: string; recipeId: number; despiteTime?: boolean }) =>
+      proposeRecipe(session.id, v.date, v.recipeId, v.despiteTime),
     ...settle,
   });
   const pass = useMutation({ mutationFn: (recipeId: number) => passRecipe(session.id, recipeId), ...settle });
@@ -198,7 +199,11 @@ function Proposing({
         <RecipePicker
           date={eligible.data.date}
           recipes={eligible.data.recipes}
-          onPick={(r) => propose.mutate({ date: eligible.data.date, recipeId: r.id })}
+          others={eligible.data.others}
+          unavailable={eligible.data.unavailable}
+          onPick={(r, despiteTime) =>
+            propose.mutate({ date: eligible.data.date, recipeId: r.id, ...(despiteTime ? { despiteTime } : {}) })
+          }
           onRefresh={() => refresh.mutate()}
           pending={propose.isPending || eligible.isFetching}
           refreshing={refresh.isPending}

@@ -27,6 +27,8 @@ export interface Proposal {
   readonly proposedBy: MemberId;
   readonly status: ProposalStatus;
   readonly decidedBy?: MemberId;
+  /** Proposed although the recipe is too long for the weekday: the members decide, the time limit does not. */
+  readonly despiteTime?: boolean;
 }
 
 export interface PassedSuggestion {
@@ -144,6 +146,8 @@ export interface ProposeRecipeCommand {
   readonly member: MemberId;
   readonly date: PlanDate;
   readonly recipe: Recipe;
+  /** The member was warned that the recipe is too long for a weekday and wants it anyway. */
+  readonly despiteTime?: boolean;
 }
 
 /** rule ProposeRecipe */
@@ -163,13 +167,15 @@ export function proposeRecipe(
   if (vetoedRecipeIds(s).has(cmd.recipe.id)) return reject("recipe_vetoed");
   if (passedRecipeIds(s).has(cmd.recipe.id)) return reject("recipe_passed");
   if (plannedRecipeIds(s).has(cmd.recipe.id)) return reject("recipe_already_planned");
-  if (!fitsDate(cmd.recipe, cmd.date, config)) return reject("too_long_for_weekday");
+  const tooLong = !fitsDate(cmd.recipe, cmd.date, config);
+  if (tooLong && !cmd.despiteTime) return reject("too_long_for_weekday");
   const proposal: Proposal = {
     id: cmd.proposalId,
     date: cmd.date,
     recipe: cmd.recipe,
     proposedBy: cmd.member,
     status: "pending",
+    ...(tooLong ? { despiteTime: true } : {}),
   };
   return done(
     { ...s, proposals: [...s.proposals, proposal] },
@@ -223,7 +229,7 @@ export function acceptProposal(
   if (cmd.dateTakenElsewhere) return reject("date_already_taken");
   // Guards the session invariants even when proposals were made in a different order than they are decided.
   if (plannedRecipeIds(s).has(proposal.recipe.id)) return reject("recipe_already_planned");
-  if (!fitsDate(proposal.recipe, proposal.date, config)) return reject("too_long_for_weekday");
+  if (!proposal.despiteTime && !fitsDate(proposal.recipe, proposal.date, config)) return reject("too_long_for_weekday");
   return done(
     withDay(decide(s, proposal, "accepted", cmd.member), proposal.date, plannedWith(proposal.date, proposal.recipe)),
     {

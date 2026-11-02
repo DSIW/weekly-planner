@@ -61,6 +61,28 @@ export function eligibleRecipes(
   );
 }
 
+/** Why a recipe is not offered for the next open day (see `hindrances`). */
+export type Hindrance = "not_a_dinner" | "vetoed" | "waiting" | "passed" | "planned" | "too_long_for_weekday";
+
+/**
+ * Everything that keeps a recipe from being offered for the next open day, empty when it is offered. A search names
+ * these instead of hiding the recipe: only a time that is too long for a weekday is a warning a member may overrule
+ * (`proposeRecipe` with `despiteTime`); a dessert, or a dish already vetoed, passed or planned, stays out.
+ */
+export function hindrances(session: PlanningSession, recipe: Recipe, config: PlanningConfig): Hindrance[] {
+  const day = session.status === "open" ? nextOpenDay(session) : undefined;
+  if (!day) return [];
+  const found: Hindrance[] = [];
+  if (!isDinnerCandidate(recipe)) found.push("not_a_dinner");
+  if (vetoedRecipeIds(session).has(recipe.id)) found.push("vetoed");
+  if (pendingRecipeIds(session).has(recipe.id)) found.push("waiting");
+  if (passedRecipeIds(session).has(recipe.id)) found.push("passed");
+  if (plannedDays(session).some((d) => d.recipe?.id === recipe.id)) found.push("planned");
+  if (!isWeekend(day.date) && !fitsWeekdayLimit(recipe, config.weekdayTimeLimitMinutes))
+    found.push("too_long_for_weekday");
+  return found;
+}
+
 /**
  * The deck for the next open day: hard rules filter, soft preferences rank (spec: surface PlanningBoard).
  * In order of priority: base variety, mostly vegetarian, one new recipe per session, not planned recently.
