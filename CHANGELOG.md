@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.24...weekly-planner-v0.1.25) (2026-11-02)
+
+
+### Features
+
+* search finds every recipe and warns when a filter is not met ([2f2e494](https://github.com/DSIW/weekly-planner/commit/2f2e494885c472c45c9b4237066ad79020ab1ac9))
+
 ## [0.1.24](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.23...weekly-planner-v0.1.24) (2026-11-02)
 
 
