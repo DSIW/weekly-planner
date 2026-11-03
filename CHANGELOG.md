@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.30](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.29...weekly-planner-v0.1.30) (2026-11-03)
+
+
+### Bug Fixes
+
+* success page styles no longer hit the finished step in the stepper ([507e349](https://github.com/DSIW/weekly-planner/commit/507e34971f6932f04a108deaa5ba2bf32e38344d))
+
 ## [0.1.29](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.28...weekly-planner-v0.1.29) (2026-11-03)
 
 
