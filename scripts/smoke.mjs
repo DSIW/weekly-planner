@@ -637,7 +637,7 @@ try {
       assert.ok(!(await as("dsiw", () => web.fetchMealLog(14))).some((e) => e.id === b.id));
       const added = await as("dsiw", () => web.addMeal(day(0), "bread", null));
       assert.deepEqual([added.entry.base, added.entry.recipe, added.entry.source], ["bread", null, "added"]);
-      const recipes = await as("ac", () => web.fetchRecipes());
+      const { recipes } = await as("ac", () => web.fetchRecipes());
       const fixed = await as("ac", () => web.correctMeal(added.entry.id, "rice", recipes[0].id));
       assert.deepEqual([fixed.entry.source, fixed.entry.recipe.id], ["corrected", recipes[0].id]);
       const future = await as("ac", () => web.addMeal(day(-2), "pasta", null).catch((e) => e));
