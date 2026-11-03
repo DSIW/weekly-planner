@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.29](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.28...weekly-planner-v0.1.29) (2026-11-03)
+
+
+### Features
+
+* choose a recipe with incomplete tags in the meal log by naming its base ([ba2029e](https://github.com/DSIW/weekly-planner/commit/ba2029e9e716a719434b8d41af62ca246972bd3f))
+* header link goes straight to the shopping list and says Einkauf ([b915023](https://github.com/DSIW/weekly-planner/commit/b915023faeb1f5776b596e5291cc1fa8eeddac63))
+
 ## [0.1.28](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.27...weekly-planner-v0.1.28) (2026-11-03)
 
 
