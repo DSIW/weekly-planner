@@ -11,4 +11,9 @@ export type CatalogEntry =
       readonly recipeId: RecipeId;
       readonly name: string;
       readonly problems: readonly string[];
+      /**
+       * The recipe as far as it can be read, with placeholders for what the tags do not say (the meal log needs no more
+       * than a name and a picture; the base is given by the member). Never offered to the planning rules.
+       */
+      readonly loggable?: Recipe;
     };

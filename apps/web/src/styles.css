@@ -1256,3 +1256,13 @@ button.found-other {
   color: var(--primary);
   font-size: 0.9rem;
 }
+.incomplete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.incomplete-use {
+  padding: 6px 12px;
+  font-size: 0.9rem;
+}

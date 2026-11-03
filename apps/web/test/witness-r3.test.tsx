@@ -603,11 +603,31 @@ describe("adding a meal: recipes whose tags are incomplete", () => {
     expect(await screen.findByText("Noch unvollständig")).toBeInTheDocument();
     expect(screen.getByText("Coq au vin")).toBeInTheDocument();
     expect(screen.getByText(/Tags fehlen: die Ernährung/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Coq au vin/ })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "In KitchenOwl ergänzen" })).toHaveAttribute(
       "href",
       "https://ko.test/household/2/recipes/details/9",
     );
+  });
+
+  it("can be chosen anyway once the member names the base", async () => {
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [LOG]: { status: 200, body: { entries: [] } },
+      [ALL_RECIPES]: {
+        status: 200,
+        body: { recipes: [pasta], unavailable: [{ id: 9, name: "Coq au vin", problems: ["no diet tag"] }] },
+      },
+      [`POST ${api}/meal-log`]: { status: 201, body: { entry: { id: "e1" } } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
+    await userEvent.click(screen.getByRole("button", { name: "Mahlzeit nachtragen" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Trotzdem wählen" }));
+    expect(screen.getByText(/hat noch nicht alle Tags/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Kartoffeln/ }));
+    const post = calls.find((c) => c.key === `POST ${api}/meal-log`);
+    expect(post?.body).toMatchObject({ base: "potatoes", recipeId: 9 });
   });
 });
 

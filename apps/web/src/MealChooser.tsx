@@ -30,7 +30,7 @@ interface Props {
   loading: boolean;
   loadFailed: boolean;
   /** A recipe brings its own base; a meal without a recipe is given by its base. */
-  onChoose: (base: BaseName, recipe: RecipeView | null) => void;
+  onChoose: (base: BaseName, recipe: { id: number } | null) => void;
   pending: boolean;
 }
 
@@ -41,6 +41,8 @@ interface Props {
 export function MealChooser({ recipes, unavailable = [], loading, loadFailed, onChoose, pending }: Props) {
   const [mode, setMode] = useState<"recipe" | "base">("recipe");
   const [query, setQuery] = useState("");
+  // An incomplete recipe was picked: its base is named here, since its tags do not say.
+  const [naming, setNaming] = useState<{ id: number; name: string } | null>(null);
   const shown = (recipes ?? []).filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase()));
   const lacking = unavailable.filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase()));
   return (
@@ -54,7 +56,31 @@ export function MealChooser({ recipes, unavailable = [], loading, loadFailed, on
           Nur Basis
         </button>
       </fieldset>
-      {mode === "base" ? (
+      {naming ? (
+        <>
+          <p>
+            <strong>{naming.name}</strong> hat noch nicht alle Tags. Welche Basis gab es?
+          </p>
+          <div className="base-grid">
+            {BASES.map((b) => (
+              <button
+                key={b}
+                type="button"
+                className="base-tile"
+                disabled={pending}
+                onClick={() => onChoose(b, naming)}
+              >
+                <span aria-hidden="true">{BASE_EMOJI[b]}</span>
+                {BASE_LABELS[b]}
+              </button>
+            ))}
+          </div>
+          <p className="muted">Die Tags lassen sich danach in KitchenOwl ergänzen.</p>
+          <button type="button" className="secondary" onClick={() => setNaming(null)}>
+            Zurück
+          </button>
+        </>
+      ) : mode === "base" ? (
         <>
           <p className="muted">Für ein Essen, das nicht in KitchenOwl steht: nur die Beilage zählt.</p>
           <div className="base-grid">
@@ -92,10 +118,11 @@ export function MealChooser({ recipes, unavailable = [], loading, loadFailed, on
               <>
                 <h3 className="incomplete-title">Noch unvollständig</h3>
                 <p className="muted incomplete-note">
-                  Diese Rezepte sind erst wählbar, wenn ihre Tags in KitchenOwl ergänzt sind.
+                  Ihre Tags in KitchenOwl sind noch nicht vollständig. Du kannst sie trotzdem eintragen, wenn du die
+                  Basis nennst.
                 </p>
                 {lacking.map((r) => (
-                  <IncompleteRecipe key={r.id} recipe={r} />
+                  <IncompleteRecipe key={r.id} recipe={r} onUse={() => setNaming({ id: r.id, name: r.name })} />
                 ))}
               </>
             )}

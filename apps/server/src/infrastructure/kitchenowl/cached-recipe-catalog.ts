@@ -32,6 +32,11 @@ export class CachedRecipeCatalog implements RecipeCatalog {
     }
   }
 
+  async findForLog(id: RecipeId): Promise<Recipe | null> {
+    const entry = (await this.listAll()).find((e) => (e.kind === "ready" ? e.recipe.id : e.recipeId) === id);
+    return entry?.kind === "ready" ? entry.recipe : (entry?.loggable ?? null);
+  }
+
   async find(id: RecipeId): Promise<Recipe | null> {
     const entry = (await this.listAll()).find((e) => (e.kind === "ready" ? e.recipe.id : e.recipeId) === id);
     return entry?.kind === "ready" ? entry.recipe : null;

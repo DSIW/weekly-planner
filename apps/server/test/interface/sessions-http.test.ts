@@ -118,6 +118,10 @@ const catalog: RecipeCatalog = {
     if (catalogDown) throw new Error("KitchenOwl is down");
     return recipes.map((recipe): CatalogEntry => ({ kind: "ready", recipe }));
   },
+  async findForLog(id) {
+    if (catalogDown) throw new Error("KitchenOwl is down");
+    return recipes.find((r) => r.id === id) ?? null;
+  },
   async find(id) {
     if (catalogDown) throw new Error("KitchenOwl is down");
     return recipes.find((r) => r.id === id) ?? null;

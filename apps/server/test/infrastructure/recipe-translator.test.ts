@@ -112,11 +112,22 @@ describe("toCatalogEntry", () => {
 
   it("returns needs-data entries with the reasons instead of dropping the recipe", () => {
     const e = toCatalogEntry(raw([], { id: 7, name: "Ohne Tags" }));
-    expect(e).toEqual({
+    expect(e).toMatchObject({
       kind: "needs-data",
       recipeId: 7,
       name: "Ohne Tags",
       problems: ["no meal-type tag", "no diet tag", "neither proven nor new"],
+    });
+  });
+
+  it("keeps what can be read of an incomplete recipe for the meal log, with placeholders for the rest", () => {
+    const e = toCatalogEntry(raw(["🥬 Vegetarisch"], { id: 8, name: "Ohne Art" }));
+    expect(e.kind === "needs-data" ? e.loggable : null).toMatchObject({
+      id: 8,
+      name: "Ohne Art",
+      mealType: "main",
+      diet: "vegetarian",
+      base: "other",
     });
   });
 });

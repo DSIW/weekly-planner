@@ -134,6 +134,10 @@ export class InMemoryCatalog implements RecipeCatalog {
   async listAll() {
     return this.entries;
   }
+  async findForLog(id: RecipeId) {
+    const e = this.entries.find((x) => (x.kind === "ready" ? x.recipe.id : x.recipeId) === id);
+    return e?.kind === "ready" ? e.recipe : (e?.loggable ?? null);
+  }
   async find(id: RecipeId) {
     const e = this.entries.find((x) => x.kind === "ready" && x.recipe.id === id);
     return e?.kind === "ready" ? e.recipe : null;

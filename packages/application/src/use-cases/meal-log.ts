@@ -109,7 +109,7 @@ export class CorrectLoggedMeal {
     base: Base;
     recipeId: RecipeId | null;
   }): Promise<EntryResult> {
-    const recipe = cmd.recipeId === null ? null : await this.deps.catalog.find(cmd.recipeId);
+    const recipe = cmd.recipeId === null ? null : await this.deps.catalog.findForLog(cmd.recipeId);
     if (cmd.recipeId !== null && !recipe) return { ok: false, reason: "unknown_recipe" };
     return changeEntry(
       this.deps,
@@ -130,7 +130,7 @@ export class AddLoggedMeal {
     recipeId: RecipeId | null;
   }): Promise<EntryResult> {
     const { deps } = this;
-    const recipe = cmd.recipeId === null ? null : await deps.catalog.find(cmd.recipeId);
+    const recipe = cmd.recipeId === null ? null : await deps.catalog.findForLog(cmd.recipeId);
     if (cmd.recipeId !== null && !recipe) return { ok: false, reason: "unknown_recipe" };
     const result = await deps.uow.run(async () => {
       const outcome = addLoggedMeal(

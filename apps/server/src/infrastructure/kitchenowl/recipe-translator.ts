@@ -129,9 +129,46 @@ export function deriveRecipe(raw: RawRecipe): DerivedRecipe {
   return { recipe, problems };
 }
 
+/** A recipe whose tags are not complete, as the meal log may keep it: placeholders where the tags say nothing. */
+function loggableRecipe(raw: RawRecipe, derived: Recipe | null): Recipe {
+  if (derived) return derived;
+  const tags = new Set(raw.tags.map((t) => canon(t.name)));
+  const has = (t: string): boolean => tags.has(canon(t));
+  const diet: Diet = has(TAG.meat)
+    ? "meat"
+    : has(TAG.fish)
+      ? "fish"
+      : has(TAG.vegan)
+        ? "vegan"
+        : has(TAG.vegetarian)
+          ? "vegetarian"
+          : "meat";
+  const meal = [...tags].map((t) => mealByTag.get(t)).find((m): m is MealType => m !== undefined);
+  return {
+    id: recipeId(raw.id),
+    name: raw.name,
+    mealType: meal ?? "main",
+    base: "other",
+    diet,
+    totalTimeMinutes: raw.time && raw.time > 0 ? raw.time : null,
+    isProven: has(TAG.proven),
+    wantsToTry: has(TAG.wants),
+    yields: raw.yields && raw.yields > 0 ? raw.yields : 2,
+    tags: raw.tags.map((t) => t.name.trim()).filter((n) => n !== "" && !hiddenTags.has(canon(n))),
+    ...(raw.source ? { source: raw.source } : {}),
+    ingredients: [],
+  };
+}
+
 export function toCatalogEntry(raw: RawRecipe): CatalogEntry {
   const { recipe, problems } = deriveRecipe(raw);
   return recipe && problems.length === 0
     ? { kind: "ready", recipe }
-    : { kind: "needs-data", recipeId: recipeId(raw.id), name: raw.name, problems };
+    : {
+        kind: "needs-data",
+        recipeId: recipeId(raw.id),
+        name: raw.name,
+        problems,
+        loggable: loggableRecipe(raw, recipe),
+      };
 }
