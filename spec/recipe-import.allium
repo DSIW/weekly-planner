@@ -69,7 +69,10 @@ value RecipeDraft {
     source: String?
     -- The page's own title picture (structured data, else og:image), read as
     -- safely as the page; JPEG, PNG or WebP by its bytes, bounded in size.
-    -- Without one, or when it cannot be had, the draft has no picture.
+    -- Without one, or when it cannot be had, the draft has no picture. A
+    -- pasted text may name the picture itself: a first line that is only a
+    -- web link (an AVIF link is replaced by the original beside it, when the
+    -- site has one, as KitchenOwl cannot show AVIF).
     image: DraftImage?
 }
 

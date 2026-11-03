@@ -170,6 +170,24 @@ export function tagMatcher(known: readonly string[]): (written: string) => TagMa
 
 const TRACKING = /^(utm_.*|fbclid|gclid|dclid|msclkid|yclid|igshid|mc_cid|mc_eid|_ga|_gl|srsltid|ref_src|oly_.*)$/i;
 
+/**
+ * A pasted recipe may start with a line that is only a web link: the title picture. Returns the link and the text
+ * without that line; the text is returned unchanged when the first line is anything else.
+ */
+export function splitPastedPicture(text: string): { imageUrl?: string; text: string } {
+  const lines = text.split(/\r?\n/);
+  const first = lines.findIndex((l) => l.trim() !== "");
+  const line = first < 0 ? "" : (lines[first] ?? "").trim();
+  if (!/^https?:\/\/\S+$/i.test(line) || lines.slice(first + 1).every((l) => l.trim() === "")) return { text };
+  return {
+    imageUrl: line,
+    text: lines
+      .slice(first + 1)
+      .join("\n")
+      .trim(),
+  };
+}
+
 /** A link as a source note: no tracking parameters, no fragment; null when it is not a web link. */
 export function cleanSourceAddress(address: string): string | null {
   let url: URL;

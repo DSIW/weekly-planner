@@ -7,7 +7,7 @@ import {
   isPublicAddress,
   pictureType,
 } from "../../../src/infrastructure/import/safe-fetch.js";
-import { WebRecipeSource } from "../../../src/infrastructure/import/web-recipe-source.js";
+import { WebImageFetcher, WebRecipeSource } from "../../../src/infrastructure/import/web-recipe-source.js";
 
 describe("isPublicAddress", () => {
   it.each([
@@ -103,6 +103,11 @@ beforeAll(async () => {
     };
     if (url === "/pic.png") return picture([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
     if (url === "/pic-lies.png") return picture([0x3c, 0x73, 0x76, 0x67]); // "<svg" said to be a PNG
+    if (url === "/photo.png.avif")
+      return picture([0x00, 0x00, 0x00, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66], "image/avif");
+    if (url === "/photo.png") return picture([0x89, 0x50, 0x4e, 0x47, 4, 5]);
+    if (url === "/only.png.avif")
+      return picture([0x00, 0x00, 0x00, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66], "image/avif");
     if (url === "/pic.svg") return picture([0x3c, 0x73, 0x76, 0x67], "image/svg+xml");
     if (url === "/pic-big.png") return picture([0x89, 0x50, 0x4e, 0x47, ...new Array(6000).fill(0)]);
     if (url === "/slow") return void setTimeout(() => html("late"), 3000);
@@ -221,6 +226,19 @@ describe("fetchPicture", () => {
       ok: false,
       reason: "address_not_public",
     });
+  });
+});
+
+describe("WebImageFetcher", () => {
+  const fetcher = new WebImageFetcher({ ...limits, ...open });
+
+  it("takes the original of an AVIF link when the site keeps it beside, as KitchenOwl cannot show AVIF", async () => {
+    const r = await fetcher.fetch(`${base}/photo.png.avif`);
+    expect(r?.contentType).toBe("image/png");
+  });
+
+  it("gives no picture for an AVIF with no original", async () => {
+    expect(await fetcher.fetch(`${base}/only.png.avif`)).toBeNull();
   });
 });
 

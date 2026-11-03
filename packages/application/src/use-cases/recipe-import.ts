@@ -1,5 +1,6 @@
 import {
   cleanText,
+  splitPastedPicture,
   IMPORT_LIMITS,
   itemMatcher,
   relatedRecipes,
@@ -42,8 +43,10 @@ export class DraftRecipeImport {
     const pasted = cmd.text?.trim() ?? "";
     if ((address === "") === (pasted === "")) return { ok: false, reason: "need_one_source" };
 
-    let text = pasted;
-    let imageUrl: string | undefined;
+    // A pasted text may begin with the link of its picture.
+    const split = splitPastedPicture(pasted);
+    let text = split.text;
+    let imageUrl: string | undefined = split.imageUrl;
     if (address !== "") {
       const read = await this.deps.source.read(address);
       if (!read.ok) return { ok: false, reason: read.reason };

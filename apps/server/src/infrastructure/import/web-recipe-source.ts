@@ -30,7 +30,12 @@ export class WebImageFetcher implements ImageFetcher {
   constructor(private readonly fetchOptions: FetchOptions = {}) {}
 
   async fetch(address: string): Promise<DraftImage | null> {
-    const picture = await fetchPicture(address, { ...PICTURE_LIMITS, ...this.fetchOptions });
-    return picture.ok ? { bytes: picture.bytes, contentType: picture.contentType } : null;
+    // KitchenOwl cannot show AVIF. A WordPress site often keeps the original beside it ("a.jpg.avif" next to "a.jpg").
+    const original = address.replace(/(\.(?:jpe?g|png|webp))\.avif(?=$|[?#])/i, "$1");
+    for (const candidate of original === address ? [address] : [original, address]) {
+      const picture = await fetchPicture(candidate, { ...PICTURE_LIMITS, ...this.fetchOptions });
+      if (picture.ok) return { bytes: picture.bytes, contentType: picture.contentType };
+    }
+    return null;
   }
 }

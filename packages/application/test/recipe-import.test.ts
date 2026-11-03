@@ -285,6 +285,23 @@ describe("the title picture", () => {
     expect(shelf.get(token ?? "")).toEqual(picture);
   });
 
+  it("is read from a first line of a pasted text that is only a link, and that line is not part of the recipe", async () => {
+    const asked: string[] = [];
+    const { draft, extracted } = setup({
+      fetchImage: async (a) => {
+        asked.push(a);
+        return picture;
+      },
+    });
+    const r = await draft.execute({
+      member: ME,
+      text: "https://example.org/pic.jpg\n\nGnocchi-Pfanne\n\nINGREDIENTS\n• 500 g Gnocchi",
+    });
+    expect(asked).toEqual(["https://example.org/pic.jpg"]);
+    expect(r.ok && r.value.imageToken).toMatch(/^[0-9a-f]{32}$/);
+    expect(extracted[0]?.text).toBe("Gnocchi-Pfanne\n\nINGREDIENTS\n• 500 g Gnocchi");
+  });
+
   it("leaves the draft without a picture when it cannot be had", async () => {
     for (const fetchImage of [
       async () => null,

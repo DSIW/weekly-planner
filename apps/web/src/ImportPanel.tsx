@@ -424,6 +424,7 @@ export function ImportPanel() {
           onChange={(e) => setInput(e.target.value)}
         />
       </label>
+      <p className="muted">Bei einem eingefügten Text kann die erste Zeile der Link zum Titelbild sein.</p>
       {read.isError && (
         <p role="alert" className="error">
           {messageFor(read.error)}

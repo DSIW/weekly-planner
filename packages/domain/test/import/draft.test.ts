@@ -10,6 +10,7 @@ import {
   suggestItems,
   suggestTags,
   tagMatcher,
+  splitPastedPicture,
 } from "../../src/index.js";
 
 const vocabulary = {
@@ -402,5 +403,22 @@ describe("matching an ingredient written with a slip", () => {
     expect(d.ok && d.value.ingredients).toEqual([
       { name: "Champignons", amount: "250 g", optional: false, isNewItem: false, icon: "mushroom" },
     ]);
+  });
+});
+
+describe("splitPastedPicture", () => {
+  it("takes a first line that is only a link as the picture and leaves the rest", () => {
+    expect(splitPastedPicture("\n https://a.test/x.jpg \nPasta\n\nZutaten")).toEqual({
+      imageUrl: "https://a.test/x.jpg",
+      text: "Pasta\n\nZutaten",
+    });
+  });
+
+  it("leaves a text alone that does not begin with a bare link, or is only a link", () => {
+    expect(splitPastedPicture("Pasta https://a.test/x.jpg\nmehr")).toEqual({
+      text: "Pasta https://a.test/x.jpg\nmehr",
+    });
+    expect(splitPastedPicture("https://a.test/rezept")).toEqual({ text: "https://a.test/rezept" });
+    expect(splitPastedPicture("Pasta\nhttps://a.test/x.jpg")).toEqual({ text: "Pasta\nhttps://a.test/x.jpg" });
   });
 });
