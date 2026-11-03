@@ -15,7 +15,7 @@ const missingOne = (problem: string): string => {
   if (problem.startsWith("main dish also tagged")) return "nur eine Art (Hauptgericht und anderes zugleich)";
   return problem;
 };
-export const missingText = (problems: readonly string[]): string => problems.map(missingOne).join(", ");
+const missingText = (problems: readonly string[]): string => problems.map(missingOne).join(", ");
 
 /**
  * A recipe the planner cannot use yet because its tags in KitchenOwl are not complete. It stays visible, with what is
