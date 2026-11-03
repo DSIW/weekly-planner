@@ -4,8 +4,6 @@ import { createContext, useContext } from "react";
 export interface KitchenOwlLinks {
   recipe: string;
   list: string;
-  /** KitchenOwl's start page; absent from an older server. */
-  home?: string;
 }
 
 export const LinksContext = createContext<KitchenOwlLinks | null>(null);

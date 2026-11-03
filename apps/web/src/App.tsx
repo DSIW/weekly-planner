@@ -453,9 +453,9 @@ export function App() {
         <header className="bar">
           <h1>Hallo, {me.data.name}</h1>
           <div className="bar-actions">
-            {links.data?.home && (
-              <a className="bar-link" href={links.data.home}>
-                Küche
+            {links.data && (
+              <a className="bar-link" href={links.data.list}>
+                <span aria-hidden="true">🛒 </span>Einkauf
               </a>
             )}
             <Notifications />

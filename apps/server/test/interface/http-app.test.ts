@@ -316,14 +316,12 @@ describe("links to KitchenOwl", () => {
       links: {
         recipe: "https://ko.test/household/2/recipes/details/{id}",
         list: "https://ko.test/household/2/items",
-        home: "https://ko.test/",
       },
     });
   });
 
   it("works on a shared host (empty address) and gives none when KitchenOwl's address is not set", async () => {
     expect((await get({ kitchenowl: "", householdId: 2 })).json().links.list).toBe("/household/2/items");
-    expect((await get({ kitchenowl: "", householdId: 2 })).json().links.home).toBe("/");
     expect((await get({ kitchenowl: null, householdId: 2 })).json()).toEqual({ links: null });
     expect((await get()).json()).toEqual({ links: null });
   });
