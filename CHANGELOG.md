@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.31](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.30...weekly-planner-v0.1.31) (2026-11-03)
+
+
+### Features
+
+* a pasted recipe may start with the link of its picture; AVIF links fall back to the original ([e0c1bc8](https://github.com/DSIW/weekly-planner/commit/e0c1bc8d8a735071c2799e93fe42e5a1f18db859))
+
 ## [0.1.30](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.29...weekly-planner-v0.1.30) (2026-11-03)
 
 
