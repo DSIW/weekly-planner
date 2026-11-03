@@ -453,6 +453,90 @@ li.review {
   border-radius: 14px;
   border: 1px solid var(--primary);
 }
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.done {
+  width: min(420px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 28px 18px 22px;
+  border: 1px solid var(--outline);
+  border-radius: 20px;
+  background: var(--surface);
+  text-align: center;
+}
+.done h2 {
+  font-size: 1.5rem;
+}
+.done-sub {
+  margin: 0;
+}
+.done-mark {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  animation: done-pop 0.4s ease-out;
+}
+@keyframes done-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .done-mark {
+    animation: none;
+  }
+}
+.done-days {
+  width: 100%;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.done-day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--background);
+}
+.done-recipe {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.done-actions {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+}
+.done-actions button {
+  min-height: 44px;
+}
 .banner {
   margin: 0;
   padding: 12px 14px;

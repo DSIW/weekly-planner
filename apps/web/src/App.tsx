@@ -37,6 +37,7 @@ import {
 import { ExportStatus } from "./ExportStatus";
 import { FinalizePanel } from "./FinalizePanel";
 import { LinksContext, useLinks } from "./Links";
+import { PlanDone } from "./PlanDone";
 import { ImportPanel } from "./ImportPanel";
 import { LoginForm } from "./LoginForm";
 import { DueMeals, MealHistory } from "./MealLogPanel";
@@ -214,12 +215,6 @@ function Proposing({
   );
 }
 
-/** What a finished export put into KitchenOwl, for the member who finished it. */
-const doneMessage = (e: ExportView): string => {
-  const lines = e.list.items.length;
-  return `Fertig: ${e.days.length} ${e.days.length === 1 ? "Tag" : "Tage"} im Planer und ${lines} ${lines === 1 ? "Eintrag" : "Einträge"} auf der Einkaufsliste.`;
-};
-
 /** Step 3: the consolidated list as it will be sent, once at least one day is agreed and no vote runs. */
 function Finalizing({
   session,
@@ -227,7 +222,7 @@ function Finalizing({
   onBack,
 }: {
   session: PlanSession;
-  onDone: (message: string) => void;
+  onDone: (done: ExportView) => void;
   onBack: () => void;
 }) {
   const client = useQueryClient();
@@ -238,7 +233,7 @@ function Finalizing({
   const finalize = useMutation({
     mutationFn: (skip: string[]) => finalizePlan(session.id, skip),
     onSuccess: (done) => {
-      if (done.export?.complete) onDone(doneMessage(done.export));
+      if (done.export?.complete) onDone(done.export);
     },
     onSettled: () => {
       void client.invalidateQueries({ queryKey: ["session"] });
@@ -262,12 +257,12 @@ function Finalizing({
 }
 
 /** A finalized plan whose export did not finish. */
-function Exporting({ session, onDone }: { session: PlanSession; onDone: (message: string) => void }) {
+function Exporting({ session, onDone }: { session: PlanSession; onDone: (done: ExportView) => void }) {
   const client = useQueryClient();
   const retry = useMutation({
     mutationFn: (resend: boolean) => retryExport(session.id, resend),
     onSuccess: (done) => {
-      if (done.complete) onDone(doneMessage(done));
+      if (done.complete) onDone(done);
     },
     onSettled: () => {
       void client.invalidateQueries({ queryKey: ["session"] });
@@ -304,8 +299,7 @@ function Planning({ meId }: { meId: string }) {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [refetch]);
-  const links = useLinks();
-  const [exported, setExported] = useState<string | null>(null);
+  const [exported, setExported] = useState<ExportView | null>(null);
   const [step, setStep] = useState<"dishes" | "list">("dishes");
   const current = useQuery({ queryKey: ["session"], queryFn: fetchCurrentSession });
   const taken = useQuery({
@@ -403,22 +397,10 @@ function Planning({ meId }: { meId: string }) {
     );
   }
   const error = messageFor(start.error ?? null);
+  if (exported) return <PlanDone done={exported} onClose={() => setExported(null)} />;
   return (
     <>
       <Stepper current={1} />
-      {exported && (
-        <p role="status" className="success">
-          {exported}
-          {links && (
-            <>
-              {" "}
-              <a href={links.list} target="_blank" rel="noopener noreferrer">
-                Einkaufsliste öffnen
-              </a>
-            </>
-          )}
-        </p>
-      )}
       <StartSessionForm
         onStart={(dates) => start.mutate(dates)}
         pending={start.isPending}

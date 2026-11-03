@@ -308,8 +308,9 @@ describe("the finalize panel", () => {
     await toShoppingList();
     await userEvent.click(await screen.findByRole("button", { name: "Einkaufsliste füllen" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Fertig: 1 Tag im Planer und 2 Einträge auf der Einkaufsliste.",
+      "Alles geplant1 Abendessen steht im Planer und 2 Einträge auf der Einkaufsliste.",
     );
+    await userEvent.click(screen.getByRole("button", { name: "Zur Startseite" }));
     expect(await screen.findByRole("button", { name: "Planung starten" })).toBeInTheDocument();
     expect(calls.filter((c) => c.key === FINALIZE)).toHaveLength(1);
   });
@@ -448,7 +449,7 @@ describe("the export status", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("nicht angenommen");
     expect(screen.queryByRole("button", { name: "Trotzdem erneut senden" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Erneut versuchen" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Fertig");
+    expect(await screen.findByRole("status")).toHaveTextContent("Alles geplant");
     expect(calls.find((c) => c.key === RETRY)?.body).toBeUndefined();
   });
 
