@@ -465,7 +465,7 @@ li.review {
   font-weight: 600;
   text-decoration: none;
 }
-.done {
+.plan-done {
   width: min(420px, 100%);
   display: grid;
   justify-items: center;
@@ -476,10 +476,10 @@ li.review {
   background: var(--surface);
   text-align: center;
 }
-.done h2 {
+.plan-done h2 {
   font-size: 1.5rem;
 }
-.done-sub {
+.plan-done-sub {
   margin: 0;
 }
 .done-mark {

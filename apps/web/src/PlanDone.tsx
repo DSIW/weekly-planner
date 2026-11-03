@@ -7,7 +7,7 @@ export function PlanDone({ done, onClose }: { done: ExportView; onClose: () => v
   const links = useLinks();
   const lines = done.list.items.length;
   return (
-    <section role="status" className="done" aria-labelledby="done-title">
+    <section role="status" className="plan-done" aria-labelledby="done-title">
       <span className="done-mark" aria-hidden="true">
         <svg
           aria-hidden="true"
@@ -23,7 +23,7 @@ export function PlanDone({ done, onClose }: { done: ExportView; onClose: () => v
         </svg>
       </span>
       <h2 id="done-title">Alles geplant</h2>
-      <p className="muted done-sub">
+      <p className="muted plan-done-sub">
         {done.days.length} {done.days.length === 1 ? "Abendessen steht" : "Abendessen stehen"} im Planer
         {lines > 0 && ` und ${lines} ${lines === 1 ? "Eintrag" : "Einträge"} auf der Einkaufsliste`}.
       </p>
