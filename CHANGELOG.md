@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.28](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.27...weekly-planner-v0.1.28) (2026-11-03)
+
+
+### Features
+
+* Küche link in the planner header to KitchenOwl's start page ([e5ce1dd](https://github.com/DSIW/weekly-planner/commit/e5ce1dda2a79cc69433f1c814286752ab18517c7))
+* show recipes with incomplete tags in the meal log search, with what is missing ([b43c07a](https://github.com/DSIW/weekly-planner/commit/b43c07a89e98f896be067e3c737ef128a42fb482))
+* success page after a plan has been written to KitchenOwl ([25372a3](https://github.com/DSIW/weekly-planner/commit/25372a3bb33fb0d80cf0b9278a199a8a76704865))
+
+
+### Bug Fixes
+
+* keep missingText private (knip) ([395b79b](https://github.com/DSIW/weekly-planner/commit/395b79bbc625a3ed72e54fffcc05fa247ee68ab2))
+
 ## [0.1.27](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.26...weekly-planner-v0.1.27) (2026-11-02)
 
 
