@@ -170,4 +170,14 @@ export class ListRecipes {
       .flatMap((e) => (e.kind === "ready" && e.recipe.mealType !== "prep" ? [e.recipe] : []))
       .sort((a, b) => a.name.localeCompare(b.name, "de"));
   }
+
+  /** The recipes KitchenOwl has but whose tags are not complete, with what is missing: shown so they get fixed. */
+  async incomplete(): Promise<readonly { id: number; name: string; problems: readonly string[] }[]> {
+    const entries = await this.catalog.listAll();
+    return entries
+      .flatMap((e) =>
+        e.kind === "needs-data" ? [{ id: e.recipeId as number, name: e.name, problems: e.problems }] : [],
+      )
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
+  }
 }

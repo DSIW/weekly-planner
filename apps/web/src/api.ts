@@ -326,10 +326,14 @@ export async function fetchMealLog(days = 14): Promise<MealEntry[]> {
 }
 
 /** Every recipe that can be named for a meal, by name. */
-export async function fetchRecipes(): Promise<RecipeView[]> {
+export async function fetchRecipes(): Promise<{
+  recipes: RecipeView[];
+  unavailable: EligibleRecipes["unavailable"];
+}> {
   const res = await fetch(`${base}/recipes`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return ((await res.json()) as { recipes: RecipeView[] }).recipes;
+  const body = (await res.json()) as { recipes: RecipeView[]; unavailable?: EligibleRecipes["unavailable"] };
+  return { recipes: body.recipes, unavailable: body.unavailable ?? [] };
 }
 
 export const confirmMeal = (id: string) => command<{ entry: MealEntry }>(`/meal-log/${id}/confirm`);

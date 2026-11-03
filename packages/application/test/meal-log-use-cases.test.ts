@@ -177,6 +177,18 @@ describe("ListRecipes", () => {
     h.catalog.entries.push({ kind: "needs-data", recipeId: aRecipe(9).id, name: "Kaputt", problems: ["no diet tag"] });
     expect((await h.listRecipes.execute()).map((r) => r.name)).toEqual(["Äpfel", "Neu", "Zebrabraten"]);
   });
+
+  it("lists the incomplete ones apart, by name, with what is missing", async () => {
+    const h = household([fresh]);
+    h.catalog.entries.push(
+      { kind: "needs-data", recipeId: aRecipe(9).id, name: "Zucchini", problems: ["no diet tag"] },
+      { kind: "needs-data", recipeId: aRecipe(8).id, name: "Auflauf", problems: ["no meal-type tag"] },
+    );
+    expect(await h.listRecipes.incomplete()).toEqual([
+      { id: aRecipe(8).id, name: "Auflauf", problems: ["no meal-type tag"] },
+      { id: aRecipe(9).id, name: "Zucchini", problems: ["no diet tag"] },
+    ]);
+  });
 });
 
 describe("witness S5: ListMealLog window edge and tie order (mutation gaps)", () => {

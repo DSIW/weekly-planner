@@ -1243,3 +1243,16 @@ button.found-other {
 .recipe-line-text .warn {
   color: var(--warn);
 }
+
+.incomplete-title {
+  margin: 12px 0 0;
+  font-size: 1rem;
+}
+.incomplete-note {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.incomplete .recipe-line-text a {
+  color: var(--primary);
+  font-size: 0.9rem;
+}

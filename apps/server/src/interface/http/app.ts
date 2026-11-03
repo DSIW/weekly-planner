@@ -102,7 +102,7 @@ interface AppOptions {
   readonly finalizePlan: Pick<FinalizePlan, "execute">;
   readonly retryExport: Pick<RetryExport, "execute">;
   readonly listMealLog: Pick<ListMealLog, "execute">;
-  readonly listRecipes: Pick<ListRecipes, "execute">;
+  readonly listRecipes: Pick<ListRecipes, "execute" | "incomplete">;
   readonly listTakenDates: Pick<ListTakenDates, "execute">;
   readonly confirmCooked: Pick<ConfirmCooked, "execute">;
   readonly markNotCooked: Pick<MarkNotCooked, "execute">;
@@ -765,7 +765,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.get(`${api}/recipes`, async (req, reply) => {
     if (!requireMember(req, reply)) return reply;
     const recipes = await options.listRecipes.execute();
-    return { recipes: recipes.map((r) => recipeView(r, options.planAheadMinutes)) };
+    return {
+      recipes: recipes.map((r) => recipeView(r, options.planAheadMinutes)),
+      // Recipes whose tags are not complete yet: listed, with what is missing, so that they get fixed in KitchenOwl.
+      unavailable: await options.listRecipes.incomplete(),
+    };
   });
 
   app.get(`${api}/planned-dates`, async (req, reply) => {

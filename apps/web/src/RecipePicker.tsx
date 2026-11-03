@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { EligibleRecipes, Hindrance, RecipeView } from "./api";
 import { dayLabel } from "./dates";
-import { useRecipeHref } from "./Links";
+import { IncompleteRecipe } from "./IncompleteRecipe";
 import { RecipeLine } from "./RecipeLine";
 import { SearchField } from "./SearchField";
 
@@ -26,36 +26,6 @@ const WHY: Record<Exclude<Hindrance, "too_long_for_weekday">, string> = {
   passed: "In dieser Planung schon übersprungen.",
   planned: "In dieser Planung schon eingeplant.",
 };
-
-const MISSING: Record<string, string> = {
-  "no meal-type tag": "die Art (z. B. Hauptgericht)",
-  "no diet tag": "die Ernährung (z. B. Vegetarisch)",
-  "neither proven nor new": "Erprobt oder Neu",
-  "tagged both proven and new": "nur eines von Erprobt und Neu",
-};
-const missingText = (problems: string[]): string => problems.map((p) => MISSING[p] ?? p).join(", ");
-
-function Unavailable({ recipe }: { recipe: EligibleRecipes["unavailable"][number] }) {
-  const href = useRecipeHref(recipe.id);
-  return (
-    <div className="recipe found-other" aria-disabled="true">
-      <span className="recipe-line">
-        <span className="recipe-line-text">
-          <strong>
-            {href ? (
-              <a href={href} target="_blank" rel="noopener noreferrer">
-                {recipe.name}
-              </a>
-            ) : (
-              recipe.name
-            )}
-          </strong>
-          <span className="muted">In KitchenOwl fehlt noch: {missingText(recipe.problems)}.</span>
-        </span>
-      </span>
-    </div>
-  );
-}
 
 export function RecipePicker({
   date,
@@ -128,7 +98,7 @@ export function RecipePicker({
           );
         })}
         {lacking.map((r) => (
-          <Unavailable key={r.id} recipe={r} />
+          <IncompleteRecipe key={r.id} recipe={r} />
         ))}
         {none && <p className="muted">Kein Rezept gefunden.</p>}
       </div>

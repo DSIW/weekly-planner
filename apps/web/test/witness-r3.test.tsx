@@ -582,6 +582,35 @@ describe("dates that already hold a dinner (witness r3)", () => {
   });
 });
 
+describe("adding a meal: recipes whose tags are incomplete", () => {
+  it("lists them apart with what is missing, not choosable, with the way to fix them in KitchenOwl", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [LOG]: { status: 200, body: { entries: [] } },
+      [ALL_RECIPES]: {
+        status: 200,
+        body: { recipes: [pasta], unavailable: [{ id: 9, name: "Coq au vin", problems: ["no diet tag"] }] },
+      },
+      [`GET ${api}/links`]: {
+        status: 200,
+        body: { links: { recipe: "https://ko.test/household/2/recipes/details/{id}", list: "x" } },
+      },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
+    await userEvent.click(screen.getByRole("button", { name: "Mahlzeit nachtragen" }));
+    expect(await screen.findByText("Noch unvollständig")).toBeInTheDocument();
+    expect(screen.getByText("Coq au vin")).toBeInTheDocument();
+    expect(screen.getByText(/Tags fehlen: die Ernährung/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Coq au vin/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "In KitchenOwl ergänzen" })).toHaveAttribute(
+      "href",
+      "https://ko.test/household/2/recipes/details/9",
+    );
+  });
+});
+
 describe("adding a meal by its base (witness r3)", () => {
   it("says that only the base counts for a meal that is not in KitchenOwl", async () => {
     server({

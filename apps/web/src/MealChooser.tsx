@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { BASES, type BaseName, type RecipeView } from "./api";
+import { BASES, type BaseName, type EligibleRecipes, type RecipeView } from "./api";
+import { IncompleteRecipe } from "./IncompleteRecipe";
 import { RecipeLine } from "./RecipeLine";
 import { SearchField } from "./SearchField";
 
@@ -24,6 +25,8 @@ export const BASE_EMOJI: Record<BaseName, string> = {
 
 interface Props {
   recipes: RecipeView[] | undefined;
+  /** Recipes whose tags are not complete yet: shown, not choosable. */
+  unavailable?: EligibleRecipes["unavailable"] | undefined;
   loading: boolean;
   loadFailed: boolean;
   /** A recipe brings its own base; a meal without a recipe is given by its base. */
@@ -35,10 +38,11 @@ interface Props {
  * Names what was eaten, one thing per day: search a recipe, or give only the base when the meal is not in KitchenOwl.
  * The two ways are tabs; what is chosen replaces whatever was there for that day.
  */
-export function MealChooser({ recipes, loading, loadFailed, onChoose, pending }: Props) {
+export function MealChooser({ recipes, unavailable = [], loading, loadFailed, onChoose, pending }: Props) {
   const [mode, setMode] = useState<"recipe" | "base">("recipe");
   const [query, setQuery] = useState("");
   const shown = (recipes ?? []).filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const lacking = unavailable.filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase()));
   return (
     <div className="chooser">
       <fieldset className="switch">
@@ -83,7 +87,18 @@ export function MealChooser({ recipes, loading, loadFailed, onChoose, pending }:
                 <RecipeLine recipe={r} />
               </button>
             ))}
-            {recipes && shown.length === 0 && <p className="muted">Kein Rezept gefunden.</p>}
+            {recipes && shown.length === 0 && lacking.length === 0 && <p className="muted">Kein Rezept gefunden.</p>}
+            {lacking.length > 0 && (
+              <>
+                <h3 className="incomplete-title">Noch unvollständig</h3>
+                <p className="muted incomplete-note">
+                  Diese Rezepte sind erst wählbar, wenn ihre Tags in KitchenOwl ergänzt sind.
+                </p>
+                {lacking.map((r) => (
+                  <IncompleteRecipe key={r.id} recipe={r} />
+                ))}
+              </>
+            )}
           </div>
         </>
       )}

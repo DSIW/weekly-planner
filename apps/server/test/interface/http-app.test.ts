@@ -56,7 +56,7 @@ const noSessions = {
   retryExport: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   subscribeToPush: { execute: async () => {} },
   listMealLog: { execute: async () => [] },
-  listRecipes: { execute: async () => [] },
+  listRecipes: { execute: async () => [], incomplete: async () => [] },
   listTakenDates: { execute: async () => [] },
   confirmCooked: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   markNotCooked: { execute: async () => ({ ok: false as const, reason: "unused" }) },

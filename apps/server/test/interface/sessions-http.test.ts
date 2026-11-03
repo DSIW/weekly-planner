@@ -1339,6 +1339,11 @@ describe("the meal log over HTTP", () => {
     expect(res.json().recipes).toHaveLength(recipes.length);
   });
 
+  it("lists recipes with incomplete tags apart, so they can be fixed", async () => {
+    const res = await call("GET", "/recipes", max);
+    expect(Array.isArray(res.json().unavailable)).toBe(true);
+  });
+
   it("counts a confirmed new recipe as known in the next session's deck", async () => {
     const entry = await loggedFromPlan(kuerbis);
     const isNew = async () => {
