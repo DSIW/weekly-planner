@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.34](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.33...weekly-planner-v0.1.34) (2026-11-04)
+
+
+### Features
+
+* **web:** spinner instead of plain text while pages and recipes load ([2abedb5](https://github.com/DSIW/weekly-planner/commit/2abedb57564bf5ef9624a1319ae639a5ddc959ad))
+* **web:** use KitchenOwl's colours (green [#20](https://github.com/DSIW/weekly-planner/issues/20)AC64, grey surfaces) and icons to match ([929ee43](https://github.com/DSIW/weekly-planner/commit/929ee43abda3c05c440e38d0c3901e5cb2e783ef))
+
+
+### Bug Fixes
+
+* dev:phone binds to all interfaces without needing DEV_HOST ([d8793df](https://github.com/DSIW/weekly-planner/commit/d8793df04ae2f396376eb2a0f5a77081f223b10a))
+* **web:** keep the navigation bar above the swipeable cards ([f314e87](https://github.com/DSIW/weekly-planner/commit/f314e871b89dbf30c415098dba889a36ca449ad2))
+
 ## [0.1.33](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.32...weekly-planner-v0.1.33) (2026-11-04)
 
 
