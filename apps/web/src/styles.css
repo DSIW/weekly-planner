@@ -105,7 +105,7 @@ button:disabled {
   align-content: start;
   justify-items: center;
   gap: 16px;
-  padding: 16px;
+  padding: 16px 16px 96px;
 }
 .bar {
   width: min(420px, 100%);
@@ -549,16 +549,37 @@ li.review {
   align-items: center;
   gap: 8px;
 }
-.bar-link {
-  display: inline-flex;
-  align-items: center;
-  height: 44px;
-  padding: 0 14px;
-  border: 1px solid var(--outline);
-  border-radius: 999px;
-  color: var(--primary);
-  font-weight: 600;
+.kitchen-nav {
+  position: fixed;
+  inset: auto 0 0 0;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--outline);
+}
+.kitchen-nav a {
+  flex: 1 1 0;
+  max-width: 120px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border-radius: 16px;
+  color: var(--muted);
+  font-size: 0.75rem;
   text-decoration: none;
+}
+.kitchen-nav svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+.kitchen-nav a[aria-current="page"] {
+  color: var(--primary);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
 }
 .notify {
   display: grid;

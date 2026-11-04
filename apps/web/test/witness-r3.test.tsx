@@ -654,6 +654,7 @@ describe("links to KitchenOwl", () => {
   const links = {
     recipe: "https://ko.test/household/2/recipes/details/{id}",
     list: "https://ko.test/household/2/items",
+    recipes: "https://ko.test/household/2/recipes",
   };
   const taken = { dates: [{ date: "2026-11-03", recipeName: "Pasta", recipeId: 7 }] };
 
@@ -674,7 +675,7 @@ describe("links to KitchenOwl", () => {
     );
   });
 
-  it("put an Einkauf link to KitchenOwl's shopping list in the header", async () => {
+  it("shows KitchenOwl's navigation bar with the planner as the current page", async () => {
     server({
       ...signedIn,
       [CURRENT]: { status: 200, body: { session: null } },
@@ -682,10 +683,11 @@ describe("links to KitchenOwl", () => {
       [LINKS]: { status: 200, body: { links } },
     });
     renderApp();
-    expect(await screen.findByRole("link", { name: /Einkauf$/ })).toHaveAttribute(
-      "href",
-      "https://ko.test/household/2/items",
-    );
+    const nav = await screen.findByRole("navigation", { name: "KitchenOwl" });
+    const href = (name: string) => within(nav).getByRole("link", { name }).getAttribute("href");
+    expect(href("Liste")).toBe("https://ko.test/household/2/items");
+    expect(href("Rezepte")).toBe("https://ko.test/household/2/recipes");
+    expect(within(nav).getByRole("link", { name: "Wochenplan" })).toHaveAttribute("aria-current", "page");
   });
 
   it("are not shown when the server does not know where KitchenOwl is", async () => {

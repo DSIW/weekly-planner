@@ -36,6 +36,7 @@ import {
 } from "./api";
 import { ExportStatus } from "./ExportStatus";
 import { FinalizePanel } from "./FinalizePanel";
+import { KitchenNav } from "./KitchenNav";
 import { LinksContext } from "./Links";
 import { PlanDone } from "./PlanDone";
 import { ImportPanel } from "./ImportPanel";
@@ -453,11 +454,6 @@ export function App() {
         <header className="bar">
           <h1>Hallo, {me.data.name}</h1>
           <div className="bar-actions">
-            {links.data && (
-              <a className="bar-link" href={links.data.list}>
-                <span aria-hidden="true">🛒 </span>Einkauf
-              </a>
-            )}
             <Notifications />
             <button type="button" className="secondary" onClick={() => signOut.mutate()} disabled={signOut.isPending}>
               Abmelden
@@ -491,6 +487,7 @@ export function App() {
             <Planning meId={me.data.id} />
           </>
         )}
+        <KitchenNav />
       </main>
     </LinksContext.Provider>
   );

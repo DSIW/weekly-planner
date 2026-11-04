@@ -1,9 +1,10 @@
 import { createContext, useContext } from "react";
 
-/** Where KitchenOwl's pages are for the phones: a template with `{id}` for a recipe, and the shopping list. */
+/** Where KitchenOwl's pages are for the phones: a template with `{id}` for a recipe, and the pages of KitchenOwl's own navigation bar. */
 export interface KitchenOwlLinks {
   recipe: string;
   list: string;
+  recipes: string;
 }
 
 export const LinksContext = createContext<KitchenOwlLinks | null>(null);
