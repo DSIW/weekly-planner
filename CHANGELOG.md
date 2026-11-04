@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.32](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.31...weekly-planner-v0.1.32) (2026-11-04)
+
+
+### Features
+
+* **web:** pan-with-tick logo as app icon, favicon and KitchenOwl FAB asset ([f494f78](https://github.com/DSIW/weekly-planner/commit/f494f7808183bc43cedead050a2d93f0a32b19fb))
+
 ## [0.1.31](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.30...weekly-planner-v0.1.31) (2026-11-03)
 
 
