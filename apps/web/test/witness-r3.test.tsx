@@ -655,6 +655,7 @@ describe("links to KitchenOwl", () => {
     recipe: "https://ko.test/household/2/recipes/details/{id}",
     list: "https://ko.test/household/2/items",
     recipes: "https://ko.test/household/2/recipes",
+    home: "https://ko.test/household/2",
   };
   const taken = { dates: [{ date: "2026-11-03", recipeName: "Pasta", recipeId: 7 }] };
 
@@ -687,6 +688,7 @@ describe("links to KitchenOwl", () => {
     const href = (name: string) => within(nav).getByRole("link", { name }).getAttribute("href");
     expect(href("Liste")).toBe("https://ko.test/household/2/items");
     expect(href("Rezepte")).toBe("https://ko.test/household/2/recipes");
+    expect(href("Mehr")).toBe("https://ko.test/household/2");
     expect(within(nav).getByRole("link", { name: "Wochenplan" })).toHaveAttribute("aria-current", "page");
   });
 

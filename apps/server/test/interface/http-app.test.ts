@@ -317,6 +317,7 @@ describe("links to KitchenOwl", () => {
         recipe: "https://ko.test/household/2/recipes/details/{id}",
         list: "https://ko.test/household/2/items",
         recipes: "https://ko.test/household/2/recipes",
+        home: "https://ko.test/household/2",
       },
     });
   });

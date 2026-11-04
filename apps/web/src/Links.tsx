@@ -5,6 +5,7 @@ export interface KitchenOwlLinks {
   recipe: string;
   list: string;
   recipes: string;
+  home: string;
 }
 
 export const LinksContext = createContext<KitchenOwlLinks | null>(null);

@@ -473,6 +473,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         recipe: `${home}/recipes/details/{id}`,
         list: `${home}/items`,
         recipes: `${home}/recipes`,
+        home,
       },
     };
   });
