@@ -387,6 +387,10 @@ rule RemoveLoggedMeal {
     ensures: not exists entry
 }
 
+-- The recipe may be any that KitchenOwl has, also one whose tags are not
+-- complete yet: its base is then the one the member names here, and the rest
+-- of what the log keeps about it is a placeholder. The planning rules never
+-- read such a recipe (it is not eligible until its tags are complete).
 rule CorrectLoggedMeal {
     when: CorrectLoggedMeal(member, entry, base, recipe?)
     ensures:
