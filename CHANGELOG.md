@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.33](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.32...weekly-planner-v0.1.33) (2026-11-04)
+
+
+### Features
+
+* **web:** add KitchenOwl's household entry to the navigation bar ([57da754](https://github.com/DSIW/weekly-planner/commit/57da754b73ec1d9e449be9d0f58189faee972f8d))
+* **web:** KitchenOwl-style bottom navigation with links back to its list and recipes ([4fb107a](https://github.com/DSIW/weekly-planner/commit/4fb107a470dec6815035fdd5bbde2fa4fe8d2121))
+
 ## [0.1.32](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.31...weekly-planner-v0.1.32) (2026-11-04)
 
 
