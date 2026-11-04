@@ -20,6 +20,7 @@
     "knip": "knip",
     "test:ci": "run-s typecheck lint test knip",
     "dev": "run-p dev:server dev:web",
+    "dev:phone": "DEV_HOST=${DEV_HOST:?set DEV_HOST to the dev address} npm run dev",
     "dev:server": "npm run dev -w @weekly-planner/server",
     "dev:web": "npm run dev -w @weekly-planner/web",
     "recipes:check": "npm run recipes:check -w @weekly-planner/server",
