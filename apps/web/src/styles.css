@@ -1,8 +1,11 @@
 :root {
-  --primary: #2e7d32;
+  /* KitchenOwl's palette (styles/colors.dart, themes.dart): its green is the primary in both themes. */
+  --primary: #20ac64;
+  /* The green as text on the light surface needs more contrast than the fill does. */
+  --primary-ink: #178048;
   --on-primary: #fff;
   --surface: #fff;
-  --background: #f4f6f4;
+  --background: #fafafa;
   --text: #1c1b1f;
   --muted: #5f6368;
   --error: #b3261e;
@@ -12,15 +15,14 @@
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --primary: #81c784;
-    --on-primary: #0b2d0d;
-    --surface: #1f2421;
-    --background: #121513;
+    --primary-ink: #20ac64;
+    --surface: #383e3a;
+    --background: #303030;
     --text: #e6e1e5;
-    --muted: #a6aaa7;
+    --muted: #b3b6b4;
     --error: #f2b8b5;
     --warn: #e0a44a;
-    --outline: #444a46;
+    --outline: #51564f;
   }
 }
 * {
@@ -120,7 +122,7 @@ h2 {
 }
 button.secondary {
   background: transparent;
-  color: var(--primary);
+  color: var(--primary-ink);
   border: 1px solid var(--outline);
 }
 .chips {
@@ -213,7 +215,7 @@ fieldset.chips {
 }
 .stamp-right {
   left: 14px;
-  color: var(--primary);
+  color: var(--primary-ink);
   transform: rotate(-8deg);
 }
 .stamp-left {
@@ -592,7 +594,7 @@ li.review {
   fill: currentColor;
 }
 .kitchen-nav a[aria-current="page"] {
-  color: var(--primary);
+  color: var(--primary-ink);
   font-weight: 700;
   background: color-mix(in srgb, var(--primary) 16%, transparent);
 }
@@ -659,7 +661,7 @@ li.review {
 }
 .steps li.done .step-mark {
   border-color: var(--primary);
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 
 /* --- Days of the plan ----------------------------------------------------------------------------------------- */
@@ -937,7 +939,7 @@ fieldset.day-chips {
   font-family: "KitchenOwlItems", system-ui, sans-serif;
   font-size: 2rem;
   line-height: 1.2;
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 .item-icon.letter {
   display: grid;
@@ -1289,7 +1291,7 @@ button.found-other {
   font-size: 0.9rem;
 }
 .incomplete .recipe-line-text a {
-  color: var(--primary);
+  color: var(--primary-ink);
   font-size: 0.9rem;
 }
 .incomplete-actions {
