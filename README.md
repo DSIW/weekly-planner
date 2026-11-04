@@ -13,8 +13,8 @@ npm run recipes:check   # reads the recipes from KitchenOwl and checks the data
 ### On a phone
 
 `npm run dev:phone` serves the hot-reloading web app so a phone can open it: every save shows up in seconds, with
-no release. It needs a dev address that a reverse proxy forwards to port 5173 of this machine, and `DEV_HOST` set
-to that address. In Caddy:
+no release. It listens on all interfaces (Vite binds to localhost otherwise) and needs a dev address that a reverse proxy
+forwards to port 5173 of this machine. `DEV_HOST=dev.example.org` limits it to that address. In Caddy:
 
 ```caddy
 dev.example.org {
