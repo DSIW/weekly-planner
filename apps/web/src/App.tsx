@@ -37,6 +37,7 @@ import {
 import { ExportStatus } from "./ExportStatus";
 import { FinalizePanel } from "./FinalizePanel";
 import { KitchenNav } from "./KitchenNav";
+import { Loading } from "./Loading";
 import { LinksContext } from "./Links";
 import { PlanDone } from "./PlanDone";
 import { ImportPanel } from "./ImportPanel";
@@ -175,7 +176,7 @@ function Proposing({
       <>
         {decide}
         {switcher}
-        {deck.isPending && <p className="muted">Lädt …</p>}
+        {deck.isPending && <Loading what="Karten werden geladen …" />}
         {deck.isError && <p className="error">Die Karten konnten nicht geladen werden.</p>}
         {deck.data && (
           <SwipeDeck
@@ -195,7 +196,7 @@ function Proposing({
     <>
       {decide}
       {switcher}
-      {eligible.isPending && <p className="muted">Lädt …</p>}
+      {eligible.isPending && <Loading what="Rezepte werden geladen …" />}
       {eligible.isError && <p className="error">Die Rezepte konnten nicht geladen werden.</p>}
       {eligible.data && (
         <RecipePicker
@@ -355,7 +356,7 @@ function Planning({ meId }: { meId: string }) {
     onSettled: refetch,
   });
 
-  if (current.isPending) return <p className="muted">Lädt …</p>;
+  if (current.isPending) return <Loading what="Planung wird geladen …" />;
   if (current.isError) return <p className="error">Die Planung konnte nicht geladen werden.</p>;
   const session = current.data;
   if (session) {
@@ -426,7 +427,12 @@ export function App() {
   const [tab, setTab] = useState<"plan" | "log" | "import">("plan");
   const links = useQuery({ queryKey: ["links"], queryFn: fetchLinks, enabled: me.data != null, staleTime: Infinity });
 
-  if (me.isPending) return <main className="center muted">Lädt …</main>;
+  if (me.isPending)
+    return (
+      <main className="center">
+        <Loading />
+      </main>
+    );
   if (me.isError)
     return (
       <main className="center error" role="alert">

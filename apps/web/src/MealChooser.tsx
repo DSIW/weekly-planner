@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Loading } from "./Loading";
 import { BASES, type BaseName, type EligibleRecipes, type RecipeView } from "./api";
 import { IncompleteRecipe } from "./IncompleteRecipe";
 import { RecipeLine } from "./RecipeLine";
@@ -95,7 +96,7 @@ export function MealChooser({ recipes, unavailable = [], loading, loadFailed, on
       ) : (
         <>
           <SearchField value={query} onChange={setQuery} />
-          {loading && <p className="muted">Lädt …</p>}
+          {loading && <Loading what="Rezepte werden geladen …" />}
           {loadFailed && (
             <p role="alert" className="error">
               Die Rezepte konnten nicht geladen werden.

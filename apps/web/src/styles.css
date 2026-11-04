@@ -269,6 +269,20 @@ fieldset.chips {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+}
+.loading .spinner {
+  position: static;
+  flex: none;
+  margin: 0;
+  width: 22px;
+  height: 22px;
+}
 @keyframes spin {
   to {
     transform: rotate(360deg);

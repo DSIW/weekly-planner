@@ -29,6 +29,20 @@ Open port 5173 only to the proxy's address (firewall), and set `KITCHENOWL_PUBLI
 KitchenOwl the phone should be sent to (its public address; `/` does not work here, the hosts differ).
 Open `https://dev.example.org/plan/`.
 
+Instead of a firewall and `basic_auth`, the proxy can reach this machine over Tailscale (encrypted, no open port) and
+reuse an existing login portal. Our setup: Caddy on the server proxies `wp-dev.s.dsiw-it.de` to this machine's Tailscale
+address, behind the GitHub login (`authorize with mypolicy`):
+
+```caddy
+wp-dev.s.dsiw-it.de {
+	authorize with mypolicy
+	import security-header
+	reverse_proxy <tailscale-ip-of-this-machine>:5173
+}
+```
+
+Start it with `DEV_HOST=wp-dev.s.dsiw-it.de npm run dev:phone` and open `https://wp-dev.s.dsiw-it.de/plan/`.
+
 For `http` on localhost set `COOKIE_SECURE=false` in `.env`. Deployment: `DOCKER_DEPLOYMENT.md`.
 
 Node 22 (see `.node-version`).
