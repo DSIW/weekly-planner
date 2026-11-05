@@ -27,10 +27,12 @@ export function KitchenNav() {
           aria-current={e.href === null ? "page" : undefined}
           onClick={e.href === null ? (ev) => ev.preventDefault() : undefined}
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path d={e.path} />
-          </svg>
-          {e.label}
+          <span className="pill">
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d={e.path} />
+            </svg>
+          </span>
+          <span className="nav-label">{e.label}</span>
         </a>
       ))}
     </nav>
