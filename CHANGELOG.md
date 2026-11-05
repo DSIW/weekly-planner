@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.34...weekly-planner-v0.1.35) (2026-11-05)
+
+
+### Bug Fixes
+
+* **web:** navigation bar spread evenly edge to edge, name only on the current page ([a972e9d](https://github.com/DSIW/weekly-planner/commit/a972e9de441a00a5f908076a517b3c4225f72e1c))
+
 ## [0.1.34](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.33...weekly-planner-v0.1.34) (2026-11-04)
 
 
