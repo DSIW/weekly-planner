@@ -10,7 +10,6 @@ jobs:
   build:
     permissions:
       contents: read
-      pull-requests: write
     runs-on: ubuntu-latest
 
     steps:
@@ -24,14 +23,24 @@ jobs:
       - run: npm run test:ci
       - name: Smoke test the built app (real web client, real server, real SQLite)
         run: npm run smoke
+
+  # Kept apart from the build so that only this job holds a token that can merge, and only for Dependabot,
+  # and only after the build has passed.
+  dependabot:
+    needs: build
+    if: ${{ github.event_name == 'pull_request' && github.actor == 'dependabot[bot]' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
       - name: Fetch dependabot metadata
-        if: ${{ github.actor == 'dependabot[bot]' }}
         id: metadata
         uses: dependabot/fetch-metadata@v2
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
       - name: Merge Dependabot PRs for minor and patch updates
-        if: ${{ github.actor == 'dependabot[bot]' && (steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor') }}
+        if: ${{ steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor' }}
         run: gh pr merge --squash --delete-branch "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
