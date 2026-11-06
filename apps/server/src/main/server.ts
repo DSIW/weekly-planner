@@ -112,10 +112,12 @@ async function main(): Promise<void> {
     { sessions, catalog, mealLog, experience, clock, randomness: new SystemRandomness() },
     planning,
   );
+  const plannerView = new KitchenOwlPlannerView(client);
+  const acceptProposal = new AcceptProposal({ ...deps, calendar }, planning);
   const release = new ReleaseRemovedDinners({
     sessions,
     exports,
-    planner: new KitchenOwlPlannerView(client),
+    planner: plannerView,
     events: hub,
     uow: deps.uow,
     clock,
@@ -124,12 +126,12 @@ async function main(): Promise<void> {
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
     getCurrentSession: new GetCurrentSession({ sessions, exports }),
     startSession: new StartSession({ ...deps, ids, clock, calendar }, planning),
-    listTakenDates: new ListTakenDates({ calendar, clock, release, planner: new KitchenOwlPlannerView(client) }),
+    listTakenDates: new ListTakenDates({ calendar, clock, release, planner: plannerView }),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, planning),
-    acceptProposal: new AcceptProposal({ ...deps, calendar }, planning),
-    agreeInPerson: new AgreeInPerson(new AcceptProposal({ ...deps, calendar }, planning)),
+    acceptProposal,
+    agreeInPerson: new AgreeInPerson(acceptProposal),
     vetoProposal: new VetoProposal(deps),
     withdrawProposal: new WithdrawProposal(deps),
     refreshRecipes: new RefreshRecipes(catalog),
