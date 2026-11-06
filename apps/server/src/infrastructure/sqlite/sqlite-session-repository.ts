@@ -3,15 +3,13 @@ import {
   memberId,
   planDate,
   sessionId,
-  type PassedSuggestion,
   type PlanDay,
   type PlanningSession,
-  type Proposal,
-  type Recipe,
   type SessionId,
 } from "@weekly-planner/domain";
 import type { SQLOutputValue } from "node:sqlite";
 import type { Database } from "./database.js";
+import { readPasses, readProposals, readRecipe } from "./stored-json.js";
 
 type Row = Record<string, SQLOutputValue>;
 
@@ -98,7 +96,9 @@ export class SqliteSessionRepository implements SessionRepository {
           status: d.status as PlanDay["status"],
           ...(d.removed_in_planner === 1 ? { removedInPlanner: true } : {}),
         };
-        return d.recipe_json === null ? base : { ...base, recipe: JSON.parse(d.recipe_json as string) as Recipe };
+        return d.recipe_json === null
+          ? base
+          : { ...base, recipe: readRecipe(d.recipe_json as string, `plan_day ${id} ${d.date as string}`) };
       });
     return {
       id: sessionId(id),
@@ -106,8 +106,8 @@ export class SqliteSessionRepository implements SessionRepository {
       startedBy: memberId(row.started_by as string),
       startedAt: row.started_at as number,
       days,
-      proposals: JSON.parse(row.proposals_json as string) as Proposal[],
-      passes: JSON.parse(row.passes_json as string) as PassedSuggestion[],
+      proposals: readProposals(row.proposals_json as string, `planning_session ${id} proposals_json`),
+      passes: readPasses(row.passes_json as string, `planning_session ${id} passes_json`),
       reminderSent: row.reminder_sent === 1,
       wasFinalized: row.was_finalized === 1,
     };

@@ -137,6 +137,8 @@ Constraints that back up the invariants (the domain enforces them first; the dat
 
 Concurrency model: there is **no optimistic locking** (no `version` column). Every command runs inside `UnitOfWork.run`, which queues units of work on one connection and wraps each in `begin immediate`; the command loads the aggregate inside it (`changeSession`), so a second command always starts from the first one's result. This holds for **one server process only**. Network calls (KitchenOwl, push) are made before a unit of work starts or between two of them, never inside one, so a slow KitchenOwl cannot hold up writes; keep it that way.
 
+The JSON columns (`recipe_json`, `proposals_json`, `passes_json`, `export_json`) are read through zod schemas in `infrastructure/sqlite/stored-json.ts`. A row that does not fit fails with the table, key and field named (`StoredDataError`, answered as 502 and logged) instead of surfacing later inside a rule. The schemas are loose, so a field they do not know survives the next save; a field added to the domain that old rows lack must be optional or defaulted there.
+
 Dates are stored as plain `YYYY-MM-DD`. Aggregates are loaded and saved whole by repositories; the domain never sees a table.
 
 ## 5. Recipe attributes (the data foundation)
