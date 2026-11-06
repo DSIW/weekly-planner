@@ -7,9 +7,9 @@ import {
   type MealLogEntryId,
   type MealSource,
   type PlanDate,
-  type Recipe,
 } from "@weekly-planner/domain";
 import type { Database } from "./database.js";
+import { readRecipe } from "./stored-json.js";
 
 /** Adapter: what the household ate, one row per entry, plus the planned dates that already became an entry. */
 export class SqliteMealLogRepository implements MealLogRepository {
@@ -65,7 +65,8 @@ export class SqliteMealLogRepository implements MealLogRepository {
       id: mealLogEntryId(row.id as string),
       date: planDate(row.date as string),
       base: row.base as Base,
-      recipe: row.recipe_json === null ? null : (JSON.parse(row.recipe_json as string) as Recipe),
+      recipe:
+        row.recipe_json === null ? null : readRecipe(row.recipe_json as string, `meal_log_entry ${row.id as string}`),
       source: row.source as MealSource,
       confirmed: row.confirmed === 1,
     };

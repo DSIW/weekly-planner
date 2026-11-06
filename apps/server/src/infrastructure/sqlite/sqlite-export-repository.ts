@@ -1,6 +1,7 @@
 import type { ExportRepository } from "@weekly-planner/application";
 import type { FinalizeExport, SessionId } from "@weekly-planner/domain";
 import type { Database } from "./database.js";
+import { readExport } from "./stored-json.js";
 
 /** Adapter: the export state of finalized plans in SQLite, loaded and saved whole. */
 export class SqliteExportRepository implements ExportRepository {
@@ -8,7 +9,7 @@ export class SqliteExportRepository implements ExportRepository {
 
   async get(sessionId: SessionId): Promise<FinalizeExport | null> {
     const row = this.db.prepare("select export_json from finalize_export where session_id = ?").get(sessionId);
-    return row ? (JSON.parse(row.export_json as string) as FinalizeExport) : null;
+    return row ? readExport(row.export_json as string, `finalize_export ${sessionId}`) : null;
   }
 
   async save(exported: FinalizeExport): Promise<void> {

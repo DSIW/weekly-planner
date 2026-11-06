@@ -68,7 +68,7 @@ reference/              simulate_spec.py: Python reference model of the spec; ge
 packages/domain/        domain layer
 packages/application/   application layer
 apps/server/            infrastructure, interface and main
-apps/web/               React PWA (planned, slice S1a); talks to the server API only
+apps/web/               React PWA; talks to the server API only
 ARCHITECTURE.md  ROADMAP.md  README.md  .env.example
 ```
 
@@ -111,27 +111,33 @@ Aggregates reference each other by id only. Two rules reach across aggregates an
 
 ### Domain events
 
-Aggregate methods return events instead of calling anyone: `SessionStarted`, `RecipeProposed`, `ProposalAccepted`, `ProposalVetoed`, `SuggestionPassed`, `DayMarkedLeftovers`, `DayReopened`, `DaysSwapped`, `DayMoved`, `PlanFinalized` (carries the agreed dinners with date, recipe and portions, instead of one `IngredientsNeeded` per day), `FinalizeReminderDue`, `SessionClosed`, `MealLogged`, `MealConfirmedAsCooked`, `MealMarkedNotCooked`. The application layer publishes them after the commit; infrastructure will turn them into Server-Sent Events, Web Push messages and the KitchenOwl export (planned).
+Aggregate methods return events instead of calling anyone: `SessionStarted`, `RecipeProposed`, `ProposalAccepted`, `ProposalVetoed`, `SuggestionPassed`, `DayMarkedLeftovers`, `DayReopened`, `DaysSwapped`, `DayMoved`, `PlanFinalized` (carries the agreed dinners with date, recipe and portions, instead of one `IngredientsNeeded` per day), `FinalizeReminderDue`, `SessionClosed`, `MealLogged`, `MealConfirmedAsCooked`, `MealMarkedNotCooked`. The application layer publishes them after the commit; infrastructure turns them into Server-Sent Events (`InProcessEventHub`), and the scheduler jobs and use cases drive Web Push and the KitchenOwl export.
 
-### Persistence mapping (infrastructure, planned)
+### Persistence mapping (infrastructure, built)
 
-Nothing is persisted yet; M1 uses in-memory fakes. The mapping below is the target for slice S1b onwards.
+SQLite through `node:sqlite`, one file, migrations in `infrastructure/sqlite/migrations.ts` (numbered, applied once each, `pragma user_version` remembers how many ran; a shipped migration is never edited). See D17.
 
 | Aggregate part | Table | Notes |
 |---|---|---|
-| PlanningSession | `sessions` | status open / finalized / closed; `reminder_sent`; `version` for optimistic locking |
-| PlanDay | `plan_days` | status open / planned / leftovers; `recipe_id` only when planned |
-| Proposal | `proposals` | status pending / accepted / vetoed |
-| PassedSuggestion | `passes` | unique (session, recipe) |
-| MealLogEntry | `meal_log` | source from_plan / corrected / added; `confirmed`; a removed `from_plan` entry leaves its date in a tombstone so the daily job does not log it again |
-| RecipeExperience | `cooked_recipes` | recipe id is the key |
-| Member (external) | `members` | the two KitchenOwl users |
+| PlanningSession | `planning_session` | status open / finalized / closed; `reminder_sent`; `was_finalized`; `proposals_json` and `passes_json` hold the proposals and passes until something needs to query them |
+| PlanDay | `plan_day` | key (session, date); status open / planned / leftovers; `recipe_json` is a copy of the agreed recipe; `blocks_date` and `removed_in_planner` decide whether the day holds its date |
+| Proposal, PassedSuggestion | inside `planning_session` (JSON) | the domain guards "one pending proposal per day" and "no recipe twice"; there is no index for them |
+| FinalizeExport | `finalize_export` | one JSON row per session, loaded and saved whole (D23) |
+| MealLogEntry | `meal_log_entry`, `logged_plan_date` | source from_plan / corrected / added; `confirmed`; a planned date that already became an entry stays in `logged_plan_date`, so removing the entry does not bring it back |
+| RecipeExperience | `recipe_experience` | recipe id is the key |
+| Push subscriptions, server settings | `push_subscription`, `setting` | one row per endpoint; the VAPID key pair lives in `setting` |
+| Member (external) | none | the two KitchenOwl users are read from KitchenOwl; the session cookie carries id and name |
 
 Constraints that back up the invariants (the domain enforces them first; the database is the safety net):
 
-- `OneDinnerPerDay`: partial unique index on `plan_days(date)` where status = 'planned'.
-- one pending proposal per day: partial unique index on `proposals(day_id)` where status = 'pending'. This is also the "first proposal wins" rule when both members act at once.
+- `OneDinnerPerDay`: partial unique index `one_dinner_per_date` on `plan_day(date)` where `blocks_date = 1` (a discarded session or a dinner taken off KitchenOwl's planner does not hold its date; D22, D35).
+- one open session: partial unique index `one_open_session` on `planning_session(status)` where status = 'open'.
+- "first proposal wins" when both members act at once is decided by the domain inside a unit of work: units of work run one after the other, so the second request sees the first one's proposal.
 - `NoRecipeTwiceInSession`, `NoDessertForDinner`, `WeekdayTimeLimit` are domain checks on every command and are covered by property tests.
+
+Concurrency model: there is **no optimistic locking** (no `version` column). Every command runs inside `UnitOfWork.run`, which queues units of work on one connection and wraps each in `begin immediate`; the command loads the aggregate inside it (`changeSession`), so a second command always starts from the first one's result. This holds for **one server process only**. Network calls (KitchenOwl, push) are made before a unit of work starts or between two of them, never inside one, so a slow KitchenOwl cannot hold up writes; keep it that way.
+
+The JSON columns (`recipe_json`, `proposals_json`, `passes_json`, `export_json`) are read through zod schemas in `infrastructure/sqlite/stored-json.ts`. A row that does not fit fails with the table, key and field named (`StoredDataError`, answered as 502 and logged) instead of surfacing later inside a rule. The schemas are loose, so a field they do not know survives the next save; a field added to the domain that old rows lack must be optional or defaulted there.
 
 Dates are stored as plain `YYYY-MM-DD`. Aggregates are loaded and saved whole by repositories; the domain never sees a table.
 
@@ -200,19 +206,19 @@ How it is tested: the domain by pure unit and property tests, most of them gener
 
 ## 8. API and real-time
 
-*Planned (slice S1a onwards).* REST with zod schemas shared by server and web:
+REST under `/plan/api`, bodies validated with zod in the route modules (`apps/server/src/interface/http/*-routes.ts`). The routes below are the core ones; `app.ts` only sets up Fastify, the failure log and the error handler, and each context registers its own routes:
 
 - `POST /api/login`, `POST /api/logout`, `GET /api/me`
 - `GET /api/sessions/current`, `POST /api/sessions` (409 `session_already_open` while one is open), `POST /api/sessions/:id/finalize`, `POST /api/sessions/:id/close`
 - `GET /api/sessions/:id/deck` (ranked cards for the next open date; the deck is not capped, the client pages through it; the order is the same for both members and on every request, because ties are broken by a hash of session and recipe), `GET /api/recipes/:id/photo` (the picture from KitchenOwl, fetched with the service token)
 - `GET /api/sessions/:id/recipes` (the plain list for the next open day, by name), `POST /api/sessions/:id/proposals`, `POST /api/sessions/:id/proposals/:proposalId/accept`, `POST /api/sessions/:id/proposals/:proposalId/veto`, `POST /api/sessions/:id/passes`. Proposals live inside the session, so their routes are nested under it.
-- `POST /api/days/swap`, `POST /api/days/move`, `POST /api/days/:id/leftovers`, `POST /api/days/:id/reopen`
-- `GET /api/log`, `POST /api/log/:id/confirm`, `POST /api/log/:id/not-cooked`, `PUT /api/log/:id`, `POST /api/log`
+- `POST /api/sessions/:id/swap`, `POST /api/sessions/:id/move`, `POST /api/sessions/:id/days/:date/leftovers`, `POST /api/sessions/:id/days/:date/reopen`
+- `GET /api/meal-log`, `POST /api/meal-log`, `POST /api/meal-log/:id/confirm`, `.../not-cooked`, `.../remove`, `.../correct`
 - `GET /api/recipes` (every recipe that can be named for a meal, by name, and `unavailable`: the recipes whose tags are not complete, with what is missing), `GET /api/links` (where KitchenOwl's pages are for the phones: `recipe` with `{id}`, `list`, `recipes`, `home`; none without `KITCHENOWL_PUBLIC_URL`)
 - `GET /api/recipes/needs-data`, `POST /api/recipes/refresh` (reads KitchenOwl again; the recipe list is otherwise remembered for ten minutes)
 - `GET /api/events` (Server-Sent Events): one stream per signed-in phone. Each committed change sends `changed` with the event type, and the client refetches what it shows; it refetches on every (re)connect too, so a missed change heals itself. It is household-wide, not per session, because a phone must learn that a session was started.
 
-Commands return the new session state; stale writes are rejected through `version` and the client simply refetches.
+Commands return the new session state. There is no version check: concurrent commands are serialized on the server (section 4), a command that no longer applies is rejected by its rule (for example `not_next_open_day`), and the client refetches after every change event.
 
 ## 9. Frontend (PWA, started in S1a)
 
@@ -298,7 +304,7 @@ The plan lives in [`ROADMAP.md`](ROADMAP.md). Work is cut into **vertical slices
 | D14 | Delivery copies the `overtimer` pipeline (CI, release-please, Dependabot with auto-merge, Allium spec check) and publishes a Docker image to GHCR on release; the server pulls it | one release process for all the household's projects; the app is a long-running service with SQLite, which Vercel cannot host | Vercel (used by `overtimer`, static only); building on the server; deploying over SSH from the workflow (needs server credentials in GitHub) |
 | D15 | Hand-written manifest and service worker instead of `vite-plugin-pwa`; Biome instead of ESLint and Prettier; the server is bundled with esbuild into one file | the plugin's current versions pull in Workbox packages with open advisories and do not support Vite 8 in older versions; the shell is tiny; Biome is what `nodos` uses; plain Node cannot run the TypeScript workspace packages | `vite-plugin-pwa` (advisories), ESLint + Prettier (two tools, more config), running with `tsx` in production (slower start, dev dependency in the image) |
 | D16 | Node.js stays on an LTS line (even major, currently 22, 24 next); odd majors are never adopted. `.node-version`, the Dockerfile base image and `@types/node` move together, by hand | LTS gets security fixes for years; odd releases are short-lived and a long-running service on SQLite should not chase them | tracking Node's latest release (Dependabot would propose it) |
-| D17 | SQLite through Node's built-in `node:sqlite` (Node 22.22.2 and later), sessions stored as a `planning_session` row plus `plan_day` rows with proposals and passes as JSON until a slice needs to query them; a partial unique index allows one open session; one connection, units of work run one after the other | no native module to compile in the Alpine image, one file, the aggregate is loaded and saved whole; the household plans one thing at a time | `better-sqlite3` (native build, prebuilt binaries per platform), a full relational split now (nothing queries proposals before S2a) |
+| D17 | SQLite through Node's built-in `node:sqlite` (Node 22.22.2 and later), sessions stored as a `planning_session` row plus `plan_day` rows with proposals and passes as JSON until a slice needs to query them; a partial unique index allows one open session; one connection, units of work run one after the other, so the server must run as a single instance (the unit-of-work queue, the export saga's `running` set, the event hub and the scheduler are all in-process); a rolling deploy that overlaps two instances is not supported, stop the old container first | no native module to compile in the Alpine image, one file, the aggregate is loaded and saved whole; the household plans one thing at a time | `better-sqlite3` (native build, prebuilt binaries per platform), a full relational split now (nothing queries proposals before S2a) |
 | D18 | A failure of something the server depends on (KitchenOwl, SQLite) is answered 502 `unavailable` by one error handler and logged; Fastify's own client errors (bad JSON, rate limit) keep their 4xx. A dependency's status code is never passed on | a 401 from KitchenOwl once surfaced as a 401 of the planner, which the web app reads as "wrong password" or "not signed in" | passing `status` through (it did, by accident) |
 | D19 | A recipe whose total time exceeds `planAheadMinutes` (6 h, from the spec's `plan_ahead_time`) is flagged "Vorlauf nötig" and ranks after every other suggestion, instead of being hidden on weekends | found on the first real use: a 21-hour pizza (dough resting) showed up as an ordinary weekend dinner; the total time in KitchenOwl includes waiting, and the household still wants such dishes available when planned ahead | a weekend time limit (hides the dish), fixing the data only |
 | D20 | The deck breaks ties between equally ranked recipes with a hash of session id and recipe id, not a fresh random number; base variety also counts dinners planned in other sessions; until S5 records meals, `NoMealsRecordedYet` stands in for the meal log | a fresh random order reshuffled the cards on every refetch, under a swiping thumb; a dinner planned on Wednesday is not yet logged when Thursday is planned but is a real meal | a seeded generator per request (same effect, harder to test), waiting for the meal log (variety blind to the previous session) |
