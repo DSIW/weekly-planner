@@ -1,24 +1,28 @@
 :root {
-  --primary: #2e7d32;
+  /* KitchenOwl's palette (styles/colors.dart, themes.dart): its green is the primary in both themes. */
+  --primary: #20ac64;
+  /* The green as text on the light surface needs more contrast than the fill does. */
+  --primary-ink: #178048;
   --on-primary: #fff;
   --surface: #fff;
-  --background: #f4f6f4;
+  --background: #fafafa;
   --text: #1c1b1f;
   --muted: #5f6368;
   --error: #b3261e;
+  --warn: #9a5b00;
   --outline: #c4c7c5;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --primary: #81c784;
-    --on-primary: #0b2d0d;
-    --surface: #1f2421;
-    --background: #121513;
+    --primary-ink: #20ac64;
+    --surface: #383e3a;
+    --background: #303030;
     --text: #e6e1e5;
-    --muted: #a6aaa7;
+    --muted: #b3b6b4;
     --error: #f2b8b5;
-    --outline: #444a46;
+    --warn: #e0a44a;
+    --outline: #51564f;
   }
 }
 * {
@@ -39,6 +43,8 @@ body {
 }
 .card {
   width: min(420px, 100%);
+  /* One column that may shrink: a long word or link must not widen the card past the screen. */
+  grid-template-columns: minmax(0, 1fr);
   background: var(--surface);
   border-radius: 20px;
   padding: 24px;
@@ -101,7 +107,7 @@ button:disabled {
   align-content: start;
   justify-items: center;
   gap: 16px;
-  padding: 16px;
+  padding: 16px 16px 96px;
 }
 .bar {
   width: min(420px, 100%);
@@ -116,7 +122,7 @@ h2 {
 }
 button.secondary {
   background: transparent;
-  color: var(--primary);
+  color: var(--primary-ink);
   border: 1px solid var(--outline);
 }
 .chips {
@@ -209,7 +215,7 @@ fieldset.chips {
 }
 .stamp-right {
   left: 14px;
-  color: var(--primary);
+  color: var(--primary-ink);
   transform: rotate(-8deg);
 }
 .stamp-left {
@@ -264,6 +270,20 @@ fieldset.chips {
   border-top-color: var(--primary);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+}
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--muted);
+}
+.loading .spinner {
+  position: static;
+  flex: none;
+  margin: 0;
+  width: 22px;
+  height: 22px;
 }
 @keyframes spin {
   to {
@@ -449,6 +469,90 @@ li.review {
   border-radius: 14px;
   border: 1px solid var(--primary);
 }
+.button-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.plan-done {
+  width: min(420px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: 28px 18px 22px;
+  border: 1px solid var(--outline);
+  border-radius: 20px;
+  background: var(--surface);
+  text-align: center;
+}
+.plan-done h2 {
+  font-size: 1.5rem;
+}
+.plan-done-sub {
+  margin: 0;
+}
+.done-mark {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--on-primary);
+  animation: done-pop 0.4s ease-out;
+}
+@keyframes done-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .done-mark {
+    animation: none;
+  }
+}
+.done-days {
+  width: 100%;
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.done-day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--background);
+}
+.done-recipe {
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.done-actions {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+}
+.done-actions button {
+  min-height: 44px;
+}
 .banner {
   margin: 0;
   padding: 12px 14px;
@@ -460,6 +564,61 @@ li.review {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.kitchen-nav {
+  position: fixed;
+  z-index: 40;
+  inset: auto 0 0 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--outline);
+}
+.kitchen-nav a {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 4px;
+  min-height: 56px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+.kitchen-nav .pill {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 32px;
+  border-radius: 16px;
+}
+.kitchen-nav svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+/* Only the page you are on is named, as in KitchenOwl; the others keep their name for screen readers. */
+.kitchen-nav .nav-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.kitchen-nav a[aria-current="page"] {
+  color: var(--text);
+  font-weight: 600;
+}
+.kitchen-nav a[aria-current="page"] .pill {
+  background: color-mix(in srgb, var(--primary) 24%, transparent);
+  color: var(--primary-ink);
+}
+.kitchen-nav a[aria-current="page"] .nav-label {
+  position: static;
+  width: auto;
+  height: auto;
+  clip-path: none;
 }
 .notify {
   display: grid;
@@ -524,7 +683,7 @@ li.review {
 }
 .steps li.done .step-mark {
   border-color: var(--primary);
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 
 /* --- Days of the plan ----------------------------------------------------------------------------------------- */
@@ -719,6 +878,17 @@ fieldset.switch {
   border: 0;
   padding: 9px 12px;
 }
+/* The main areas: one row of equal tabs, whatever the number of them. */
+fieldset.tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+fieldset.tabs button {
+  padding: 10px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .chooser {
   display: grid;
   gap: 12px;
@@ -791,7 +961,7 @@ fieldset.day-chips {
   font-family: "KitchenOwlItems", system-ui, sans-serif;
   font-size: 2rem;
   line-height: 1.2;
-  color: var(--primary);
+  color: var(--primary-ink);
 }
 .item-icon.letter {
   display: grid;
@@ -880,4 +1050,279 @@ select {
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent);
   text-underline-offset: 3px;
+}
+
+textarea {
+  font: inherit;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+  background: transparent;
+  color: var(--text);
+  resize: vertical;
+}
+.import-draft h3 {
+  margin: 4px 0 0;
+  font-size: 1rem;
+}
+.import-tile {
+  position: relative;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  height: 100%;
+  padding: 10px 6px 8px;
+  border: 1px solid var(--outline);
+  border-radius: 14px;
+  text-align: center;
+}
+.import-tile input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px dashed var(--outline);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+  padding: 2px 0;
+}
+.import-name {
+  font-weight: 600;
+}
+.import-amount {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.import-tile button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+.import-draft p,
+.import-steps li {
+  overflow-wrap: anywhere;
+}
+.import-photo {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.import-photo img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: cover;
+  border-radius: 14px;
+  background: var(--outline);
+}
+select {
+  font: inherit;
+  padding: 12px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+  background: transparent;
+  color: var(--text);
+}
+.import-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.import-facts select,
+.import-facts input {
+  width: 100%;
+  min-width: 0;
+}
+.import-tags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.import-tags li {
+  flex: 1 1 140px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  padding: 0 4px 0 12px;
+}
+.import-tags input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 8px 0;
+}
+.import-tags button {
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  font-size: 0.8rem;
+  line-height: 1;
+  border: 0;
+}
+.import-add-tag {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.import-add-tag input {
+  min-width: 0;
+}
+.import-steps {
+  margin: 0;
+  padding-left: 1.3rem;
+  display: grid;
+  gap: 6px;
+}
+.planned-days .dinner {
+  flex-wrap: wrap;
+}
+.planned-days .row-actions {
+  margin-left: auto;
+}
+.import-tile button.import-replace {
+  right: auto;
+  left: 2px;
+}
+.suggest {
+  position: relative;
+  display: grid;
+  gap: 4px;
+}
+.suggest input {
+  width: 100%;
+  min-width: 0;
+}
+.suggest-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  background: var(--surface);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.suggest-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.suggest-list .item-icon {
+  font-size: 1.5rem;
+  flex: none;
+}
+.suggest-list li[aria-selected="true"] {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.suggest-list li[aria-selected="true"] .item-icon {
+  color: inherit;
+}
+.suggest-typed {
+  color: var(--muted);
+}
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.5);
+  overflow-y: auto;
+}
+.modal {
+  width: min(420px, 100%);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 20px;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  box-shadow: 0 8px 30px rgb(0 0 0 / 0.35);
+}
+.modal h3 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.related {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--outline);
+  border-left: 4px solid var(--primary);
+  border-radius: 12px;
+}
+.related h3 {
+  margin: 0;
+}
+.related ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.found-heading {
+  margin: 8px 0 0;
+  font-size: 1rem;
+  color: var(--muted);
+}
+.found-other[aria-disabled="true"] {
+  opacity: 0.6;
+  cursor: default;
+}
+button.found-other {
+  border-style: dashed;
+}
+/* A warning, not a refusal: amber text with a sign, no more than that. */
+.recipe-line-text .warn {
+  color: var(--warn);
+}
+
+.incomplete-title {
+  margin: 12px 0 0;
+  font-size: 1rem;
+}
+.incomplete-note {
+  margin: 0;
+  font-size: 0.9rem;
+}
+.incomplete .recipe-line-text a {
+  color: var(--primary-ink);
+  font-size: 0.9rem;
+}
+.incomplete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.incomplete-use {
+  padding: 6px 12px;
+  font-size: 0.9rem;
 }

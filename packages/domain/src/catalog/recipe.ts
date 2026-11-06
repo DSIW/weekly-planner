@@ -50,6 +50,8 @@ export interface Recipe {
    * were read; finalizing then looks them up again.
    */
   readonly ingredients?: readonly Ingredient[];
+  /** Where the recipe came from (a link), when it says so; an import is compared with it. */
+  readonly source?: string;
 }
 
 /** Vegan counts as vegetarian. */

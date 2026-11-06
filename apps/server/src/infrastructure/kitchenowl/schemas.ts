@@ -10,6 +10,7 @@ const rawRecipeSchema = z.object({
   cook_time: z.number().nullish(),
   yields: z.number().nullish(),
   photo: z.string().nullish(),
+  source: z.string().nullish(),
   tags: z.array(z.object({ name: z.string() })).default([]),
   items: z
     .array(
@@ -37,8 +38,23 @@ export const plannerListSchema = z.array(
   }),
 );
 
+/** Tags of the household: only their names matter for matching a draft. */
+export const nameListSchema = z.array(z.object({ name: z.string() }));
+
+/** Items of the household: the name to match a draft with, and the icon the phones draw. */
+export const itemListSchema = z.array(z.object({ name: z.string(), icon: z.string().nullish() }));
+
+/** A created recipe: its id, and its items (some may be new, without an icon yet). */
+export const createdRecipeSchema = z.object({
+  id: z.number().int(),
+  items: z.array(z.object({ id: z.number().int(), name: z.string(), icon: z.string().nullish() })).default([]),
+});
+
 export const authResponseSchema = z.object({ access_token: z.string().min(1) });
 
 export const userSchema = z.object({ id: z.number().int(), name: z.string(), username: z.string() });
 
 export const householdSchema = z.object({ member: z.array(z.object({ id: z.number().int() })).default([]) });
+
+/** What KitchenOwl answers to a file upload: the name the file is kept under. */
+export const uploadedFileSchema = z.object({ filename: z.string().min(1) });

@@ -28,6 +28,10 @@ function source(entries: CatalogEntry[]) {
     async itemIcons() {
       return null;
     },
+    async findForLog(id) {
+      const e = state.entries.find((x) => (x.kind === "ready" ? x.recipe.id : x.recipeId) === id);
+      return e?.kind === "ready" ? e.recipe : (e?.loggable ?? null);
+    },
     async find(id) {
       const e = state.entries.find((x) => x.kind === "ready" && x.recipe.id === id);
       return e?.kind === "ready" ? e.recipe : null;

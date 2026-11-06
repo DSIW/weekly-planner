@@ -8,7 +8,7 @@ import {
   type PlanningSession,
   type Result,
 } from "@weekly-planner/domain";
-import { DateTakenConflict, OpenSessionConflict, RemindToFinalize } from "../src/index.js";
+import { DateTakenConflict, ListEligibleRecipes, OpenSessionConflict, RemindToFinalize } from "../src/index.js";
 import { household } from "./household.js";
 import { AC, ME, aRecipe } from "./support/in-memory.js";
 
@@ -315,7 +315,7 @@ describe("the list of recipes for the next open day", () => {
 
   it("names the day and offers eligible dinners by name", async () => {
     const { h, s } = await started(household(all), [MON, TUE]);
-    expect(await h.listEligibleRecipes.execute({ sessionId: s.id })).toEqual({
+    expect(await h.listEligibleRecipes.execute({ sessionId: s.id })).toMatchObject({
       date: MON,
       recipes: [apple, zucchini],
     });
@@ -338,7 +338,77 @@ describe("the list of recipes for the next open day", () => {
     ok(await h.vetoProposal.execute({ member: ME, sessionId: s.id, proposalId: proposed.proposals[0]!.id }));
     expect((await h.listEligibleRecipes.execute({ sessionId: s.id }))?.recipes).toEqual([zucchini]);
     await agree(h, s, MON, zucchini);
-    expect(await h.listEligibleRecipes.execute({ sessionId: s.id })).toEqual({ date: TUE, recipes: [] });
+    expect(await h.listEligibleRecipes.execute({ sessionId: s.id })).toMatchObject({ date: TUE, recipes: [] });
+  });
+
+  it("keeps the rest for a search, each with what is against it", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    const list = await h.listEligibleRecipes.execute({ sessionId: s.id });
+    expect(list?.others.map((o) => [o.recipe.name, o.hindrances])).toEqual([
+      ["Schmorbraten", ["too_long_for_weekday"]],
+      ["Tiramisu", ["not_a_dinner"]],
+    ]);
+    expect(list?.unavailable).toEqual([]);
+  });
+
+  it("lists the recipes that lack data, with what is missing, so a search can say why they cannot be proposed", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    const lacking = {
+      kind: "needs-data" as const,
+      recipeId: recipeId(99),
+      name: "Ohne Tags",
+      problems: ["no diet tag"],
+    };
+    const withLacking = new ListEligibleRecipes(
+      { sessions: h.sessions, catalog: { listAll: async () => [{ kind: "ready", recipe: apple }, lacking] } },
+      config,
+    );
+    expect((await withLacking.execute({ sessionId: s.id }))?.unavailable).toEqual([
+      { id: 99, name: "Ohne Tags", problems: ["no diet tag"] },
+    ]);
+  });
+
+  it("says what a vetoed, waiting, passed or planned recipe is held back by", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    const proposed = ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: apple.id }));
+    ok(await h.vetoProposal.execute({ member: ME, sessionId: s.id, proposalId: proposed.proposals[0]!.id }));
+    ok(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: zucchini.id }));
+    const list = await h.listEligibleRecipes.execute({ sessionId: s.id });
+    expect(list?.others.map((o) => [o.recipe.name, o.hindrances])).toEqual([
+      ["Apfelpfannkuchen", ["vetoed"]],
+      ["Schmorbraten", ["too_long_for_weekday"]],
+      ["Tiramisu", ["not_a_dinner"]],
+      ["Zucchinipfanne", ["waiting"]],
+    ]);
+  });
+
+  it("lets a member propose a recipe that is too long for a weekday once they chose it despite the warning", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    expect(await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: slow.id })).toEqual({
+      ok: false,
+      reason: "too_long_for_weekday",
+    });
+    const proposed = ok(
+      await h.proposeRecipe.execute({ member: AC, sessionId: s.id, date: MON, recipeId: slow.id, despiteTime: true }),
+    );
+    expect(proposed.proposals[0]).toMatchObject({ despiteTime: true });
+    const agreed = ok(
+      await h.acceptProposal.execute({ member: ME, sessionId: s.id, proposalId: proposed.proposals[0]!.id }),
+    );
+    expect(agreed.days[0]).toMatchObject({ status: "planned" });
+  });
+
+  it("does not let a member push a dessert through, whatever they chose", async () => {
+    const { h, s } = await started(household(all), [MON, TUE]);
+    expect(
+      await h.proposeRecipe.execute({
+        member: AC,
+        sessionId: s.id,
+        date: MON,
+        recipeId: dessert.id,
+        despiteTime: true,
+      }),
+    ).toEqual({ ok: false, reason: "not_a_dinner" });
   });
 
   it("is null for an unknown session and for one that is closed", async () => {

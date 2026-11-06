@@ -1,7 +1,7 @@
 {
   "name": "weekly-planner",
   "private": true,
-  "version": "0.1.17",
+  "version": "0.1.35",
   "type": "module",
   "workspaces": [
     "packages/*",
@@ -20,6 +20,7 @@
     "knip": "knip",
     "test:ci": "run-s typecheck lint test knip",
     "dev": "run-p dev:server dev:web",
+    "dev:phone": "DEV_PHONE=1 DEV_ENV=.env.staging npm run dev",
     "dev:server": "npm run dev -w @weekly-planner/server",
     "dev:web": "npm run dev -w @weekly-planner/web",
     "recipes:check": "npm run recipes:check -w @weekly-planner/server",
@@ -31,7 +32,7 @@
     "@biomejs/biome": "2.6.4",
     "esbuild": "0.28.2",
     "husky": "9.1.7",
-    "knip": "6.43.0",
+    "knip": "6.44.1",
     "npm-run-all2": "9.0.4",
     "typescript": "7.0.2"
   }

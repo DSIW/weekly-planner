@@ -55,6 +55,13 @@ export function registerAuthRoutes(ctx: RouteContext): void {
     const { kitchenowl, householdId } = options.links ?? { kitchenowl: null, householdId: 0 };
     if (kitchenowl === null) return { links: null };
     const home = `${kitchenowl}/household/${householdId}`;
-    return { links: { recipe: `${home}/recipes/details/{id}`, list: `${home}/items` } };
+    return {
+      links: {
+        recipe: `${home}/recipes/details/{id}`,
+        list: `${home}/items`,
+        recipes: `${home}/recipes`,
+        home,
+      },
+    };
   });
 }

@@ -109,7 +109,7 @@ export class CorrectLoggedMeal {
     base: Base;
     recipeId: RecipeId | null;
   }): Promise<EntryResult> {
-    const recipe = cmd.recipeId === null ? null : await this.deps.catalog.find(cmd.recipeId);
+    const recipe = cmd.recipeId === null ? null : await this.deps.catalog.findForLog(cmd.recipeId);
     if (cmd.recipeId !== null && !recipe) return { ok: false, reason: "unknown_recipe" };
     return changeEntry(
       this.deps,
@@ -130,7 +130,7 @@ export class AddLoggedMeal {
     recipeId: RecipeId | null;
   }): Promise<EntryResult> {
     const { deps } = this;
-    const recipe = cmd.recipeId === null ? null : await deps.catalog.find(cmd.recipeId);
+    const recipe = cmd.recipeId === null ? null : await deps.catalog.findForLog(cmd.recipeId);
     if (cmd.recipeId !== null && !recipe) return { ok: false, reason: "unknown_recipe" };
     const result = await deps.uow.run(async () => {
       const outcome = addLoggedMeal(
@@ -168,6 +168,16 @@ export class ListRecipes {
     const entries = await this.catalog.listAll();
     return entries
       .flatMap((e) => (e.kind === "ready" && e.recipe.mealType !== "prep" ? [e.recipe] : []))
+      .sort((a, b) => a.name.localeCompare(b.name, "de"));
+  }
+
+  /** The recipes KitchenOwl has but whose tags are not complete, with what is missing: shown so they get fixed. */
+  async incomplete(): Promise<readonly { id: number; name: string; problems: readonly string[] }[]> {
+    const entries = await this.catalog.listAll();
+    return entries
+      .flatMap((e) =>
+        e.kind === "needs-data" ? [{ id: e.recipeId as number, name: e.name, problems: e.problems }] : [],
+      )
       .sort((a, b) => a.name.localeCompare(b.name, "de"));
   }
 }

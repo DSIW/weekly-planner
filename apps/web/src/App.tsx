@@ -22,6 +22,7 @@ import {
   proposeRecipe,
   refreshRecipes,
   reopenDay,
+  resetDay,
   retryExport,
   SessionFailed,
   startSession,
@@ -35,7 +36,11 @@ import {
 } from "./api";
 import { ExportStatus } from "./ExportStatus";
 import { FinalizePanel } from "./FinalizePanel";
-import { LinksContext, useLinks } from "./Links";
+import { KitchenNav } from "./KitchenNav";
+import { Loading } from "./Loading";
+import { LinksContext } from "./Links";
+import { PlanDone } from "./PlanDone";
+import { ImportPanel } from "./ImportPanel";
 import { LoginForm } from "./LoginForm";
 import { DueMeals, MealHistory } from "./MealLogPanel";
 import { Notifications } from "./Notifications";
@@ -69,6 +74,9 @@ const SESSION_MESSAGES: Record<SessionError, string> = {
   already_confirmed: "Das ist schon als gekocht bestätigt.",
   no_recipe: "Ohne Rezept lässt sich das nicht bestätigen. Wähle „Etwas anderes“.",
   date_in_future: "Eine Mahlzeit in der Zukunft lässt sich nicht eintragen.",
+  day_passed: "Dieser Tag ist schon vorbei.",
+  already_released: "Dieser Tag ist schon zurückgesetzt.",
+  kitchenowl_unavailable: "KitchenOwl ist gerade nicht erreichbar. Es wurde nichts geändert.",
   unavailable: "Das hat nicht geklappt. Bitte später noch einmal versuchen.",
 };
 
@@ -121,7 +129,8 @@ function Proposing({
   });
   const settle = { onSuccess: apply, onSettled: refetch };
   const propose = useMutation({
-    mutationFn: (v: { date: string; recipeId: number }) => proposeRecipe(session.id, v.date, v.recipeId),
+    mutationFn: (v: { date: string; recipeId: number; despiteTime?: boolean }) =>
+      proposeRecipe(session.id, v.date, v.recipeId, v.despiteTime),
     ...settle,
   });
   const pass = useMutation({ mutationFn: (recipeId: number) => passRecipe(session.id, recipeId), ...settle });
@@ -167,7 +176,7 @@ function Proposing({
       <>
         {decide}
         {switcher}
-        {deck.isPending && <p className="muted">Lädt …</p>}
+        {deck.isPending && <Loading what="Karten werden geladen …" />}
         {deck.isError && <p className="error">Die Karten konnten nicht geladen werden.</p>}
         {deck.data && (
           <SwipeDeck
@@ -187,13 +196,17 @@ function Proposing({
     <>
       {decide}
       {switcher}
-      {eligible.isPending && <p className="muted">Lädt …</p>}
+      {eligible.isPending && <Loading what="Rezepte werden geladen …" />}
       {eligible.isError && <p className="error">Die Rezepte konnten nicht geladen werden.</p>}
       {eligible.data && (
         <RecipePicker
           date={eligible.data.date}
           recipes={eligible.data.recipes}
-          onPick={(r) => propose.mutate({ date: eligible.data.date, recipeId: r.id })}
+          others={eligible.data.others}
+          unavailable={eligible.data.unavailable}
+          onPick={(r, despiteTime) =>
+            propose.mutate({ date: eligible.data.date, recipeId: r.id, ...(despiteTime ? { despiteTime } : {}) })
+          }
           onRefresh={() => refresh.mutate()}
           pending={propose.isPending || eligible.isFetching}
           refreshing={refresh.isPending}
@@ -204,12 +217,6 @@ function Proposing({
   );
 }
 
-/** What a finished export put into KitchenOwl, for the member who finished it. */
-const doneMessage = (e: ExportView): string => {
-  const lines = e.list.items.length;
-  return `Fertig: ${e.days.length} ${e.days.length === 1 ? "Tag" : "Tage"} im Planer und ${lines} ${lines === 1 ? "Eintrag" : "Einträge"} auf der Einkaufsliste.`;
-};
-
 /** Step 3: the consolidated list as it will be sent, once at least one day is agreed and no vote runs. */
 function Finalizing({
   session,
@@ -217,7 +224,7 @@ function Finalizing({
   onBack,
 }: {
   session: PlanSession;
-  onDone: (message: string) => void;
+  onDone: (done: ExportView) => void;
   onBack: () => void;
 }) {
   const client = useQueryClient();
@@ -228,7 +235,7 @@ function Finalizing({
   const finalize = useMutation({
     mutationFn: (skip: string[]) => finalizePlan(session.id, skip),
     onSuccess: (done) => {
-      if (done.export?.complete) onDone(doneMessage(done.export));
+      if (done.export?.complete) onDone(done.export);
     },
     onSettled: () => {
       void client.invalidateQueries({ queryKey: ["session"] });
@@ -252,12 +259,12 @@ function Finalizing({
 }
 
 /** A finalized plan whose export did not finish. */
-function Exporting({ session, onDone }: { session: PlanSession; onDone: (message: string) => void }) {
+function Exporting({ session, onDone }: { session: PlanSession; onDone: (done: ExportView) => void }) {
   const client = useQueryClient();
   const retry = useMutation({
     mutationFn: (resend: boolean) => retryExport(session.id, resend),
     onSuccess: (done) => {
-      if (done.complete) onDone(doneMessage(done));
+      if (done.complete) onDone(done);
     },
     onSettled: () => {
       void client.invalidateQueries({ queryKey: ["session"] });
@@ -294,8 +301,7 @@ function Planning({ meId }: { meId: string }) {
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [refetch]);
-  const links = useLinks();
-  const [exported, setExported] = useState<string | null>(null);
+  const [exported, setExported] = useState<ExportView | null>(null);
   const [step, setStep] = useState<"dishes" | "list">("dishes");
   const current = useQuery({ queryKey: ["session"], queryFn: fetchCurrentSession });
   const taken = useQuery({
@@ -319,6 +325,10 @@ function Planning({ meId }: { meId: string }) {
     onSettled: refetch,
   });
   const close = useMutation({ mutationFn: closeSession, onSettled: refetch });
+  const reset = useMutation({
+    mutationFn: ({ sessionId, date }: { sessionId: string; date: string }) => resetDay(sessionId, date),
+    onSettled: refetch,
+  });
   const agree = useMutation({
     mutationFn: ({ sessionId, proposalId }: { sessionId: string; proposalId: string }) =>
       agreeInPerson(sessionId, proposalId),
@@ -346,7 +356,7 @@ function Planning({ meId }: { meId: string }) {
     onSettled: refetch,
   });
 
-  if (current.isPending) return <p className="muted">Lädt …</p>;
+  if (current.isPending) return <Loading what="Planung wird geladen …" />;
   if (current.isError) return <p className="error">Die Planung konnte nicht geladen werden.</p>;
   const session = current.data;
   if (session) {
@@ -389,27 +399,18 @@ function Planning({ meId }: { meId: string }) {
     );
   }
   const error = messageFor(start.error ?? null);
+  if (exported) return <PlanDone done={exported} onClose={() => setExported(null)} />;
   return (
     <>
       <Stepper current={1} />
-      {exported && (
-        <p role="status" className="success">
-          {exported}
-          {links && (
-            <>
-              {" "}
-              <a href={links.list} target="_blank" rel="noopener noreferrer">
-                Einkaufsliste öffnen
-              </a>
-            </>
-          )}
-        </p>
-      )}
       <StartSessionForm
         onStart={(dates) => start.mutate(dates)}
         pending={start.isPending}
         error={error}
         takenDates={taken.data ?? []}
+        onReset={(sessionId, date) => reset.mutate({ sessionId, date })}
+        resetting={reset.isPending}
+        resetError={messageFor(reset.error)}
       />
     </>
   );
@@ -423,10 +424,15 @@ export function App() {
     onSuccess: (member) => client.setQueryData(["me"], member),
   });
   const signOut = useMutation({ mutationFn: logout, onSuccess: () => client.setQueryData(["me"], null) });
-  const [tab, setTab] = useState<"plan" | "log">("plan");
+  const [tab, setTab] = useState<"plan" | "log" | "import">("plan");
   const links = useQuery({ queryKey: ["links"], queryFn: fetchLinks, enabled: me.data != null, staleTime: Infinity });
 
-  if (me.isPending) return <main className="center muted">Lädt …</main>;
+  if (me.isPending)
+    return (
+      <main className="center">
+        <Loading />
+      </main>
+    );
   if (me.isError)
     return (
       <main className="center error" role="alert">
@@ -473,15 +479,21 @@ export function App() {
           <button type="button" aria-pressed={tab === "log"} onClick={() => setTab("log")}>
             Verlauf
           </button>
+          <button type="button" aria-pressed={tab === "import"} onClick={() => setTab("import")}>
+            Import
+          </button>
         </fieldset>
         {tab === "log" ? (
           <MealHistory messageFor={messageFor} />
+        ) : tab === "import" ? (
+          <ImportPanel />
         ) : (
           <>
             <DueMeals messageFor={messageFor} />
             <Planning meId={me.data.id} />
           </>
         )}
+        <KitchenNav />
       </main>
     </LinksContext.Provider>
   );

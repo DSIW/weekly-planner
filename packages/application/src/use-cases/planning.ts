@@ -2,6 +2,7 @@ import {
   acceptProposal,
   closeSession,
   eligibleRecipes,
+  hindrances,
   markLeftoverDay,
   movePlannedDay,
   needsPlanningAhead,
@@ -15,6 +16,7 @@ import {
   swapPlannedDays,
   vetoProposal,
   withdrawProposal,
+  type Hindrance,
   type MemberId,
   type Outcome,
   type PlanningEvent,
@@ -111,16 +113,30 @@ export class ListEligibleRecipes {
     private readonly config: PlanningConfig,
   ) {}
 
-  async execute(cmd: { sessionId: SessionId }): Promise<{ date: PlanDate; recipes: readonly Recipe[] } | null> {
+  async execute(cmd: { sessionId: SessionId }): Promise<EligibleRecipes | null> {
     const session = await this.deps.sessions.get(cmd.sessionId);
     const day = session && session.status === "open" ? nextOpenDay(session) : undefined;
     if (!session || !day) return null;
-    const ready = (await this.deps.catalog.listAll()).flatMap((e) => (e.kind === "ready" ? [e.recipe] : []));
+    const entries = await this.deps.catalog.listAll();
+    const ready = entries.flatMap((e) => (e.kind === "ready" ? [e.recipe] : []));
     const ahead = (r: Recipe) => (needsPlanningAhead(r, this.config) ? 1 : 0);
-    const recipes = eligibleRecipes(session, ready, this.config).sort(
-      (a, b) => ahead(a) - ahead(b) || a.name.localeCompare(b.name, "de"),
-    );
-    return { date: day.date, recipes };
+    const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "de");
+    const recipes = eligibleRecipes(session, ready, this.config).sort((a, b) => ahead(a) - ahead(b) || byName(a, b));
+    const offered = new Set(recipes.map((r) => r.id));
+    return {
+      date: day.date,
+      recipes,
+      // What a search may also find: every other recipe, with what is against it.
+      others: ready
+        .filter((r) => !offered.has(r.id))
+        .map((recipe) => ({ recipe, hindrances: hindrances(session, recipe, this.config) }))
+        .sort((a, b) => byName(a.recipe, b.recipe)),
+      unavailable: entries
+        .flatMap((e) =>
+          e.kind === "needs-data" ? [{ id: e.recipeId as number, name: e.name, problems: e.problems }] : [],
+        )
+        .sort(byName),
+    };
   }
 }
 
@@ -131,6 +147,15 @@ export class RefreshRecipes {
   execute(): Promise<void> {
     return this.catalog.refresh();
   }
+}
+
+/** The recipes for the next open day: those offered, and the rest for a search to find. */
+export interface EligibleRecipes {
+  readonly date: PlanDate;
+  readonly recipes: readonly Recipe[];
+  readonly others: readonly { recipe: Recipe; hindrances: readonly Hindrance[] }[];
+  /** Recipes KitchenOwl has that lack what the planner needs (a meal-type or diet tag), with what is missing. */
+  readonly unavailable: readonly { id: number; name: string; problems: readonly string[] }[];
 }
 
 /** rule ProposeRecipe */
@@ -145,12 +170,23 @@ export class ProposeRecipe {
     sessionId: SessionId;
     date: PlanDate;
     recipeId: RecipeId;
+    despiteTime?: boolean;
   }): Promise<CommandResult> {
     const recipe = await this.deps.catalog.find(cmd.recipeId);
     if (!recipe) return unknownRecipe;
     const id = proposalId(this.deps.ids.next());
     return changeSession(this.deps, cmd.sessionId, async (s) =>
-      proposeRecipe(s, { proposalId: id, member: cmd.member, date: cmd.date, recipe }, this.config),
+      proposeRecipe(
+        s,
+        {
+          proposalId: id,
+          member: cmd.member,
+          date: cmd.date,
+          recipe,
+          ...(cmd.despiteTime ? { despiteTime: true } : {}),
+        },
+        this.config,
+      ),
     );
   }
 }

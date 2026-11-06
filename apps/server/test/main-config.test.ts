@@ -44,6 +44,23 @@ describe("loadServerConfig", () => {
     );
   });
 
+  it("sets up the language model for recipe import only with a key: OpenRouter by default, any compatible API", () => {
+    expect(loadServerConfig(base).llm).toEqual({ apiKey: null, model: "", baseUrl: "https://openrouter.ai/api/v1" });
+    expect(
+      loadServerConfig({ ...base, LLM_API_KEY: "k", LLM_MODEL: "vendor/model", LLM_BASE_URL: "http://llm.local/v1/" })
+        .llm,
+    ).toEqual({ apiKey: "k", model: "vendor/model", baseUrl: "http://llm.local/v1" });
+    expect(() => loadServerConfig({ ...base, LLM_BASE_URL: "not a url" })).toThrow(/LLM_BASE_URL/);
+  });
+
+  it("never puts the language model's key into an error message", () => {
+    try {
+      loadServerConfig({ ...base, LLM_API_KEY: "sk-secret-key", LLM_BASE_URL: "not a url" });
+    } catch (e) {
+      expect(String(e)).not.toContain("sk-secret-key");
+    }
+  });
+
   it("tells the push services who to contact, as a mailto: address or an https URL", () => {
     expect(loadServerConfig(base).vapidSubject).toBe("mailto:planner@example.org");
     expect(loadServerConfig({ ...base, VAPID_SUBJECT: "mailto:me@home.example" }).vapidSubject).toBe(

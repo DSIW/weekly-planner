@@ -7,6 +7,7 @@ import {
   consolidateIngredients,
   acceptProposal,
   eligibleRecipes,
+  hindrances,
   nextOpenDay,
   proposeRecipe,
   finalizePlan,
@@ -876,5 +877,72 @@ describe("rule AgreeInPerson", () => {
       ok: false,
       reason: "own_proposal",
     });
+  });
+});
+
+describe("rule ProposeRecipe despite the time limit", () => {
+  const long = aRecipe({ id: 51 as never, name: "Coq au vin", totalTimeMinutes: 90 });
+  const start = () => aSession([MON, SAT]);
+  const propose = (despiteTime?: boolean, recipe = long, session = start()) =>
+    proposeRecipe(
+      session,
+      { proposalId: newProposalId(), member: AC, date: MON, recipe, ...(despiteTime ? { despiteTime } : {}) },
+      config,
+    );
+
+  it("still turns a too long recipe away on a weekday unless the member chose it despite the warning", () => {
+    expect(propose()).toEqual({ ok: false, reason: "too_long_for_weekday" });
+    expect(propose(false)).toEqual({ ok: false, reason: "too_long_for_weekday" });
+  });
+
+  it("takes it when the member chose it despite the warning, marks the proposal, and the other member can agree", () => {
+    const proposed = must(propose(true)).state;
+    expect(proposed.proposals[0]).toMatchObject({ despiteTime: true, status: "pending" });
+    const agreed = must(
+      acceptProposal(
+        proposed,
+        { member: ME, proposalId: proposed.proposals[0]!.id, dateTakenElsewhere: false },
+        config,
+      ),
+    );
+    expect(dayOf(agreed.state, MON)).toMatchObject({ status: "planned" });
+  });
+
+  it("does not mark a proposal for a recipe that fits anyway", () => {
+    const quick = aRecipe({ id: 52 as never, totalTimeMinutes: 20 });
+    expect(must(propose(true, quick)).state.proposals[0]).not.toHaveProperty("despiteTime");
+  });
+
+  it("waives nothing else: a dessert stays no dinner", () => {
+    const dessert = aRecipe({ id: 53 as never, mealType: "dessert", totalTimeMinutes: 90 });
+    expect(propose(true, dessert)).toEqual({ ok: false, reason: "not_a_dinner" });
+  });
+});
+
+describe("hindrances", () => {
+  it("names what keeps a recipe from being offered, and nothing for one that is offered", () => {
+    const s = aSession([MON, SAT]);
+    expect(hindrances(s, aRecipe({ totalTimeMinutes: 20 }), config)).toEqual([]);
+    expect(hindrances(s, aRecipe({ totalTimeMinutes: 90 }), config)).toEqual(["too_long_for_weekday"]);
+    expect(hindrances(s, aRecipe({ mealType: "dessert", totalTimeMinutes: 90 }), config)).toEqual([
+      "not_a_dinner",
+      "too_long_for_weekday",
+    ]);
+    // On the weekend length is no hindrance.
+    expect(
+      hindrances(plan(aSession([SAT, SUN]), SAT, aRecipe()), aRecipe({ id: 9 as never, totalTimeMinutes: 90 }), config),
+    ).toEqual([]);
+  });
+
+  it("names a recipe that is waiting, planned, vetoed or passed", () => {
+    const r = aRecipe({ id: 61 as never });
+    const { session } = withProposal(aSession([MON, TUE, SAT]), MON, r, AC);
+    expect(hindrances(session, r, config)).toEqual(["waiting"]);
+    expect(hindrances(plan(aSession([MON, TUE]), MON, r), r, config)).toEqual(["planned"]);
+  });
+
+  it("is empty when no day is open", () => {
+    const closed = must(closeSession(aSession([MON]), { member: AC })).state;
+    expect(hindrances(closed, aRecipe({ totalTimeMinutes: 999 }), config)).toEqual([]);
   });
 });

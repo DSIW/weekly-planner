@@ -5,6 +5,8 @@ interface Member {
 
 export type LoginError = "invalid_credentials" | "missing_credentials" | "not_in_household" | "unavailable";
 
+import type { KitchenOwlLinks } from "./Links";
+
 const base = `${import.meta.env.BASE_URL}api`;
 
 /** The signed-in member, or null when nobody is signed in. */
@@ -16,10 +18,10 @@ export async function fetchMe(): Promise<Member | null> {
 }
 
 /** Where KitchenOwl's pages are, or null when the server does not know. */
-export async function fetchLinks(): Promise<{ recipe: string; list: string } | null> {
+export async function fetchLinks(): Promise<KitchenOwlLinks | null> {
   const res = await fetch(`${base}/links`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return ((await res.json()) as { links: { recipe: string; list: string } | null }).links;
+  return ((await res.json()) as { links: KitchenOwlLinks | null }).links;
 }
 
 export class LoginFailed extends Error {
@@ -142,6 +144,9 @@ const KNOWN_REASONS = [
   "already_confirmed",
   "no_recipe",
   "date_in_future",
+  "day_passed",
+  "already_released",
+  "kitchenowl_unavailable",
 ] as const;
 export type SessionError = (typeof KNOWN_REASONS)[number] | "unavailable";
 
@@ -203,6 +208,8 @@ export interface TakenDate {
   date: string;
   recipeName: string;
   recipeId?: number;
+  /** The plan that holds it; absent for a dinner somebody chose in KitchenOwl itself. */
+  sessionId?: string;
 }
 
 /** The dates from today on that already hold a planned dinner, in a plan that is still counted. */
@@ -211,6 +218,11 @@ export async function fetchPlannedDates(): Promise<TakenDate[]> {
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return ((await res.json()) as { dates: TakenDate[] }).dates;
 }
+
+/** Gives up a finalized dinner: it comes off KitchenOwl's planner and its date is free again. */
+export const resetDay = async (sessionId: string, date: string): Promise<void> => {
+  await command<{ reset: true }>(`/sessions/${sessionId}/days/${date}/reset`);
+};
 
 export const startSession = (dates: string[]) => sessionCommand("/sessions", { dates });
 export const closeSession = (id: string) => sessionCommand(`/sessions/${id}/close`);
@@ -222,8 +234,8 @@ export const swapDays = (sessionId: string, a: string, b: string) =>
   sessionCommand(`/sessions/${sessionId}/swap`, { a, b });
 export const moveDay = (sessionId: string, from: string, to: string) =>
   sessionCommand(`/sessions/${sessionId}/move`, { from, to });
-export const proposeRecipe = (sessionId: string, date: string, recipeId: number) =>
-  sessionCommand(`/sessions/${sessionId}/proposals`, { date, recipeId });
+export const proposeRecipe = (sessionId: string, date: string, recipeId: number, despiteTime = false) =>
+  sessionCommand(`/sessions/${sessionId}/proposals`, { date, recipeId, ...(despiteTime ? { despiteTime } : {}) });
 export const acceptProposal = (sessionId: string, proposalId: string) =>
   sessionCommand(`/sessions/${sessionId}/proposals/${proposalId}/accept`);
 /** "We agreed in the room": the proposer settles the dish without the other member confirming on a phone. */
@@ -257,10 +269,23 @@ export const itemIconsUrl = `${base}/item-icons`;
 export const photoUrl = (recipeId: number) => `${base}/recipes/${recipeId}/photo`;
 
 /** The recipes that may be proposed for the next open day, by name. */
-export async function fetchEligibleRecipes(sessionId: string): Promise<{ date: string; recipes: RecipeView[] }> {
+/** What keeps a recipe from being offered for the day. Only a time too long for a weekday may be overruled. */
+export type Hindrance = "not_a_dinner" | "vetoed" | "waiting" | "passed" | "planned" | "too_long_for_weekday";
+
+/** The recipes for the next open day: those offered, and the rest, found only by searching. */
+export interface EligibleRecipes {
+  date: string;
+  recipes: RecipeView[];
+  others: (RecipeView & { hindrances: Hindrance[] })[];
+  /** In KitchenOwl but lacking what the planner needs; `problems` says what. */
+  unavailable: { id: number; name: string; problems: string[] }[];
+}
+
+export async function fetchEligibleRecipes(sessionId: string): Promise<EligibleRecipes> {
   const res = await fetch(`${base}/sessions/${sessionId}/recipes`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as { date: string; recipes: RecipeView[] };
+  const body = (await res.json()) as Partial<EligibleRecipes> & { date: string; recipes: RecipeView[] };
+  return { ...body, others: body.others ?? [], unavailable: body.unavailable ?? [] };
 }
 
 /** Asks the server to read the recipes from KitchenOwl again, after someone fixed a tag or a time there. */
@@ -301,10 +326,14 @@ export async function fetchMealLog(days = 14): Promise<MealEntry[]> {
 }
 
 /** Every recipe that can be named for a meal, by name. */
-export async function fetchRecipes(): Promise<RecipeView[]> {
+export async function fetchRecipes(): Promise<{
+  recipes: RecipeView[];
+  unavailable: EligibleRecipes["unavailable"];
+}> {
   const res = await fetch(`${base}/recipes`, { credentials: "same-origin" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return ((await res.json()) as { recipes: RecipeView[] }).recipes;
+  const body = (await res.json()) as { recipes: RecipeView[]; unavailable?: EligibleRecipes["unavailable"] };
+  return { recipes: body.recipes, unavailable: body.unavailable ?? [] };
 }
 
 export const confirmMeal = (id: string) => command<{ entry: MealEntry }>(`/meal-log/${id}/confirm`);
@@ -314,3 +343,94 @@ export const correctMeal = (id: string, baseName: BaseName, recipeId: number | n
   command<{ entry: MealEntry }>(`/meal-log/${id}/correct`, { base: baseName, recipeId });
 export const addMeal = (date: string, baseName: BaseName, recipeId: number | null) =>
   command<{ entry: MealEntry }>("/meal-log", { date, base: baseName, recipeId });
+
+interface DraftIngredient {
+  name: string;
+  amount: string;
+  optional: boolean;
+  /** No known item has this name: KitchenOwl creates it. */
+  isNewItem: boolean;
+  /** KitchenOwl's icon key of the known item. */
+  icon?: string;
+}
+
+/** A recipe read from a link or a text, for a member to review before it is created. */
+export interface RecipeDraft {
+  name: string;
+  subtitle?: string;
+  steps: string[];
+  ingredients: DraftIngredient[];
+  mealType: string;
+  base: string;
+  diet: string;
+  tags: string[];
+  totalMinutes?: number;
+  yields?: number;
+  source?: string;
+  /** The page's title picture, held by the planner until the recipe is created. */
+  imageToken?: string;
+}
+
+/** The import was refused; `reason` is the server's word for why. */
+export class ImportFailed extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+  }
+}
+
+async function importCall<T>(path: string, body: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    throw new ImportFailed("unavailable");
+  }
+  if (res.ok) return (await res.json()) as T;
+  throw new ImportFailed(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "unavailable");
+}
+
+/** Reads a web link or a pasted text into a draft recipe. Can take a minute. */
+export const draftImport = async (source: { address: string } | { text: string }): Promise<RecipeDraft> =>
+  (await importCall<{ draft: RecipeDraft }>("/import/draft", source)).draft;
+
+/** Which of the household's items each typed ingredient name is, with its icon, or that it is new. */
+export const matchIngredients = async (names: string[]) =>
+  (
+    await importCall<{ items: { written: string; name: string; isNewItem: boolean; icon?: string }[] }>(
+      "/import/match",
+      { names },
+    )
+  ).items;
+
+/** The household's spelling, emoji included, of each typed tag; `isKnown` is false for a tag KitchenOwl does not have. */
+export const matchTags = async (names: string[]) =>
+  (await importCall<{ tags: { written: string; name: string; isKnown: boolean }[] }>("/import/match-tags", { names }))
+    .tags;
+
+/** The household's items (with icon) or tags that fit the letters typed so far. */
+export const suggestNames = async (kind: "item" | "tag", query: string) =>
+  (await importCall<{ names: { name: string; icon?: string }[] }>("/import/suggest", { kind, query })).names;
+
+/** A recipe the household already has that looks like a draft, and why. */
+export interface RelatedRecipe {
+  id: number;
+  name: string;
+  reasons: ("same_source" | "similar_name" | "shared_ingredients")[];
+  sharedIngredients: number;
+}
+
+/** The household's recipes that look like this draft (same source, similar name, shared ingredients). */
+export const relatedRecipes = async (draft: { name: string; ingredients: string[]; source?: string }) =>
+  (await importCall<{ related: RelatedRecipe[] }>("/import/related", draft)).related;
+
+/** Where the draft's title picture is served (by the planner itself). */
+export const importImageUrl = (token: string) => `${base}/import/image/${token}`;
+
+/** Creates the recipe a member confirmed in KitchenOwl. */
+export const createImport = (draft: RecipeDraft) =>
+  importCall<{ recipeId: number; draft: RecipeDraft; photoAttached: boolean }>("/import/create", { draft });

@@ -5,7 +5,7 @@ import { recipeView, sessionView } from "./views.js";
 
 const startBody = z.object({ dates: z.array(z.string()).max(10) });
 const passBody = z.object({ recipeId: z.number().int() });
-const proposalBody = z.object({ date: z.string(), recipeId: z.number().int() });
+const proposalBody = z.object({ date: z.string(), recipeId: z.number().int(), despiteTime: z.boolean().optional() });
 const swapBody = z.object({ a: z.string(), b: z.string() });
 const moveBody = z.object({ from: z.string(), to: z.string() });
 
@@ -50,7 +50,13 @@ export function registerPlanningRoutes(ctx: RouteContext): void {
     if (!requireMember(req, reply)) return reply;
     const list = await options.listEligibleRecipes.execute({ sessionId: sessionId(req.params.id) });
     if (!list) return reply.code(404).send({ error: "not_found" });
-    return { date: list.date, recipes: list.recipes.map((r) => recipeView(r, options.planAheadMinutes)) };
+    return {
+      date: list.date,
+      recipes: list.recipes.map((r) => recipeView(r, options.planAheadMinutes)),
+      // What a search may find besides: every other recipe with what is against it, and those lacking data.
+      others: list.others.map((o) => ({ ...recipeView(o.recipe, options.planAheadMinutes), hindrances: o.hindrances })),
+      unavailable: list.unavailable,
+    };
   });
 
   app.post<{ Params: { id: string } }>(`${api}/sessions/:id/proposals`, async (req, reply) => {
@@ -69,6 +75,7 @@ export function registerPlanningRoutes(ctx: RouteContext): void {
       sessionId: sessionId(req.params.id),
       date,
       recipeId: recipeId(body.data.recipeId),
+      ...(body.data.despiteTime ? { despiteTime: true } : {}),
     });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
     return reply.code(201).send({ session: sessionView(result.value, options.planAheadMinutes) });
@@ -118,6 +125,20 @@ export function registerPlanningRoutes(ctx: RouteContext): void {
       return { session: sessionView(result.value, options.planAheadMinutes) };
     });
   }
+
+  // A member gives up a finalized dinner: it is taken off KitchenOwl's planner and its date is free again.
+  app.post<{ Params: { id: string; date: string } }>(`${api}/sessions/:id/days/:date/reset`, async (req, reply) => {
+    if (!requireMember(req, reply)) return reply;
+    let date: ReturnType<typeof planDate>;
+    try {
+      date = planDate(req.params.date);
+    } catch {
+      return reply.code(400).send({ error: "invalid_request" });
+    }
+    const result = await options.resetFinalizedDay.execute({ sessionId: sessionId(req.params.id), date });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    return { reset: true };
+  });
 
   app.post<{ Params: { id: string } }>(`${api}/sessions/:id/swap`, async (req, reply) => {
     const member = requireMember(req, reply);

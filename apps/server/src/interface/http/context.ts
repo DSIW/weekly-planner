@@ -1,5 +1,13 @@
 import type {
   AcceptProposal,
+  CreateImportedRecipe,
+  DraftRecipeImport,
+  FindRelatedRecipes,
+  ImageShelf,
+  MatchIngredients,
+  MatchTags,
+  ResetFinalizedDay,
+  SuggestNames,
   AgreeInPerson,
   AddLoggedMeal,
   ConfirmCooked,
@@ -45,6 +53,14 @@ export interface AppOptions {
   readonly closeSession: Pick<CloseSession, "execute">;
   readonly listEligibleRecipes: Pick<ListEligibleRecipes, "execute">;
   readonly proposeRecipe: Pick<ProposeRecipe, "execute">;
+  readonly draftRecipeImport: Pick<DraftRecipeImport, "execute">;
+  readonly createImportedRecipe: Pick<CreateImportedRecipe, "execute">;
+  readonly matchIngredients: Pick<MatchIngredients, "execute">;
+  readonly matchTags: Pick<MatchTags, "execute">;
+  readonly suggestNames: Pick<SuggestNames, "execute">;
+  readonly findRelatedRecipes: Pick<FindRelatedRecipes, "execute">;
+  /** Where the pictures of drafts are held; without it the pictures are not served. */
+  readonly draftImages?: ImageShelf;
   readonly acceptProposal: Pick<AcceptProposal, "execute">;
   readonly agreeInPerson: Pick<AgreeInPerson, "execute">;
   readonly vetoProposal: Pick<VetoProposal, "execute">;
@@ -54,6 +70,7 @@ export interface AppOptions {
   readonly passSuggestion: Pick<PassSuggestion, "execute">;
   readonly markLeftoverDay: Pick<MarkLeftoverDay, "execute">;
   readonly reopenDay: Pick<ReopenDay, "execute">;
+  readonly resetFinalizedDay: Pick<ResetFinalizedDay, "execute">;
   readonly swapPlannedDays: Pick<SwapPlannedDays, "execute">;
   readonly movePlannedDay: Pick<MovePlannedDay, "execute">;
   readonly getRecipePhoto: Pick<GetRecipePhoto, "execute">;
@@ -63,7 +80,7 @@ export interface AppOptions {
   readonly finalizePlan: Pick<FinalizePlan, "execute">;
   readonly retryExport: Pick<RetryExport, "execute">;
   readonly listMealLog: Pick<ListMealLog, "execute">;
-  readonly listRecipes: Pick<ListRecipes, "execute">;
+  readonly listRecipes: Pick<ListRecipes, "execute" | "incomplete">;
   readonly listTakenDates: Pick<ListTakenDates, "execute">;
   readonly confirmCooked: Pick<ConfirmCooked, "execute">;
   readonly markNotCooked: Pick<MarkNotCooked, "execute">;
@@ -92,6 +109,19 @@ export interface AppOptions {
 }
 
 export const COMMAND_REJECTIONS: Record<string, number> = {
+  need_one_source: 400,
+  invalid_address: 400,
+  address_not_public: 422,
+  unreachable: 502,
+  not_a_page: 422,
+  too_large: 422,
+  empty: 422,
+  not_configured: 503,
+  extraction_failed: 502,
+  not_a_recipe: 422,
+  too_many_steps: 422,
+  too_many_ingredients: 422,
+  kitchenowl_unavailable: 502,
   session_already_open: 409,
   session_already_closed: 409,
   unknown_session: 404,
@@ -116,6 +146,9 @@ export const COMMAND_REJECTIONS: Record<string, number> = {
   proposal_not_pending: 409,
   day_not_planned: 409,
   day_already_open: 409,
+  day_passed: 409,
+  already_released: 409,
+  not_exported: 409,
   target_not_open: 409,
   same_day: 422,
   session_not_open: 409,

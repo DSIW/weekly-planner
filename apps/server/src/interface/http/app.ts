@@ -6,6 +6,7 @@ import { registerCatalogRoutes } from "./catalog-routes.js";
 import type { AppOptions, RouteContext } from "./context.js";
 import { registerEventRoutes } from "./event-routes.js";
 import { registerFinalizeRoutes } from "./finalize-routes.js";
+import { registerImportRoutes } from "./import-routes.js";
 import { registerMealLogRoutes } from "./meal-log-routes.js";
 import { registerPlanningRoutes } from "./planning-routes.js";
 import { registerPushRoutes } from "./push-routes.js";
@@ -54,6 +55,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   };
   const ctx: RouteContext = { app, api, options, now, memberOf, requireMember };
   registerAuthRoutes(ctx);
+  registerImportRoutes(ctx);
   registerPushRoutes(ctx);
   registerPlanningRoutes(ctx);
   registerFinalizeRoutes(ctx);

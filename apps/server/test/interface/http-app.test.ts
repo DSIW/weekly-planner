@@ -4,6 +4,16 @@ import { join } from "node:path";
 import type { SignIn } from "@weekly-planner/application";
 import { memberId } from "@weekly-planner/domain";
 import { beforeEach, describe, expect, it } from "vitest";
+import type {
+  CreateImportedRecipe,
+  DraftRecipeImport,
+  ImageShelf,
+  MatchIngredients,
+  MatchTags,
+  ResetFinalizedDay,
+  SuggestNames,
+  FindRelatedRecipes,
+} from "@weekly-planner/application";
 import { buildApp } from "../../src/interface/http/app.js";
 import { decodeSession, encodeSession } from "../../src/interface/http/session-cookie.js";
 
@@ -27,6 +37,12 @@ const noSessions = {
   proposeRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   acceptProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   agreeInPerson: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  draftRecipeImport: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  createImportedRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  matchIngredients: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  matchTags: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  suggestNames: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  findRelatedRecipes: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   vetoProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   withdrawProposal: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   refreshRecipes: { execute: async () => {} },
@@ -40,7 +56,7 @@ const noSessions = {
   retryExport: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   subscribeToPush: { execute: async () => {} },
   listMealLog: { execute: async () => [] },
-  listRecipes: { execute: async () => [] },
+  listRecipes: { execute: async () => [], incomplete: async () => [] },
   listTakenDates: { execute: async () => [] },
   confirmCooked: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   markNotCooked: { execute: async () => ({ ok: false as const, reason: "unused" }) },
@@ -52,6 +68,7 @@ const noSessions = {
   pushPublicKey: "unused",
   markLeftoverDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   reopenDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  resetFinalizedDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   swapPlannedDays: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   movePlannedDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   planAheadMinutes: 360,
@@ -77,6 +94,14 @@ const app = (
     basePath?: string;
     signIn?: Pick<SignIn, "execute">;
     links?: { kitchenowl: string | null; householdId: number };
+    draftRecipeImport?: Pick<DraftRecipeImport, "execute">;
+    createImportedRecipe?: Pick<CreateImportedRecipe, "execute">;
+    matchIngredients?: Pick<MatchIngredients, "execute">;
+    matchTags?: Pick<MatchTags, "execute">;
+    resetFinalizedDay?: Pick<ResetFinalizedDay, "execute">;
+    suggestNames?: Pick<SuggestNames, "execute">;
+    findRelatedRecipes?: Pick<FindRelatedRecipes, "execute">;
+    draftImages?: ImageShelf;
   } = {},
 ) =>
   buildApp({
@@ -291,6 +316,8 @@ describe("links to KitchenOwl", () => {
       links: {
         recipe: "https://ko.test/household/2/recipes/details/{id}",
         list: "https://ko.test/household/2/items",
+        recipes: "https://ko.test/household/2/recipes",
+        home: "https://ko.test/household/2",
       },
     });
   });
@@ -304,5 +331,285 @@ describe("links to KitchenOwl", () => {
   it("is for signed-in members only", async () => {
     const res = await (await app()).inject({ method: "GET", url: "/plan/api/links" });
     expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("recipe import", () => {
+  const draft = { name: "Pasta", steps: ["Kochen."], ingredients: [], source: "https://example.org/r" };
+  const asked: unknown[] = [];
+  const draftImport: Pick<DraftRecipeImport, "execute"> = {
+    execute: async (cmd) => {
+      asked.push(cmd);
+      return cmd.text === "no recipe" ? { ok: false, reason: "not_a_recipe" } : { ok: true, value: draft as never };
+    },
+  };
+  const post = async (url: string, payload: unknown, over: Parameters<typeof app>[0] = {}, signedIn = true) => {
+    const a = await app({ draftRecipeImport: draftImport, ...over });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: `/plan/api${url}`, payload: payload as object, cookies });
+  };
+
+  it("drafts a recipe from a link or a text, for the signed-in member only", async () => {
+    asked.length = 0;
+    const res = await post("/import/draft", { address: "https://example.org/r" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ draft });
+    expect(asked).toEqual([{ member: "2", address: "https://example.org/r" }]);
+    expect((await post("/import/draft", { text: "Pasta" })).statusCode).toBe(200);
+    expect(asked[1]).toEqual({ member: "2", text: "Pasta" });
+    expect((await post("/import/draft", { text: "Pasta" }, {}, false)).statusCode).toBe(401);
+  });
+
+  it("refuses a malformed request without asking the model", async () => {
+    asked.length = 0;
+    for (const bad of [{ text: 5 }, { address: "x".repeat(2001) }, { text: "x".repeat(60_001) }, []])
+      expect((await post("/import/draft", bad)).statusCode, JSON.stringify(bad).slice(0, 30)).toBe(400);
+    expect(asked).toEqual([]);
+  });
+
+  it.each([
+    ["need_one_source", 400],
+    ["invalid_address", 400],
+    ["address_not_public", 422],
+    ["unreachable", 502],
+    ["not_a_page", 422],
+    ["too_large", 422],
+    ["empty", 422],
+    ["not_configured", 503],
+    ["extraction_failed", 502],
+    ["not_a_recipe", 422],
+    ["too_many_steps", 422],
+    ["too_many_ingredients", 422],
+    ["kitchenowl_unavailable", 502],
+  ])("answers %s with %i", async (reason, status) => {
+    const res = await post(
+      "/import/draft",
+      { text: "x" },
+      { draftRecipeImport: { execute: async () => ({ ok: false, reason }) } },
+    );
+    expect(res.statusCode).toBe(status);
+    expect(res.json()).toEqual({ error: reason });
+  });
+
+  it("lets a member ask for a limited number of drafts an hour, then lets them again", async () => {
+    const a = await app({ draftRecipeImport: draftImport });
+    const cookies = { session: sessionCookie(await login(a))!.value };
+    const ask = () => a.inject({ method: "POST", url: "/plan/api/import/draft", payload: { text: "x" }, cookies });
+    for (let i = 0; i < 20; i++) expect((await ask()).statusCode).toBe(200);
+    expect((await ask()).statusCode).toBe(429);
+    expect((await ask()).json()).toEqual({ error: "rate_limited" });
+    clock += 3_600_001;
+    expect((await ask()).statusCode).toBe(200);
+  });
+
+  it("creates the recipe a member confirmed, and nothing for a bad request or without sign-in", async () => {
+    const seen: unknown[] = [];
+    const createImportedRecipe: Pick<CreateImportedRecipe, "execute"> = {
+      execute: async (cmd) => {
+        seen.push(cmd);
+        return { ok: true, value: { recipeId: 173, draft: draft as never, photoAttached: true } };
+      },
+    };
+    const res = await post("/import/create", { draft }, { createImportedRecipe });
+    expect(res.statusCode).toBe(201);
+    expect(res.json()).toEqual({ recipeId: 173, draft, photoAttached: true });
+    expect(seen).toEqual([{ member: "2", draft }]);
+    expect((await post("/import/create", { draft: "x" }, { createImportedRecipe })).statusCode).toBe(400);
+    expect((await post("/import/create", {}, { createImportedRecipe })).statusCode).toBe(400);
+    expect((await post("/import/create", { draft }, { createImportedRecipe }, false)).statusCode).toBe(401);
+    expect(seen).toHaveLength(1);
+    const refused = await post(
+      "/import/create",
+      { draft },
+      { createImportedRecipe: { execute: async () => ({ ok: false, reason: "not_a_recipe" }) } },
+    );
+    expect(refused.statusCode).toBe(422);
+  });
+});
+
+describe("matching renamed ingredients", () => {
+  const post = async (payload: unknown, signedIn = true) => {
+    const a = await app({
+      matchIngredients: {
+        execute: async ({ names }) => ({
+          ok: true,
+          value: names.map((w) => ({ written: w, name: w.toUpperCase(), isNewItem: false, icon: "carrot" })),
+        }),
+      },
+    });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: "/plan/api/import/match", payload: payload as object, cookies });
+  };
+
+  it("answers for each name, for the signed-in member only", async () => {
+    const res = await post({ names: ["Karotte", "Salz"] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      items: [
+        { written: "Karotte", name: "KAROTTE", isNewItem: false, icon: "carrot" },
+        { written: "Salz", name: "SALZ", isNewItem: false, icon: "carrot" },
+      ],
+    });
+    expect((await post({ names: ["Karotte"] }, false)).statusCode).toBe(401);
+  });
+
+  it("refuses a malformed request", async () => {
+    for (const bad of [
+      {},
+      { names: "Salz" },
+      { names: [1] },
+      { names: ["x".repeat(201)] },
+      { names: Array(61).fill("a") },
+    ])
+      expect((await post(bad)).statusCode, JSON.stringify(bad).slice(0, 30)).toBe(400);
+  });
+});
+
+describe("matching tags", () => {
+  const post = async (payload: unknown, signedIn = true) => {
+    const a = await app({
+      matchTags: {
+        execute: async ({ names }) => ({
+          ok: true,
+          value: names.map((w) => ({ written: w, name: `🌶️ ${w}`, isKnown: true })),
+        }),
+      },
+    });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: "/plan/api/import/match-tags", payload: payload as object, cookies });
+  };
+
+  it("answers for each name, for the signed-in member only, and refuses a malformed request", async () => {
+    const res = await post({ names: ["Scharf"] });
+    expect(res.json()).toEqual({ tags: [{ written: "Scharf", name: "🌶️ Scharf", isKnown: true }] });
+    expect((await post({ names: ["Scharf"] }, false)).statusCode).toBe(401);
+    for (const bad of [{}, { names: "x" }, { names: [1] }, { names: Array(31).fill("a") }])
+      expect((await post(bad)).statusCode).toBe(400);
+  });
+});
+
+describe("the picture of a draft", () => {
+  const token = "0123456789abcdef0123456789abcdef";
+  const shelf: ImageShelf = {
+    keep: () => token,
+    get: (t) => (t === token ? { bytes: Uint8Array.from([0x89, 0x50, 0x4e, 0x47]), contentType: "image/png" } : null),
+  };
+  const get = async (path: string, over: { draftImages?: ImageShelf } = { draftImages: shelf }, signedIn = true) => {
+    const a = await app(over);
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "GET", url: `/plan/api/import/image/${path}`, cookies });
+  };
+
+  it("is served to a member as the picture it is, and may not be run or kept", async () => {
+    const res = await get(token);
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("image/png");
+    expect(res.headers["cache-control"]).toBe("private, no-store");
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    expect(res.headers["content-security-policy"]).toContain("sandbox");
+    expect([...res.rawPayload]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  });
+
+  it("is not served to anyone else, nor for a token that is unknown, malformed or without a shelf", async () => {
+    expect((await get(token, { draftImages: shelf }, false)).statusCode).toBe(401);
+    expect((await get("f".repeat(32))).statusCode).toBe(404);
+    expect((await get("..%2Fsecret")).statusCode).toBe(404);
+    expect((await get(token, {})).statusCode).toBe(404);
+  });
+});
+
+describe("giving up a finalized dinner", () => {
+  const post = async (path: string, use: Pick<ResetFinalizedDay, "execute">, signedIn = true) => {
+    const a = await app({ resetFinalizedDay: use });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: `/plan/api/sessions/${path}`, cookies });
+  };
+  const done: Pick<ResetFinalizedDay, "execute"> = { execute: async () => ({ ok: true, value: true }) };
+
+  it("resets the day for a signed-in member, passing the session and the date on", async () => {
+    const seen: unknown[] = [];
+    const res = await post("s1/days/2026-11-04/reset", {
+      execute: async (cmd) => {
+        seen.push(cmd);
+        return { ok: true, value: true };
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ reset: true });
+    expect(seen).toEqual([{ sessionId: "s1", date: "2026-11-04" }]);
+  });
+
+  it("needs a member, and a real date", async () => {
+    expect((await post("s1/days/2026-11-04/reset", done, false)).statusCode).toBe(401);
+    expect((await post("s1/days/soon/reset", done)).statusCode).toBe(400);
+  });
+
+  it.each([
+    ["day_passed", 409],
+    ["already_released", 409],
+    ["kitchenowl_unavailable", 502],
+    ["unknown_session", 404],
+  ])("answers %s with %i", async (reason, status) => {
+    const res = await post("s1/days/2026-11-04/reset", { execute: async () => ({ ok: false, reason }) });
+    expect(res.statusCode).toBe(status);
+    expect(res.json()).toEqual({ error: reason });
+  });
+});
+
+describe("suggesting names while typing", () => {
+  const post = async (payload: unknown, signedIn = true) => {
+    const a = await app({
+      suggestNames: {
+        execute: async ({ kind, query }) => ({ ok: true, value: [{ name: `${kind}:${query}`, icon: "carrot" }] }),
+      },
+    });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: "/plan/api/import/suggest", payload: payload as object, cookies });
+  };
+
+  it("answers for a member, and refuses anything else", async () => {
+    expect((await post({ kind: "item", query: "ka" })).json()).toEqual({
+      names: [{ name: "item:ka", icon: "carrot" }],
+    });
+    expect((await post({ kind: "tag", query: "" })).statusCode).toBe(200);
+    expect((await post({ kind: "item", query: "ka" }, false)).statusCode).toBe(401);
+    for (const bad of [{}, { kind: "recipe", query: "x" }, { kind: "item" }, { kind: "item", query: "x".repeat(201) }])
+      expect((await post(bad)).statusCode).toBe(400);
+  });
+});
+
+describe("recipes that look like a draft", () => {
+  const related = [{ id: 7, name: "Linsensuppe", reasons: ["similar_name"], sharedIngredients: 0 }];
+  const post = async (payload: unknown, signedIn = true, seen: unknown[] = []) => {
+    const a = await app({
+      findRelatedRecipes: {
+        execute: async (cmd) => {
+          seen.push(cmd);
+          return { ok: true, value: related as never };
+        },
+      },
+    });
+    const cookies = signedIn ? { session: sessionCookie(await login(a))!.value } : {};
+    return a.inject({ method: "POST", url: "/plan/api/import/related", payload: payload as object, cookies });
+  };
+
+  it("answers for a member with what looks alike, passing the draft's name, ingredients and source on", async () => {
+    const seen: unknown[] = [];
+    const res = await post({ name: "Linsensuppe", ingredients: ["Linsen"], source: "https://x.example/r" }, true, seen);
+    expect(res.json()).toEqual({ related });
+    expect(seen).toEqual([{ name: "Linsensuppe", ingredients: ["Linsen"], source: "https://x.example/r" }]);
+    await post({ name: "A", ingredients: [] }, true, seen);
+    expect(seen[1]).toEqual({ name: "A", ingredients: [] });
+  });
+
+  it("needs a member and a well-formed request", async () => {
+    expect((await post({ name: "A", ingredients: [] }, false)).statusCode).toBe(401);
+    for (const bad of [
+      {},
+      { name: "A" },
+      { name: "A", ingredients: "x" },
+      { name: "A", ingredients: Array(61).fill("a") },
+    ])
+      expect((await post(bad)).statusCode).toBe(400);
   });
 });

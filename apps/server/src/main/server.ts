@@ -1,5 +1,11 @@
 import {
   AcceptProposal,
+  CreateImportedRecipe,
+  MatchIngredients,
+  MatchTags,
+  SuggestNames,
+  FindRelatedRecipes,
+  DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
   ConfirmCooked,
@@ -8,6 +14,7 @@ import {
   ListRecipes,
   ListTakenDates,
   ReleaseRemovedDinners,
+  ResetFinalizedDay,
   LogPlannedMeals,
   MarkNotCooked,
   RemoveLoggedMeal,
@@ -47,6 +54,10 @@ import { CachedRecipeCatalog } from "../infrastructure/kitchenowl/cached-recipe-
 import { KitchenOwlClient } from "../infrastructure/kitchenowl/client.js";
 import { KitchenOwlHouseholdDirectory } from "../infrastructure/kitchenowl/kitchenowl-household-directory.js";
 import { KitchenOwlPlannerGateway } from "../infrastructure/kitchenowl/kitchenowl-planner-gateway.js";
+import { LlmRecipeExtractor } from "../infrastructure/import/llm-extractor.js";
+import { MemoryImageShelf } from "../infrastructure/import/image-shelf.js";
+import { WebImageFetcher, WebRecipeSource } from "../infrastructure/import/web-recipe-source.js";
+import { KitchenOwlRecipeWriter } from "../infrastructure/kitchenowl/kitchenowl-recipe-writer.js";
 import { KitchenOwlPlannerView } from "../infrastructure/kitchenowl/kitchenowl-planner-view.js";
 import { KitchenOwlRecipeCatalog } from "../infrastructure/kitchenowl/kitchenowl-recipe-catalog.js";
 import { loadOrCreateVapidKeys } from "../infrastructure/push/vapid-keys.js";
@@ -87,9 +98,10 @@ async function main(): Promise<void> {
   const catalog = new CachedRecipeCatalog(new KitchenOwlRecipeCatalog(client), RECIPE_CACHE_MS);
   const calendar = new SqliteDinnerCalendar(db);
   const exports = new SqliteExportRepository(db);
+  const plannerGateway = new KitchenOwlPlannerGateway(client, config.shoppingListId);
   const exporter = new ExportFinalizedPlan({
     exports,
-    planner: new KitchenOwlPlannerGateway(client, config.shoppingListId),
+    planner: plannerGateway,
     events: hub,
     uow: deps.uow,
   });
@@ -122,14 +134,29 @@ async function main(): Promise<void> {
     uow: deps.uow,
     clock,
   });
+  const recipeWriter = new KitchenOwlRecipeWriter(client);
+  const draftImages = new MemoryImageShelf();
   const app = await buildApp({
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
     getCurrentSession: new GetCurrentSession({ sessions, exports }),
     startSession: new StartSession({ ...deps, ids, clock, calendar }, planning),
+    resetFinalizedDay: new ResetFinalizedDay({ ...deps, exports, planner: plannerGateway, clock }),
     listTakenDates: new ListTakenDates({ calendar, clock, release, planner: plannerView }),
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, planning),
+    draftRecipeImport: new DraftRecipeImport({
+      source: new WebRecipeSource(),
+      extractor: new LlmRecipeExtractor(config.llm),
+      writer: recipeWriter,
+      images: { fetcher: new WebImageFetcher(), shelf: draftImages },
+    }),
+    createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter, shelf: draftImages, catalog }),
+    matchIngredients: new MatchIngredients({ writer: recipeWriter }),
+    matchTags: new MatchTags({ writer: recipeWriter }),
+    suggestNames: new SuggestNames({ writer: recipeWriter }),
+    findRelatedRecipes: new FindRelatedRecipes({ catalog }),
+    draftImages,
     acceptProposal,
     agreeInPerson: new AgreeInPerson(acceptProposal),
     vetoProposal: new VetoProposal(deps),

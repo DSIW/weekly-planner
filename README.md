@@ -10,6 +10,39 @@ npm run test:ci         # typecheck, lint (Biome), tests, unused-code check (kni
 npm run recipes:check   # reads the recipes from KitchenOwl and checks the data
 ```
 
+### On a phone
+
+`npm run dev:phone` serves the hot-reloading web app so a phone can open it: every save shows up in seconds, with
+no release. It listens on all interfaces (Vite binds to localhost otherwise) and needs a dev address that a reverse proxy
+forwards to port 5173 of this machine. `DEV_HOST=dev.example.org` limits it to that address. In Caddy:
+
+```caddy
+dev.example.org {
+	basic_auth {
+		you <hash from `caddy hash-password`>
+	}
+	reverse_proxy <this-machine>:5173
+}
+```
+
+Open port 5173 only to the proxy's address (firewall), and set `KITCHENOWL_PUBLIC_URL` in `.env` to the
+KitchenOwl the phone should be sent to (its public address; `/` does not work here, the hosts differ).
+Open `https://dev.example.org/plan/`.
+
+Instead of a firewall and `basic_auth`, the proxy can reach this machine over Tailscale (encrypted, no open port) and
+reuse an existing login portal. Our setup: Caddy on the server proxies `wp-dev.s.dsiw-it.de` to this machine's Tailscale
+address, behind the GitHub login (`authorize with mypolicy`):
+
+```caddy
+wp-dev.s.dsiw-it.de {
+	authorize with mypolicy
+	import security-header
+	reverse_proxy <tailscale-ip-of-this-machine>:5173
+}
+```
+
+Start it with `DEV_HOST=wp-dev.s.dsiw-it.de npm run dev:phone` and open `https://wp-dev.s.dsiw-it.de/plan/`.
+
 For `http` on localhost set `COOKIE_SECURE=false` in `.env`. Deployment: `DOCKER_DEPLOYMENT.md`.
 
 Node 22 (see `.node-version`).

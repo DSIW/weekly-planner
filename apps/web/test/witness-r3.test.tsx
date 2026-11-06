@@ -523,6 +523,52 @@ describe("dates that already hold a dinner (witness r3)", () => {
     await waitFor(() => expect(screen.queryByRole("list", { name: "Schon geplant" })).not.toBeInTheDocument());
   });
 
+  it("can be given up when the planner itself planned them: asked twice, then it is gone", async () => {
+    let dates = [
+      { date: "2026-11-03", recipeName: "Pasta", recipeId: 7, sessionId: "s9" },
+      { date: "2026-11-04", recipeName: "Risotto" },
+    ];
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: () => ({ status: 200, body: { dates } }),
+      [`POST ${api}/sessions/s9/days/2026-11-03/reset`]: () => {
+        dates = [dates[1]!];
+        return { status: 200, body: { reset: true } };
+      },
+    });
+    renderApp();
+    const list = await screen.findByRole("list", { name: "Schon geplant" });
+    const [pasta, risotto] = within(list).getAllByRole("listitem");
+    expect(within(risotto!).queryByRole("button", { name: "Zurücksetzen" })).not.toBeInTheDocument(); // chosen in KitchenOwl
+    await userEvent.click(within(pasta!).getByRole("button", { name: "Zurücksetzen" }));
+    await userEvent.click(within(pasta!).getByRole("button", { name: "Abbrechen" }));
+    expect(calls.some((c) => c.key.includes("/reset"))).toBe(false);
+    await userEvent.click(within(pasta!).getByRole("button", { name: "Zurücksetzen" }));
+    await userEvent.click(within(pasta!).getByRole("button", { name: "Ja, zurücksetzen" }));
+    await waitFor(() => expect(within(list).queryByText("Pasta")).not.toBeInTheDocument());
+    expect(calls.filter((c) => c.key.includes("/reset"))).toHaveLength(1);
+  });
+
+  it("say so when KitchenOwl could not take the dinner off", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: {
+        status: 200,
+        body: { dates: [{ date: "2026-11-03", recipeName: "Pasta", sessionId: "s9", recipeId: 7 }] },
+      },
+      [`POST ${api}/sessions/s9/days/2026-11-03/reset`]: { status: 502, body: { error: "kitchenowl_unavailable" } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Zurücksetzen" }));
+    await userEvent.click(screen.getByRole("button", { name: "Ja, zurücksetzen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "KitchenOwl ist gerade nicht erreichbar. Es wurde nichts geändert.",
+    );
+    expect(screen.getByRole("list", { name: "Schon geplant" })).toHaveTextContent("Pasta");
+  });
+
   it("are not explained when there are none", async () => {
     server({
       ...signedIn,
@@ -533,6 +579,55 @@ describe("dates that already hold a dinner (witness r3)", () => {
     await screen.findByRole("button", { name: "Planung starten" });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(screen.queryByRole("list", { name: "Schon geplant" })).not.toBeInTheDocument();
+  });
+});
+
+describe("adding a meal: recipes whose tags are incomplete", () => {
+  it("lists them apart with what is missing, not choosable, with the way to fix them in KitchenOwl", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [LOG]: { status: 200, body: { entries: [] } },
+      [ALL_RECIPES]: {
+        status: 200,
+        body: { recipes: [pasta], unavailable: [{ id: 9, name: "Coq au vin", problems: ["no diet tag"] }] },
+      },
+      [`GET ${api}/links`]: {
+        status: 200,
+        body: { links: { recipe: "https://ko.test/household/2/recipes/details/{id}", list: "x" } },
+      },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
+    await userEvent.click(screen.getByRole("button", { name: "Mahlzeit nachtragen" }));
+    expect(await screen.findByText("Noch unvollständig")).toBeInTheDocument();
+    expect(screen.getByText("Coq au vin")).toBeInTheDocument();
+    expect(screen.getByText(/Tags fehlen: die Ernährung/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "In KitchenOwl ergänzen" })).toHaveAttribute(
+      "href",
+      "https://ko.test/household/2/recipes/details/9",
+    );
+  });
+
+  it("can be chosen anyway once the member names the base", async () => {
+    const calls = server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [LOG]: { status: 200, body: { entries: [] } },
+      [ALL_RECIPES]: {
+        status: 200,
+        body: { recipes: [pasta], unavailable: [{ id: 9, name: "Coq au vin", problems: ["no diet tag"] }] },
+      },
+      [`POST ${api}/meal-log`]: { status: 201, body: { entry: { id: "e1" } } },
+    });
+    renderApp();
+    await userEvent.click(await screen.findByRole("button", { name: "Verlauf" }));
+    await userEvent.click(screen.getByRole("button", { name: "Mahlzeit nachtragen" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Trotzdem wählen" }));
+    expect(screen.getByText(/hat noch nicht alle Tags/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Kartoffeln/ }));
+    const post = calls.find((c) => c.key === `POST ${api}/meal-log`);
+    expect(post?.body).toMatchObject({ base: "potatoes", recipeId: 9 });
   });
 });
 
@@ -559,6 +654,8 @@ describe("links to KitchenOwl", () => {
   const links = {
     recipe: "https://ko.test/household/2/recipes/details/{id}",
     list: "https://ko.test/household/2/items",
+    recipes: "https://ko.test/household/2/recipes",
+    home: "https://ko.test/household/2",
   };
   const taken = { dates: [{ date: "2026-11-03", recipeName: "Pasta", recipeId: 7 }] };
 
@@ -577,6 +674,22 @@ describe("links to KitchenOwl", () => {
       "href",
       "https://ko.test/household/2/items",
     );
+  });
+
+  it("shows KitchenOwl's navigation bar with the planner as the current page", async () => {
+    server({
+      ...signedIn,
+      [CURRENT]: { status: 200, body: { session: null } },
+      [PLANNED]: { status: 200, body: { dates: [] } },
+      [LINKS]: { status: 200, body: { links } },
+    });
+    renderApp();
+    const nav = await screen.findByRole("navigation", { name: "KitchenOwl" });
+    const href = (name: string) => within(nav).getByRole("link", { name }).getAttribute("href");
+    expect(href("Liste")).toBe("https://ko.test/household/2/items");
+    expect(href("Rezepte")).toBe("https://ko.test/household/2/recipes");
+    expect(href("Mehr")).toBe("https://ko.test/household/2");
+    expect(within(nav).getByRole("link", { name: "Wochenplan" })).toHaveAttribute("aria-current", "page");
   });
 
   it("are not shown when the server does not know where KitchenOwl is", async () => {

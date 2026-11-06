@@ -110,6 +110,27 @@ describe("RemoveLoggedMeal", () => {
   });
 });
 
+describe("a recipe whose tags are incomplete, in the meal log", () => {
+  it("can be logged with the base the member names, and corrected to", async () => {
+    const h = household([fresh]);
+    const loose = aRecipe(9, { name: "Coq au vin" });
+    h.catalog.entries.push({
+      kind: "needs-data",
+      recipeId: loose.id,
+      name: "Coq au vin",
+      problems: ["no diet tag"],
+      loggable: loose,
+    });
+    h.clock.date = THU;
+    const added = ok(await h.addLoggedMeal.execute({ member: ME, date: WED, base: "potatoes", recipeId: loose.id }));
+    expect([added.base, added.recipe?.name]).toEqual(["potatoes", "Coq au vin"]);
+    const fixed = ok(
+      await h.correctLoggedMeal.execute({ member: ME, entryId: added.id, base: "rice", recipeId: loose.id }),
+    );
+    expect([fixed.base, fixed.recipe?.id]).toEqual(["rice", loose.id]);
+  });
+});
+
 describe("CorrectLoggedMeal and AddLoggedMeal", () => {
   it("corrects an entry to another recipe: confirmed, and that recipe becomes proven", async () => {
     const { h } = await dayAfterDinner();
@@ -176,6 +197,18 @@ describe("ListRecipes", () => {
     const h = household([zebra, fresh, apple]);
     h.catalog.entries.push({ kind: "needs-data", recipeId: aRecipe(9).id, name: "Kaputt", problems: ["no diet tag"] });
     expect((await h.listRecipes.execute()).map((r) => r.name)).toEqual(["Äpfel", "Neu", "Zebrabraten"]);
+  });
+
+  it("lists the incomplete ones apart, by name, with what is missing", async () => {
+    const h = household([fresh]);
+    h.catalog.entries.push(
+      { kind: "needs-data", recipeId: aRecipe(9).id, name: "Zucchini", problems: ["no diet tag"] },
+      { kind: "needs-data", recipeId: aRecipe(8).id, name: "Auflauf", problems: ["no meal-type tag"] },
+    );
+    expect(await h.listRecipes.incomplete()).toEqual([
+      { id: aRecipe(8).id, name: "Auflauf", problems: ["no meal-type tag"] },
+      { id: aRecipe(9).id, name: "Zucchini", problems: ["no diet tag"] },
+    ]);
   });
 });
 

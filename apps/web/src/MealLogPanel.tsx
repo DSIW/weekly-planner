@@ -73,7 +73,8 @@ export function DueMeals({ messageFor, today = todayPlanDate() }: Props) {
           {choosing === e.id ? (
             <>
               <MealChooser
-                recipes={recipes.data}
+                recipes={recipes.data?.recipes}
+                unavailable={recipes.data?.unavailable}
                 loading={recipes.isPending}
                 loadFailed={recipes.isError}
                 pending={correct.isPending}
@@ -182,7 +183,8 @@ export function MealHistory({ messageFor, today = todayPlanDate() }: Props) {
             </p>
           )}
           <MealChooser
-            recipes={recipes.data}
+            recipes={recipes.data?.recipes}
+            unavailable={recipes.data?.unavailable}
             loading={recipes.isPending}
             loadFailed={recipes.isError}
             pending={add.isPending}

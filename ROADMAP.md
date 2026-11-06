@@ -108,6 +108,8 @@ Status S4b (built 2026-11-01): `RemindToFinalize` now decides on the session as 
 Status S5 (built 2026-11-01): meal log and experience in SQLite (migration 6), the daily job wired into the server, routes and screens for the question the day after (cooked, not cooked, something else), adding a meal by recipe or base only, a 14 day history, and the deck reading the real log and experience. Decided: D32, D33; the two open spec questions (log guard, abandoned plans) are closed. Phone feedback during the build changed more: several proposals wait at once (D30), starting a plan refuses taken dates (D31, answers the "already planned" error from the first test), leftovers days offer "Doch kochen", agreed days "Neu wählen", the bell is a monochrome icon. **Not verified on a phone.** Still open in the spec: past dates in `StartSession`.
 
 Feedback round on S5 (2026-11-01): planning is three steps (days, dishes, shopping list) and the plan and the waiting proposals are one list (D34); a button is free as soon as its own request is answered (the "Doch kochen" lock was the card deck reloading in the background); ingredient tiles use KitchenOwl's own icons, and salt, pepper, oil and water start off the list; "Mise en place" recipes are never dinners; the meal log takes one meal per day and shows thumbnails, a search with a placeholder and the bases with emoji; the taken dates name their dinner and are freed when the dinner is taken off KitchenOwl's planner (D35). **Not verified on a phone or in a browser** (no browser here). Not done: a screen for finished plans.
+
+Feedback round on S8 and the phone UI (2026-11-04, D39): incomplete recipes are shown in the meal log and can be chosen by naming the base, the pasted picture link and the AVIF fallback for imports, a success page after finalizing, KitchenOwl's bottom bar with links back, KitchenOwl's colours, the new logo and a spinner for loading. `npm run dev:phone` gives a hot-reloading dev server for the phone (README, "On a phone"), so a change can be checked before a release.
 - Verify by hand: confirm a new recipe as cooked and see it count as proven in the next session; mark one as not cooked and see its base stop weighing on the ranking; correct an entry with "something else" (another recipe), and add a meal by its base only.
 
 ### S6: One real week
@@ -117,6 +119,14 @@ Feedback round on S5 (2026-11-01): planning is three steps (days, dishes, shoppi
 - Backup and restore of the SQLite file, health check, log rotation, upgrade procedure, error reporting that reaches the household.
 - Install and sign in on the second phone; repeat the earlier checklists that need two members on both phones.
 - Findings from the week are written down and sorted into fixes and new slices.
+
+### S8: Import a recipe
+
+*Asked for on 2026-11-01: importing should be easy, and KitchenOwl's own import is not good enough.*
+
+A link or pasted text becomes a reviewed recipe in the household's own format: ingredients named like the items KitchenOwl already has, steps as a numbered list, and the tags the planning rules read. Spec: `spec/recipe-import.allium`. Decided: D37 (a language model through an OpenAI-compatible API, OpenRouter with the credit the household has; layered protection against prompt injection; review before anything is written).
+
+Status S8 (built 2026-11-01, not released): domain checks (`reviewDraft`), use cases, the safe page reader, the model client, the KitchenOwl writer (verified against staging: items and tags by name, the recipe is created private), routes and tests. The screen is next. **Needs `LLM_API_KEY` and `LLM_MODEL` on the server; not tried with a real model yet.**
 
 ### S7: Distil and compare
 

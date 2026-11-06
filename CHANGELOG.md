@@ -1,5 +1,153 @@
 # Changelog
 
+## [0.1.35](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.34...weekly-planner-v0.1.35) (2026-11-05)
+
+
+### Bug Fixes
+
+* **web:** navigation bar spread evenly edge to edge, name only on the current page ([a972e9d](https://github.com/DSIW/weekly-planner/commit/a972e9de441a00a5f908076a517b3c4225f72e1c))
+
+## [0.1.34](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.33...weekly-planner-v0.1.34) (2026-11-04)
+
+
+### Features
+
+* **web:** spinner instead of plain text while pages and recipes load ([2abedb5](https://github.com/DSIW/weekly-planner/commit/2abedb57564bf5ef9624a1319ae639a5ddc959ad))
+* **web:** use KitchenOwl's colours (green [#20](https://github.com/DSIW/weekly-planner/issues/20)AC64, grey surfaces) and icons to match ([929ee43](https://github.com/DSIW/weekly-planner/commit/929ee43abda3c05c440e38d0c3901e5cb2e783ef))
+
+
+### Bug Fixes
+
+* dev:phone binds to all interfaces without needing DEV_HOST ([d8793df](https://github.com/DSIW/weekly-planner/commit/d8793df04ae2f396376eb2a0f5a77081f223b10a))
+* **web:** keep the navigation bar above the swipeable cards ([f314e87](https://github.com/DSIW/weekly-planner/commit/f314e871b89dbf30c415098dba889a36ca449ad2))
+
+## [0.1.33](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.32...weekly-planner-v0.1.33) (2026-11-04)
+
+
+### Features
+
+* **web:** add KitchenOwl's household entry to the navigation bar ([57da754](https://github.com/DSIW/weekly-planner/commit/57da754b73ec1d9e449be9d0f58189faee972f8d))
+* **web:** KitchenOwl-style bottom navigation with links back to its list and recipes ([4fb107a](https://github.com/DSIW/weekly-planner/commit/4fb107a470dec6815035fdd5bbde2fa4fe8d2121))
+
+## [0.1.32](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.31...weekly-planner-v0.1.32) (2026-11-04)
+
+
+### Features
+
+* **web:** pan-with-tick logo as app icon, favicon and KitchenOwl FAB asset ([f494f78](https://github.com/DSIW/weekly-planner/commit/f494f7808183bc43cedead050a2d93f0a32b19fb))
+
+## [0.1.31](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.30...weekly-planner-v0.1.31) (2026-11-03)
+
+
+### Features
+
+* a pasted recipe may start with the link of its picture; AVIF links fall back to the original ([e0c1bc8](https://github.com/DSIW/weekly-planner/commit/e0c1bc8d8a735071c2799e93fe42e5a1f18db859))
+
+## [0.1.30](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.29...weekly-planner-v0.1.30) (2026-11-03)
+
+
+### Bug Fixes
+
+* success page styles no longer hit the finished step in the stepper ([507e349](https://github.com/DSIW/weekly-planner/commit/507e34971f6932f04a108deaa5ba2bf32e38344d))
+
+## [0.1.29](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.28...weekly-planner-v0.1.29) (2026-11-03)
+
+
+### Features
+
+* choose a recipe with incomplete tags in the meal log by naming its base ([ba2029e](https://github.com/DSIW/weekly-planner/commit/ba2029e9e716a719434b8d41af62ca246972bd3f))
+* header link goes straight to the shopping list and says Einkauf ([b915023](https://github.com/DSIW/weekly-planner/commit/b915023faeb1f5776b596e5291cc1fa8eeddac63))
+
+## [0.1.28](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.27...weekly-planner-v0.1.28) (2026-11-03)
+
+
+### Features
+
+* Küche link in the planner header to KitchenOwl's start page ([e5ce1dd](https://github.com/DSIW/weekly-planner/commit/e5ce1dda2a79cc69433f1c814286752ab18517c7))
+* show recipes with incomplete tags in the meal log search, with what is missing ([b43c07a](https://github.com/DSIW/weekly-planner/commit/b43c07a89e98f896be067e3c737ef128a42fb482))
+* success page after a plan has been written to KitchenOwl ([25372a3](https://github.com/DSIW/weekly-planner/commit/25372a3bb33fb0d80cf0b9278a199a8a76704865))
+
+
+### Bug Fixes
+
+* keep missingText private (knip) ([395b79b](https://github.com/DSIW/weekly-planner/commit/395b79bbc625a3ed72e54fffcc05fa247ee68ab2))
+
+## [0.1.27](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.26...weekly-planner-v0.1.27) (2026-11-02)
+
+
+### Bug Fixes
+
+* main tabs in one row of three equal tabs ([79b63d3](https://github.com/DSIW/weekly-planner/commit/79b63d322e56f95b325e4036d9c945a571553fb3))
+
+## [0.1.26](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.25...weekly-planner-v0.1.26) (2026-11-02)
+
+
+### Features
+
+* shorter, amber warning for a recipe that is too long for a weekday ([f39ada1](https://github.com/DSIW/weekly-planner/commit/f39ada1adc34e4a8ee23257f9feef34d69f40c69))
+
+## [0.1.25](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.24...weekly-planner-v0.1.25) (2026-11-02)
+
+
+### Features
+
+* search finds every recipe and warns when a filter is not met ([2f2e494](https://github.com/DSIW/weekly-planner/commit/2f2e494885c472c45c9b4237066ad79020ab1ac9))
+
+## [0.1.24](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.23...weekly-planner-v0.1.24) (2026-11-02)
+
+
+### Bug Fixes
+
+* **import:** offer a newly imported recipe in the planner at once ([4af63e9](https://github.com/DSIW/weekly-planner/commit/4af63e9b0f2ba5a9e750d66cbc4d49fa1d97bb37))
+
+## [0.1.23](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.22...weekly-planner-v0.1.23) (2026-11-02)
+
+
+### Features
+
+* **import:** tell which existing recipes look like an imported one ([0af26a7](https://github.com/DSIW/weekly-planner/commit/0af26a76dabf9c9875f912370fbc0bdc7310abeb))
+
+## [0.1.22](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.21...weekly-planner-v0.1.22) (2026-11-02)
+
+
+### Features
+
+* **import:** suggest an icon for new ingredients, match ingredients written with a slip ([49f6fab](https://github.com/DSIW/weekly-planner/commit/49f6fab9fce49750baa1b9328f705c3852c29718))
+
+## [0.1.21](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.20...weekly-planner-v0.1.21) (2026-11-02)
+
+
+### Features
+
+* reset a finalized dinner, autocomplete for tags, replace an imported ingredient ([c0e39b8](https://github.com/DSIW/weekly-planner/commit/c0e39b8c70f188cb50568cbfa22ddd18abdb75a7))
+
+## [0.1.20](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.19...weekly-planner-v0.1.20) (2026-11-02)
+
+
+### Features
+
+* **import:** title picture, editable tags with household emojis, time field, clean source links ([e6d8321](https://github.com/DSIW/weekly-planner/commit/e6d832154d65d43af9098243546052108c02a013))
+
+## [0.1.19](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.18...weekly-planner-v0.1.19) (2026-11-01)
+
+
+### Features
+
+* import review as an icon grid with renamable ingredients, plural-aware item matching ([ac4d110](https://github.com/DSIW/weekly-planner/commit/ac4d110221cd8011419b035611da2be9788c7da6))
+
+## [0.1.18](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.17...weekly-planner-v0.1.18) (2026-11-01)
+
+
+### Features
+
+* import a recipe from a link or text with a language model, reviewed before it is created ([098a66a](https://github.com/DSIW/weekly-planner/commit/098a66a662425cbc2e64ce35bb7a9a2b1524f2bf))
+
+
+### Bug Fixes
+
+* DraftIngredient is internal to the web api ([5b91018](https://github.com/DSIW/weekly-planner/commit/5b910189d46bc97abcac6d5f1128c948517e879e))
+* read several specs in the Allium check, clear lint errors in the import tests ([5ecaafd](https://github.com/DSIW/weekly-planner/commit/5ecaafdcf2f5760ecf0b904214bebab3eba6684a))
+
 ## [0.1.17](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.16...weekly-planner-v0.1.17) (2026-11-01)
 
 

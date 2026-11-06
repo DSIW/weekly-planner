@@ -1,0 +1,367 @@
+import { BASES, DIETS, MEAL_TYPES, type Base, type Diet, type MealType } from "../catalog/recipe.js";
+import { reject, succeed, type Result } from "../shared/result.js";
+
+// rule ReadRecipe / CheckDraft / CreateImportedRecipe (spec/recipe-import.allium): what a language model made of a
+// source is only ever a draft. These functions decide what of it a member gets to see and what may be created.
+
+/** spec config: how much a draft may hold. */
+export const IMPORT_LIMITS = {
+  maxSourceCharacters: 12_000,
+  maxSteps: 40,
+  maxIngredients: 60,
+  maxName: 120,
+  maxStep: 800,
+  maxIngredientName: 80,
+  maxAmount: 40,
+  maxRedirects: 3,
+  maxTags: 12,
+  maxTag: 40,
+  maxImageBytes: 5_000_000,
+} as const;
+
+export interface DraftIngredient {
+  readonly name: string;
+  /** As written: "2 Stück", "1 Prise"; empty when the source gives none. */
+  readonly amount: string;
+  readonly optional: boolean;
+  /** No known item has this name: KitchenOwl will create it. */
+  readonly isNewItem: boolean;
+  /**
+   * KitchenOwl's icon key ("carrot"); the phones draw it. Of a known item it is the item's own; of a new one it is a
+   * suggestion, one of the icons the household's items already use, which is saved on the item when it is created.
+   */
+  readonly icon?: string;
+}
+
+export interface RecipeDraft {
+  readonly name: string;
+  readonly subtitle?: string;
+  readonly steps: readonly string[];
+  readonly ingredients: readonly DraftIngredient[];
+  readonly mealType: MealType;
+  readonly base: Base;
+  readonly diet: Diet;
+  /** As KitchenOwl spells them, emoji included; a name it already has takes its spelling. */
+  readonly tags: readonly string[];
+  readonly totalMinutes?: number;
+  readonly yields?: number;
+  /** Where it came from, without tracking parameters. */
+  readonly source?: string;
+  /** The title picture of the page, kept by the planner until the recipe is created; see `ImageShelf`. */
+  readonly imageToken?: string;
+}
+
+/** What the household's KitchenOwl already holds: names a draft is checked against. */
+export interface Vocabulary {
+  readonly items: readonly string[];
+  /** The icon key of an item, by its name, for those that have one. */
+  readonly icons?: Readonly<Record<string, string>>;
+  /** Tags a draft may carry besides the ones its meal type, base and diet stand for. */
+  readonly tags: readonly string[];
+}
+
+/** Letters compared without case, accents, umlaut spelling or extra spaces: "Möhre" finds "möhre" and "Moehre". */
+export const fold = (s: string): string =>
+  s
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const ENDINGS = ["en", "n", "e", "s"];
+
+/** "Karotte" and "Karotten", "Zwiebel" and "Zwiebeln", "Champignon" and "Champignons": a plural ending is dropped. */
+export const stemKey = (folded: string): string => {
+  for (const ending of ENDINGS)
+    if (folded.endsWith(ending) && folded.length - ending.length >= 4) return folded.slice(0, -ending.length);
+  return folded;
+};
+
+/** The stem of the stem: "Champignons" and "Champion" end up close enough for `looseMatch` to find. */
+const looseKey = (folded: string): string => stemKey(stemKey(folded));
+
+/** Edit distance, given up on above `max` (returns max + 1). */
+function distance(a: string, b: string, max: number): number {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++)
+      row[j] = Math.min(
+        (previous[j] as number) + 1,
+        (row[j - 1] as number) + 1,
+        (previous[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    if (Math.min(...row) > max) return max + 1;
+    previous = row;
+  }
+  return previous[b.length] as number;
+}
+
+/** How many letters may differ in a word of this length for it to still be taken as the same: a slip, not another word. */
+const slips = (length: number): number => (length >= 8 ? 2 : length >= 5 ? 1 : 0);
+
+export interface ItemMatch {
+  readonly name: string;
+  readonly icon?: string;
+}
+
+/**
+ * The household's item a written ingredient name stands for, or null. Names are compared without case, accents and
+ * umlaut spelling, and a plural counts as the singular. When several items fit, one with an icon wins (the household's
+ * own item rather than a stray one made by an earlier import), then an exact spelling.
+ */
+export function itemMatcher(vocabulary: Vocabulary): (written: string) => ItemMatch | null {
+  const byStem = new Map<string, string[]>();
+  for (const item of vocabulary.items) {
+    const key = stemKey(fold(item));
+    byStem.set(key, [...(byStem.get(key) ?? []), item]);
+  }
+  const loose = vocabulary.items.map((name) => ({ name, key: looseKey(fold(name)) }));
+  const hasIcon = (name: string) => Number(vocabulary.icons?.[name] !== undefined);
+  return (written) => {
+    const folded = fold(written);
+    const candidates = byStem.get(stemKey(folded)) ?? [];
+    let best = [...candidates].sort(
+      (a, b) => hasIcon(b) - hasIcon(a) || Number(fold(b) === folded) - Number(fold(a) === folded),
+    )[0];
+    if (best === undefined) {
+      // A slip of the pen ("Champion" for "Champignons"): the closest item, if it is close enough and begins alike.
+      const key = looseKey(folded);
+      const near = loose
+        .filter((i) => i.key[0] === key[0])
+        .map((i) => ({ name: i.name, d: distance(key, i.key, 2), allowed: slips(Math.max(key.length, i.key.length)) }))
+        .filter((i) => i.d <= i.allowed)
+        .sort((a, b) => a.d - b.d || hasIcon(b.name) - hasIcon(a.name) || a.name.length - b.name.length);
+      best = near[0]?.name;
+    }
+    if (best === undefined) return null;
+    const icon = vocabulary.icons?.[best];
+    return { name: best, ...(icon ? { icon } : {}) };
+  };
+}
+
+/** A tag compared by its letters only: "🌶️ Scharf", "scharf" and "Scharf!" are one tag. */
+const tagKey = (s: string): string =>
+  fold(s)
+    .replace(/[^\p{L}\p{N} ]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+interface TagMatch {
+  readonly name: string;
+  readonly isKnown: boolean;
+}
+
+/** The household's tag a written one stands for, with its own spelling and emoji, else the tag as written. */
+export function tagMatcher(known: readonly string[]): (written: string) => TagMatch {
+  const byKey = new Map<string, string>();
+  for (const tag of known) if (!byKey.has(tagKey(tag))) byKey.set(tagKey(tag), tag);
+  return (written) => {
+    const found = byKey.get(tagKey(written));
+    return found === undefined ? { name: written, isKnown: false } : { name: found, isKnown: true };
+  };
+}
+
+const TRACKING = /^(utm_.*|fbclid|gclid|dclid|msclkid|yclid|igshid|mc_cid|mc_eid|_ga|_gl|srsltid|ref_src|oly_.*)$/i;
+
+/**
+ * A pasted recipe may start with a line that is only a web link: the title picture. Returns the link and the text
+ * without that line; the text is returned unchanged when the first line is anything else.
+ */
+export function splitPastedPicture(text: string): { imageUrl?: string; text: string } {
+  const lines = text.split(/\r?\n/);
+  const first = lines.findIndex((l) => l.trim() !== "");
+  const line = first < 0 ? "" : (lines[first] ?? "").trim();
+  if (!/^https?:\/\/\S+$/i.test(line) || lines.slice(first + 1).every((l) => l.trim() === "")) return { text };
+  return {
+    imageUrl: line,
+    text: lines
+      .slice(first + 1)
+      .join("\n")
+      .trim(),
+  };
+}
+
+/** A link as a source note: no tracking parameters, no fragment; null when it is not a web link. */
+export function cleanSourceAddress(address: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(address.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  url.username = "";
+  url.password = "";
+  url.hash = "";
+  for (const key of [...url.searchParams.keys()]) if (TRACKING.test(key)) url.searchParams.delete(key);
+  return url.toString().replace(/\?$/, "");
+}
+
+const SUGGESTIONS = 8;
+
+/**
+ * The household's items a member may mean while typing: names that start with the text first, then those that contain
+ * it. A plural and its singular count as one item, and the one with an icon is the one offered.
+ */
+export function suggestItems(vocabulary: Vocabulary, typed: string, limit = SUGGESTIONS): ItemMatch[] {
+  const q = fold(typed);
+  if (q === "") return [];
+  const hasIcon = (name: string) => Number(vocabulary.icons?.[name] !== undefined);
+  const hits = vocabulary.items
+    .map((name) => ({ name, key: fold(name) }))
+    .filter((i) => i.key.includes(q))
+    .sort(
+      (a, b) =>
+        Number(b.key.startsWith(q)) - Number(a.key.startsWith(q)) ||
+        hasIcon(b.name) - hasIcon(a.name) ||
+        a.key.length - b.key.length ||
+        a.key.localeCompare(b.key),
+    );
+  const seen = new Set<string>();
+  const out: ItemMatch[] = [];
+  for (const { name, key } of hits) {
+    const stem = stemKey(key);
+    if (seen.has(stem)) continue;
+    seen.add(stem);
+    const icon = vocabulary.icons?.[name];
+    out.push({ name, ...(icon ? { icon } : {}) });
+    if (out.length === limit) break;
+  }
+  return out;
+}
+
+/** The household's tags a member may mean while typing, by their letters (the emoji does not have to be typed). */
+export function suggestTags(known: readonly string[], typed: string, limit = SUGGESTIONS): string[] {
+  const q = tagKey(typed);
+  if (q === "") return [];
+  return known
+    .map((name) => ({ name, key: tagKey(name) }))
+    .filter((t) => t.key.includes(q))
+    .sort(
+      (a, b) =>
+        Number(b.key.startsWith(q)) - Number(a.key.startsWith(q)) ||
+        a.key.length - b.key.length ||
+        a.key.localeCompare(b.key),
+    )
+    .slice(0, limit)
+    .map((t) => t.name);
+}
+
+/** Plain text: no markup, no links, no control characters, one line of spaces, at most `max` characters. */
+export function cleanText(value: unknown, max: number): string {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/<[^>]*>/g, " ")
+    .replace(/(?:https?:\/\/|www\.)\S+/gi, " ")
+    .replace(/\p{C}/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max)
+    .trim();
+}
+
+const oneOf = <T extends string>(list: readonly T[], value: unknown): T | null =>
+  typeof value === "string" && (list as readonly string[]).includes(value) ? (value as T) : null;
+
+const minutes = (value: unknown, max: number): number | undefined =>
+  typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= max ? value : undefined;
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * rule CheckDraft: the model's answer, whatever it is, becomes a draft the household's vocabulary fits, or is
+ * refused. Text is cleaned, an ingredient named like a known item takes that item's name, any other is marked new,
+ * and a tag the household does not have is dropped.
+ */
+export function reviewDraft(
+  raw: unknown,
+  vocabulary: Vocabulary,
+  source?: string,
+  /** `newTags`: tags the household does not have are kept (a member wrote them); a model's answer may not invent any. */
+  options: { newTags?: boolean } = {},
+): Result<RecipeDraft> {
+  if (!isObject(raw)) return reject("not_a_recipe");
+  const name = cleanText(raw.name, IMPORT_LIMITS.maxName);
+  const steps = (Array.isArray(raw.steps) ? raw.steps : [])
+    .map((s) => cleanText(s, IMPORT_LIMITS.maxStep))
+    .filter((s) => s !== "");
+  const mealType = oneOf(MEAL_TYPES, raw.mealType);
+  const base = oneOf(BASES, raw.base);
+  const diet = oneOf(DIETS, raw.diet);
+  if (name === "" || steps.length === 0 || !mealType || !base || !diet) return reject("not_a_recipe");
+  if (steps.length > IMPORT_LIMITS.maxSteps) return reject("too_many_steps");
+
+  const match = itemMatcher(vocabulary);
+  const usable = new Set(Object.values(vocabulary.icons ?? {}));
+  const ingredients: DraftIngredient[] = [];
+  const seen = new Set<string>();
+  for (const entry of Array.isArray(raw.ingredients) ? raw.ingredients : []) {
+    if (!isObject(entry)) continue;
+    const written = cleanText(entry.name, IMPORT_LIMITS.maxIngredientName);
+    if (written === "") continue;
+    const found = match(written);
+    const key = fold(found?.name ?? written);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ingredients.push({
+      name: found?.name ?? written,
+      amount: cleanText(entry.amount, IMPORT_LIMITS.maxAmount),
+      optional: entry.optional === true,
+      isNewItem: found === null,
+      ...(found
+        ? found.icon
+          ? { icon: found.icon }
+          : {}
+        : typeof entry.icon === "string" && usable.has(entry.icon)
+          ? { icon: entry.icon }
+          : {}),
+    });
+  }
+  if (ingredients.length === 0) return reject("not_a_recipe");
+  if (ingredients.length > IMPORT_LIMITS.maxIngredients) return reject("too_many_ingredients");
+
+  const matchTag = tagMatcher(vocabulary.tags);
+  const tags: string[] = [];
+  const seenTags = new Set<string>();
+  for (const t of Array.isArray(raw.tags) ? raw.tags : []) {
+    const written = cleanText(t, IMPORT_LIMITS.maxTag);
+    if (written === "") continue;
+    const found = matchTag(written);
+    if (!found.isKnown && !options.newTags) continue;
+    const key = tagKey(found.name);
+    if (key === "" || seenTags.has(key)) continue;
+    seenTags.add(key);
+    tags.push(found.name);
+  }
+  tags.splice(IMPORT_LIMITS.maxTags);
+  const subtitle = cleanText(raw.subtitle, IMPORT_LIMITS.maxName * 2);
+  const totalMinutes = minutes(raw.totalMinutes, 1440);
+  const yields = minutes(raw.yields, 50);
+  const sourceText = (source === undefined ? null : cleanSourceAddress(source))?.slice(0, 500) ?? "";
+  const imageToken = typeof raw.imageToken === "string" && /^[0-9a-f]{32}$/.test(raw.imageToken) ? raw.imageToken : "";
+  return succeed({
+    name,
+    ...(subtitle ? { subtitle } : {}),
+    steps,
+    ingredients,
+    mealType,
+    base,
+    diet,
+    tags,
+    ...(totalMinutes === undefined ? {} : { totalMinutes }),
+    ...(yields === undefined ? {} : { yields }),
+    ...(sourceText ? { source: sourceText } : {}),
+    ...(imageToken ? { imageToken } : {}),
+  });
+}
+
+/** The icons the household's items use: the ones a suggestion for a new ingredient may be. */
+export const iconsInUse = (vocabulary: Vocabulary): string[] =>
+  [...new Set(Object.values(vocabulary.icons ?? {}))].sort();
