@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "11.1.5",
-    "@fastify/rate-limit": "11.2.1",
+    "@fastify/rate-limit": "11.2.2",
     "@weekly-planner/application": "*",
     "@weekly-planner/domain": "*",
     "fastify": "5.12.8",
