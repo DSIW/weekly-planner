@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.38](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.37...weekly-planner-v0.1.38) (2026-11-07)
+
+
+### Bug Fixes
+
+* **server:** decode compressed pages when importing a recipe ([#66](https://github.com/DSIW/weekly-planner/issues/66)) ([75c5ed0](https://github.com/DSIW/weekly-planner/commit/75c5ed095664ed4031258f510093a9d9b105ee16))
+
 ## [0.1.37](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.36...weekly-planner-v0.1.37) (2026-11-07)
 
 
