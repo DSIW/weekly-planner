@@ -82,6 +82,29 @@ describe("research for an idea", () => {
     expect(within(within(list).getAllByRole("listitem")[1]!).queryByRole("link")).toBeNull();
   });
 
+  it("offers a link to search in Claude that opens a new tab and calls nothing", async () => {
+    const calls = await openIdea({
+      [LIST]: () => ({
+        status: 200,
+        body: { ideas: [idea({ note: "ohne Sahne", inspirationLink: "https://x.example/a" })] },
+      }),
+    });
+    const before = calls.length;
+    const link = screen.getByRole("link", { name: "Kürbisgnocchi: In Claude suchen" });
+    const href = link.getAttribute("href") ?? "";
+    expect(href.startsWith("https://claude.ai/new?q=")).toBe(true);
+    const q = new URL(href).searchParams.get("q") ?? "";
+    expect(q).toContain("Kürbisgnocchi");
+    expect(q).toContain("ohne Sahne");
+    expect(q).toContain("https://x.example/a");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    link.addEventListener("click", (e) => e.preventDefault());
+    await userEvent.click(link);
+    // no request of any kind (a stray refetch would show here too)
+    expect(calls.length).toBe(before);
+  });
+
   it("shows a spinner while the model works", async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((r) => {
