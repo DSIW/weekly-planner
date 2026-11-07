@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetItemFont } from "../src/ItemIcon";
@@ -358,5 +358,179 @@ describe("adding a created recipe to the plan", () => {
     server({ ...routes });
     await create();
     expect(screen.queryByRole("button", { name: /vorschlagen/ })).toBeNull();
+  });
+});
+
+const swipe = (title: string, from: number, to: number) => {
+  const front = screen.getByRole("heading", { name: title }).closest(".swipe-front");
+  if (!front) throw new Error("no swipe row");
+  const at = (type: string, x: number, y = 0) =>
+    fireEvent(front, new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+  at("pointerdown", from);
+  at("pointermove", (from + to) / 2);
+  at("pointermove", to);
+  at("pointerup", to);
+  return front;
+};
+
+describe("swiping an idea away", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("takes the row off at once, offers to bring it back, and deletes it for good after a while", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let deleted = false;
+    const calls = server({
+      ...base,
+      [LIST]: () => list(...(deleted ? [] : [idea("a", { title: "Alt" })]), idea("b", { title: "Bleibt" })),
+      [`DELETE ${api}/ideas/a`]: () => {
+        deleted = true;
+        return { status: 204 };
+      },
+    });
+    await openIdeas();
+    await screen.findByRole("button", { name: "Alt" });
+    swipe("Alt", 250, 100);
+    expect(screen.queryByRole("button", { name: "Alt" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Bleibt" })).toBeInTheDocument();
+    expect(screen.getByText(/„Alt“ gelöscht/)).toBeInTheDocument();
+    expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false); // not yet
+
+    await act(async () => {
+      vi.advanceTimersByTime(6100);
+    });
+    await waitFor(() => expect(calls.some((c) => c.key === `DELETE ${api}/ideas/a`)).toBe(true));
+    await waitFor(() => expect(screen.queryByText(/„Alt“ gelöscht/)).toBeNull());
+    expect(screen.queryByRole("button", { name: "Alt" })).toBeNull();
+  });
+
+  it("brings the idea back on undo and never deletes it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = server({ ...base, [LIST]: list(idea("a", { title: "Alt" })) });
+    await openIdeas();
+    await screen.findByRole("button", { name: "Alt" });
+    swipe("Alt", 250, 100);
+    await userEvent.click(screen.getByRole("button", { name: "Rückgängig" }));
+    expect(screen.getByRole("button", { name: "Alt" })).toBeInTheDocument();
+    await act(async () => {
+      vi.advanceTimersByTime(10_000);
+    });
+    expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false);
+  });
+
+  it("deletes when the member leaves the tab meanwhile", async () => {
+    const calls = server({
+      ...base,
+      [LIST]: list(idea("a", { title: "Alt" })),
+      [`DELETE ${api}/ideas/a`]: { status: 204 },
+    });
+    await openIdeas();
+    await screen.findByRole("button", { name: "Alt" });
+    swipe("Alt", 250, 100);
+    await userEvent.click(screen.getByRole("button", { name: "Planung" }));
+    await waitFor(() => expect(calls.some((c) => c.key === `DELETE ${api}/ideas/a`)).toBe(true));
+  });
+
+  it("ignores short drags, vertical drags and a swipe to the right on a fresh idea", async () => {
+    const calls = server({ ...base, [LIST]: list(idea("a", { title: "Alt" })) });
+    await openIdeas();
+    await screen.findByRole("button", { name: "Alt" });
+    swipe("Alt", 250, 200); // too short
+    expect(screen.getByRole("button", { name: "Alt" })).toBeInTheDocument();
+    swipe("Alt", 100, 260); // to the right: nothing to do for a fresh idea
+    expect(screen.getByRole("button", { name: "Alt" })).toBeInTheDocument();
+    const front = screen.getByRole("heading", { name: "Alt" }).closest(".swipe-front") as Element;
+    const at = (type: string, x: number, y: number) =>
+      fireEvent(front, new MouseEvent(type, { clientX: x, clientY: y, bubbles: true }));
+    at("pointerdown", 250, 100);
+    at("pointermove", 120, 300); // a scroll with a bit of drift
+    at("pointerup", 120, 300);
+    expect(screen.getByRole("button", { name: "Alt" })).toBeInTheDocument();
+    expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false);
+  });
+
+  it("keeps a stale idea on a swipe to the right", async () => {
+    const calls = server({
+      ...base,
+      [LIST]: list(idea("a", { title: "Alt", isStale: true })),
+      [`POST ${api}/ideas/a/keep`]: { status: 200, body: { idea: idea("a") } },
+    });
+    await openIdeas();
+    await screen.findByRole("button", { name: "Alt" });
+    swipe("Alt", 100, 260);
+    await waitFor(() => expect(calls.some((c) => c.key === `POST ${api}/ideas/a/keep`)).toBe(true));
+  });
+
+  it("does not swipe an expanded row", async () => {
+    server({ ...base, [LIST]: list(idea("a", { title: "Alt" })) });
+    await openIdeas();
+    await userEvent.click(await screen.findByRole("button", { name: "Alt" }));
+    swipe("Alt", 250, 100);
+    expect(screen.getByRole("button", { name: "Alt" })).toBeInTheDocument();
+    expect(screen.queryByText(/gelöscht/)).toBeNull();
+  });
+});
+
+describe("pasting a list of ideas", () => {
+  const LIST_TEXT = [
+    "Linsendal",
+    "",
+    "Moussaka",
+    "Schweinebraten JT https://youtu.be/dRHPFRA_9j4?si=abc",
+    "Tacos https://youtu.be/Zfg984AWO_c",
+    "moussaka",
+  ].join("\n");
+
+  it("adds one idea per line, with links split off, repeated lines once, in the order written", async () => {
+    const calls = server({ ...base, [LIST]: list(), [ADD]: { status: 201, body: { idea: idea("i9") } } });
+    await openIdeas();
+    await userEvent.click(await screen.findByLabelText("Neue Idee"));
+    await userEvent.paste(LIST_TEXT);
+    expect(screen.getByText("4 Zeilen erkannt.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "4 Ideen hinzufügen" }));
+    await waitFor(() => expect(calls.filter((c) => c.key === ADD)).toHaveLength(4));
+    expect(calls.filter((c) => c.key === ADD).map((c) => c.body)).toEqual([
+      { title: "Linsendal" },
+      { title: "Moussaka" },
+      { title: "Schweinebraten JT", inspirationLink: "https://youtu.be/dRHPFRA_9j4?si=abc" },
+      { title: "Tacos", inspirationLink: "https://youtu.be/Zfg984AWO_c" },
+    ]);
+    await waitFor(() => expect(screen.getByLabelText("Neue Idee")).toHaveValue(""));
+  });
+
+  it("skips ideas that exist already", async () => {
+    const calls = server({
+      ...base,
+      [LIST]: list(idea("e", { title: "moussaka" })),
+      [ADD]: { status: 201, body: { idea: idea("i9") } },
+    });
+    await openIdeas();
+    await screen.findByRole("button", { name: "moussaka" });
+    await userEvent.click(screen.getByLabelText("Neue Idee"));
+    await userEvent.paste("Linsendal\nMoussaka");
+    expect(screen.getByText(/1 davon gibt es schon/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "1 Ideen hinzufügen" }));
+    await waitFor(() => expect(calls.filter((c) => c.key === ADD)).toHaveLength(1));
+  });
+
+  it("keeps the text and says so when some could not be added", async () => {
+    let n = 0;
+    server({
+      ...base,
+      [LIST]: list(),
+      [ADD]: () => (++n === 2 ? { status: 500 } : { status: 201, body: { idea: idea("i9") } }),
+    });
+    await openIdeas();
+    await userEvent.click(await screen.findByLabelText("Neue Idee"));
+    await userEvent.paste("Eins\nZwei\nDrei");
+    await userEvent.click(screen.getByRole("button", { name: "3 Ideen hinzufügen" }));
+    expect(await screen.findByText(/1 von 3 Ideen konnten nicht hinzugefügt werden/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Neue Idee")).toHaveValue("Eins\nZwei\nDrei");
+  });
+
+  it("still adds a single line with Enter", async () => {
+    const calls = server({ ...base, [LIST]: list(), [ADD]: { status: 201, body: { idea: idea("i9") } } });
+    await openIdeas();
+    await userEvent.type(await screen.findByLabelText("Neue Idee"), "Gnocchi{Enter}");
+    await waitFor(() => expect(calls.find((c) => c.key === ADD)?.body).toEqual({ title: "Gnocchi" }));
   });
 });

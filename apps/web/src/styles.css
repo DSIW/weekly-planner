@@ -1743,3 +1743,56 @@ button.danger {
   display: grid;
   gap: 8px;
 }
+
+/* Swiping an idea row */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+}
+.swipe-front {
+  position: relative;
+  background: var(--surface);
+  touch-action: pan-y;
+}
+.swipe-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.swipe-bg-left {
+  justify-content: flex-end;
+  background: var(--error);
+}
+.swipe-bg-right {
+  justify-content: flex-start;
+  background: var(--primary);
+}
+.toasts {
+  position: fixed;
+  z-index: 50;
+  inset: auto 12px calc(76px + env(safe-area-inset-bottom)) 12px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #2b2f2c;
+  color: #fff;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  pointer-events: auto;
+}
+.toast .link-text {
+  color: #8be0b0;
+  font-weight: 700;
+}

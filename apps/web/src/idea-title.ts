@@ -27,3 +27,21 @@ export function titleFromLink(link: string): string {
 }
 
 export const isWebLink = (value: string): boolean => /^https?:\/\/\S+$/i.test(value.trim());
+
+/** One idea per non-empty line; a link on the line becomes the idea's link, the rest of the line its title. */
+export function parseIdeaLines(text: string): { title: string; inspirationLink?: string }[] {
+  const seen = new Set<string>();
+  const ideas: { title: string; inspirationLink?: string }[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed === "") continue;
+    const link = trimmed.match(/https?:\/\/\S+/i)?.[0];
+    const rest = link ? trimmed.replace(link, "").trim() : trimmed;
+    const title = (rest === "" && link ? titleFromLink(link) : rest).slice(0, 200);
+    const key = title.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ideas.push(link ? { title, inspirationLink: link } : { title });
+  }
+  return ideas;
+}

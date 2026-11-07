@@ -17,9 +17,10 @@ import { relativeTime } from "./dates";
 import { DraftReview } from "./ImportPanel";
 import { claudeSearchUrl } from "./claude-search";
 import { ResearchPanel, SearchButton, useIdeaResearch } from "./IdeaResearch";
-import { isWebLink as isLinkText, titleFromLink } from "./idea-title";
+import { isWebLink as isLinkText, parseIdeaLines, titleFromLink } from "./idea-title";
 import { Loading } from "./Loading";
 import { researchSeen, useResearchActivity } from "./research-activity";
+import { SwipeRow } from "./SwipeRow";
 
 const MESSAGES: Record<string, string> = {
   empty_title: "Bitte einen Titel eingeben.",
@@ -30,6 +31,9 @@ const MESSAGES: Record<string, string> = {
 const messageFor = (e: unknown): string =>
   MESSAGES[e instanceof IdeaFailed ? e.reason : "unavailable"] ??
   "Das hat nicht geklappt. Bitte später noch einmal versuchen.";
+
+/** How long a swiped-away idea can be taken back before it is deleted. */
+const UNDO_MS = 6000;
 
 /** Only web links become links: the text is a member's, and `javascript:` must never be clickable. */
 const isWebLink = (value: string): boolean => /^https?:\/\//i.test(value);
@@ -160,6 +164,7 @@ function IdeaCard({
   onOpen,
   onClose,
   onChanged,
+  onArchive,
   onDraft,
 }: {
   idea: Idea;
@@ -167,6 +172,8 @@ function IdeaCard({
   onOpen: () => void;
   onClose: () => void;
   onChanged: () => void;
+  /** The row was swiped away: the list takes it off and offers to bring it back before it is deleted for good. */
+  onArchive: () => void;
   onDraft: (draft: RecipeDraft) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -201,65 +208,72 @@ function IdeaCard({
         }
       }}
     >
-      <div className="idea-row">
-        <Avatar member={idea.addedBy} />
-        <div className="idea-main">
-          <h3>
+      <SwipeRow
+        left="Löschen"
+        onLeft={onArchive}
+        {...(idea.isStale ? { right: "Behalten", onRight: () => keep.mutate() } : {})}
+        disabled={expanded || locked}
+      >
+        <div className="idea-row">
+          <Avatar member={idea.addedBy} />
+          <div className="idea-main">
+            <h3>
+              <button
+                type="button"
+                ref={toggle}
+                className="idea-toggle-row"
+                aria-expanded={expanded}
+                aria-controls={panelId}
+                aria-describedby={metaId}
+                onClick={() => {
+                  if (pinned) return;
+                  if (open) onClose();
+                  else onOpen();
+                }}
+              >
+                {idea.title}
+              </button>
+            </h3>
+            <p className="idea-meta" id={metaId}>
+              {idea.addedBy.name} · {relativeTime(idea.addedAt)}
+              {idea.isStale && <span className="badge stale-badge">veraltet</span>}
+              {research.searching ? (
+                <span className="badge searching" role="status">
+                  <span className="spinner" aria-hidden="true" />
+                  Suche läuft …
+                </span>
+              ) : (
+                idea.candidates.length > 0 && (
+                  <span className="badge">
+                    {idea.candidates.length} {idea.candidates.length === 1 ? "Vorschlag" : "Vorschläge"}
+                  </span>
+                )
+              )}
+              {link && !expanded && (
+                <>
+                  {" · "}
+                  <a className="idea-link" href={link} target="_blank" rel="noopener noreferrer">
+                    Inspiration ansehen
+                  </a>
+                </>
+              )}
+            </p>
+            {idea.note && !expanded && <p className="idea-note">{idea.note}</p>}
+          </div>
+          {idea.isStale && !confirming && (
             <button
               type="button"
-              ref={toggle}
-              className="idea-toggle-row"
-              aria-expanded={expanded}
-              aria-controls={panelId}
-              aria-describedby={metaId}
-              onClick={() => {
-                if (pinned) return;
-                if (open) onClose();
-                else onOpen();
-              }}
+              className="small idea-keep"
+              disabled={busy}
+              aria-label={`${idea.title} behalten`}
+              onClick={() => keep.mutate()}
             >
-              {idea.title}
+              Behalten
             </button>
-          </h3>
-          <p className="idea-meta" id={metaId}>
-            {idea.addedBy.name} · {relativeTime(idea.addedAt)}
-            {idea.isStale && <span className="badge stale-badge">veraltet</span>}
-            {research.searching ? (
-              <span className="badge searching" role="status">
-                <span className="spinner" aria-hidden="true" />
-                Suche läuft …
-              </span>
-            ) : (
-              idea.candidates.length > 0 && (
-                <span className="badge">
-                  {idea.candidates.length} {idea.candidates.length === 1 ? "Vorschlag" : "Vorschläge"}
-                </span>
-              )
-            )}
-            {link && !expanded && (
-              <>
-                {" · "}
-                <a className="idea-link" href={link} target="_blank" rel="noopener noreferrer">
-                  Inspiration ansehen
-                </a>
-              </>
-            )}
-          </p>
-          {idea.note && !expanded && <p className="idea-note">{idea.note}</p>}
+          )}
+          <Chevron open={expanded} />
         </div>
-        {idea.isStale && !confirming && (
-          <button
-            type="button"
-            className="small idea-keep"
-            disabled={busy}
-            aria-label={`${idea.title} behalten`}
-            onClick={() => keep.mutate()}
-          >
-            Behalten
-          </button>
-        )}
-        <Chevron open={expanded} />
-      </div>
+      </SwipeRow>
       {failure && (
         <p role="alert" className="error idea-panel">
           {messageFor(failure)}
@@ -363,16 +377,28 @@ function IdeaCard({
 function QuickAdd({
   pending,
   error,
+  known,
+  bulk,
   onAdd,
+  onAddMany,
   onMore,
 }: {
   pending: boolean;
   error: string | null;
+  /** Lower-cased titles of the ideas that exist, so a pasted list does not add them twice. */
+  known: ReadonlySet<string>;
+  bulk: { done: number; total: number; failed: number } | null;
   onAdd: (idea: IdeaInput, done: () => void) => void;
+  onAddMany: (ideas: IdeaInput[], done: () => void) => void;
   onMore: (prefill: { title: string; inspirationLink?: string }) => void;
 }) {
   const [text, setText] = useState("");
   const typed = text.trim();
+  // Several lines (a list pasted from a note) become one idea each.
+  const lines = parseIdeaLines(text);
+  const many = lines.length > 1;
+  const fresh = lines.filter((l) => !known.has(l.title.toLowerCase()));
+  const running = bulk !== null && bulk.done < bulk.total;
   const isLink = isLinkText(typed);
   const guess = isLink ? titleFromLink(typed) : typed;
   const prefill = isLink ? { title: guess, inspirationLink: typed } : { title: guess };
@@ -382,24 +408,50 @@ function QuickAdd({
       onSubmit={(ev) => {
         ev.preventDefault();
         if (typed === "") return;
+        if (many) {
+          if (fresh.length > 0 && !running) onAddMany(fresh, () => setText(""));
+          return;
+        }
         onAdd(isLink ? { title: guess, inspirationLink: typed } : { title: typed }, () => setText(""));
       }}
     >
       <div className="quick-add-row">
-        <input
-          type="text"
+        <textarea
+          rows={many ? Math.min(lines.length, 6) : 1}
           value={text}
-          maxLength={2000}
+          maxLength={20000}
           placeholder="Neue Idee oder Link einfügen …"
           aria-label="Neue Idee"
           enterKeyHint="done"
           onChange={(ev) => setText(ev.target.value)}
+          onKeyDown={(ev) => {
+            // Enter adds, as in the one-line field it was; Shift+Enter starts another line of a list.
+            if (ev.key === "Enter" && !ev.shiftKey) {
+              ev.preventDefault();
+              ev.currentTarget.form?.requestSubmit();
+            }
+          }}
         />
-        <button type="submit" disabled={pending || typed === ""}>
-          Hinzufügen
+        <button type="submit" disabled={pending || running || typed === "" || (many && fresh.length === 0)}>
+          {many ? `${fresh.length} Ideen hinzufügen` : "Hinzufügen"}
         </button>
       </div>
-      {isLink && (
+      {many && (
+        <p className="muted quick-add-hint">
+          {lines.length} Zeilen erkannt
+          {fresh.length < lines.length && ` – ${lines.length - fresh.length} davon gibt es schon`}.
+        </p>
+      )}
+      {bulk && (
+        <p role="status" className={bulk.failed > 0 ? "error" : "muted"}>
+          {running
+            ? `Wird hinzugefügt … ${bulk.done} von ${bulk.total}`
+            : bulk.failed > 0
+              ? `${bulk.failed} von ${bulk.total} Ideen konnten nicht hinzugefügt werden. Bitte noch einmal versuchen: Vorhandene werden übersprungen.`
+              : null}
+        </p>
+      )}
+      {!many && isLink && (
         <p className="muted quick-add-hint">
           Link erkannt – Titel „{guess}“.{" "}
           <button type="button" className="link-text" onClick={() => onMore(prefill)}>
@@ -407,7 +459,7 @@ function QuickAdd({
           </button>
         </p>
       )}
-      {!isLink && typed !== "" && (
+      {!many && !isLink && typed !== "" && (
         <p className="muted quick-add-hint">
           <button type="button" className="link-text" onClick={() => onMore(prefill)}>
             Mit Notiz oder Link
@@ -544,9 +596,78 @@ export function IdeasPanel({ meId }: { meId?: string }) {
   // The stale ideas the cleanup walks through, fixed when it starts.
   const [cleanup, setCleanup] = useState<string[] | null>(null);
   const add = useMutation({ mutationFn: addIdea, onSettled: changed });
+  // A pasted list: one idea after the other, so the order of the list is the order they were noted in.
+  const [bulk, setBulk] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const addMany = async (inputs: IdeaInput[], clear: () => void) => {
+    let failed = 0;
+    setBulk({ done: 0, total: inputs.length, failed });
+    for (const [n, input] of inputs.entries()) {
+      try {
+        await addIdea(input);
+      } catch {
+        failed++;
+      }
+      setBulk({ done: n + 1, total: inputs.length, failed });
+    }
+    await changed();
+    if (failed === 0) {
+      clear();
+      setBulk(null);
+    }
+  };
+  // Swiped away: hidden at once, deleted for good after a few seconds unless the member takes it back.
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  const [undoable, setUndoable] = useState<Idea[]>([]);
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const finish = useRef((_id: string) => {});
+  finish.current = (id: string) => {
+    const timer = timers.current.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    timers.current.delete(id);
+    setUndoable((list) => list.filter((i) => i.id !== id));
+    // If the server refuses, the idea is back with the next fetch.
+    void deleteIdea(id)
+      .catch(() => {})
+      .then(() => changed())
+      .then(() =>
+        setHidden((set) => {
+          const rest = new Set(set);
+          rest.delete(id);
+          return rest;
+        }),
+      );
+  };
+  const archive = (idea: Idea) => {
+    setHidden((set) => new Set(set).add(idea.id));
+    setUndoable((list) => [...list, idea]);
+    setOpenId((id) => (id === idea.id ? null : id));
+    timers.current.set(
+      idea.id,
+      setTimeout(() => finish.current(idea.id), UNDO_MS),
+    );
+  };
+  const undo = (id: string) => {
+    const timer = timers.current.get(id);
+    if (timer !== undefined) clearTimeout(timer);
+    timers.current.delete(id);
+    setUndoable((list) => list.filter((i) => i.id !== id));
+    setHidden((set) => {
+      const rest = new Set(set);
+      rest.delete(id);
+      return rest;
+    });
+  };
+  // Leaving the tab means "yes, delete": nothing waits on a screen that is gone.
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const id of [...pending.keys()]) finish.current(id);
+    };
+  }, []);
   // A picked candidate or an own source leads into the import's review, which carries the idea along.
   const [review, setReview] = useState<{ ideaId: string; draft: RecipeDraft } | null>(null);
-  const all = ideas.data ?? [];
+  const all = (ideas.data ?? []).filter((i) => !hidden.has(i.id));
   const matches: Record<Filter, (i: Idea) => boolean> = {
     all: () => true,
     stale: (i) => i.isStale,
@@ -578,6 +699,7 @@ export function IdeasPanel({ meId }: { meId?: string }) {
       onOpen={() => setOpenId(idea.id)}
       onClose={() => setOpenId((id) => (id === idea.id ? null : id))}
       onChanged={changed}
+      onArchive={() => archive(idea)}
       onDraft={(draft) => setReview({ ideaId: idea.id, draft })}
     />
   );
@@ -614,7 +736,10 @@ export function IdeasPanel({ meId }: { meId?: string }) {
         <QuickAdd
           pending={add.isPending}
           error={add.isError ? messageFor(add.error) : null}
+          known={new Set(all.map((i) => i.title.trim().toLowerCase()))}
+          bulk={bulk}
           onAdd={(input, done) => add.mutate(input, { onSuccess: done })}
+          onAddMany={addMany}
           onMore={(prefill) => {
             add.reset();
             setForm(prefill);
@@ -686,6 +811,18 @@ export function IdeasPanel({ meId }: { meId?: string }) {
             </ul>
           )}
         </>
+      )}
+      {undoable.length > 0 && (
+        <div className="toasts">
+          {undoable.map((i) => (
+            <p key={i.id} role="status" className="toast">
+              <span>„{i.title}“ gelöscht</span>
+              <button type="button" className="link-text" onClick={() => undo(i.id)}>
+                Rückgängig
+              </button>
+            </p>
+          ))}
+        </div>
       )}
     </section>
   );
