@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.37](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.36...weekly-planner-v0.1.37) (2026-11-07)
+
+
+### Features
+
+* **web:** link to search for recipes in Claude ([#64](https://github.com/DSIW/weekly-planner/issues/64)) ([eff02f4](https://github.com/DSIW/weekly-planner/commit/eff02f4e6a068c1849563da23338f3193017cb33))
+
 ## [0.1.36](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.35...weekly-planner-v0.1.36) (2026-11-07)
 
 
