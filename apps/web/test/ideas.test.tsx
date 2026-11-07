@@ -294,7 +294,7 @@ describe("the expandable rows", () => {
       within(panel)
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["Rezepte suchen", "Eigenen Link einfügen", "Bearbeiten", "Löschen"]);
+    ).toEqual(["Rezepte suchen", "Eigenen Link", "Bearbeiten", "Löschen"]);
     expect(within(panel).getByRole("link", { name: "In Claude suchen" })).toBeInTheDocument();
     // the full note and the link are shown in the panel (once, not twice)
     expect(within(panel).getByText("mit Salbei")).toBeInTheDocument();
@@ -370,8 +370,8 @@ describe("the expandable rows", () => {
     expect(claude.getAttribute("href")).toMatch(/^https:\/\/claude\.ai\/new\?q=/);
     expect(claude).toHaveAttribute("target", "_blank");
     expect(claude).toHaveAttribute("rel", "noopener noreferrer");
-    expect(claude).toHaveAccessibleDescription(/Link danach unter/);
-    expect(screen.getByText(/Link danach unter/)).toBeVisible();
+    expect(claude).toHaveAccessibleDescription(/Antwort danach über/);
+    expect(screen.getByText(/Antwort danach über/)).toBeVisible();
     expect(calls.length).toBe(before);
   });
 

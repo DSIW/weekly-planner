@@ -100,7 +100,7 @@ export function SearchButton({
   return (
     <button
       type="button"
-      className="with-icon"
+      className="act act-primary act-wide"
       disabled={disabled || busy}
       onClick={() => {
         onStart();
@@ -181,8 +181,23 @@ export function ResearchPanel({
         </form>
       )}
       {candidates.length > 0 && !own && (
-        <button type="button" className="secondary small idea-toggle" onClick={() => setClosed(!closed)}>
+        <button type="button" className="toggle-row" onClick={() => setClosed(!closed)}>
           {closed ? `Vorschläge zeigen (${candidates.length})` : "Vorschläge ausblenden"}
+          <svg
+            className={closed ? "chevron" : "chevron open"}
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
         </button>
       )}
       {showCandidates && (

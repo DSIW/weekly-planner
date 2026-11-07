@@ -1480,7 +1480,7 @@ button.idea-toggle-row:focus-visible::after {
   transform: rotate(180deg);
 }
 .idea-expanded {
-  padding: 8px 10px;
+  padding: 12px;
   border-left: 3px solid color-mix(in srgb, var(--primary) 60%, var(--outline));
   background: color-mix(in srgb, var(--primary) 6%, var(--surface));
   border-radius: 0 8px 8px 0;
@@ -1514,28 +1514,75 @@ button.idea-toggle-row:focus-visible::after {
   display: grid;
   gap: 8px;
 }
-button.with-icon,
-a.button-link {
+/* One look for every action of an expanded idea (button or link): colours are always set together. */
+.act {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  min-height: 44px;
+  min-height: 40px;
   box-sizing: border-box;
-}
-a.button-link {
-  padding: 8px 14px;
+  padding: 0 12px;
   border: 1px solid var(--outline);
-  border-radius: 999px;
-  color: var(--primary-ink);
-  font-weight: 600;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
   font-size: 0.9rem;
+  font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
 }
-a.button-link:focus-visible {
+.act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.act:focus-visible {
   outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
-.idea-expanded .idea-actions > :is(button, a) {
-  min-height: 44px;
+.act.act-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.act.act-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--error);
+}
+.act-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.act.act-wide {
+  width: 100%;
+}
+.idea-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+button.toggle-row {
+  all: unset;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  color: var(--primary-ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.toggle-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button.toggle-row .chevron {
+  color: inherit;
 }
 .idea-panel {
   display: grid;
@@ -1552,7 +1599,7 @@ a.button-link:focus-visible {
   flex-wrap: wrap;
   gap: 8px;
 }
-.idea-panel :is(.idea-actions, .candidate-actions) button,
+.idea-panel :is(.idea-actions, .candidate-actions) button:not(.act),
 .ideas > .idea-form button {
   padding: 8px 14px;
   font-size: 0.9rem;
@@ -1560,9 +1607,6 @@ a.button-link:focus-visible {
 button.danger {
   background: var(--error);
   color: var(--surface);
-}
-button.idea-toggle {
-  justify-self: start;
 }
 
 /* Research candidates of an idea */

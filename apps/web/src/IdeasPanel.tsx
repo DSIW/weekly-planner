@@ -107,6 +107,26 @@ function IdeaForm({
   );
 }
 
+/** A 16px outline icon for the action buttons; `d` is its path. */
+function ActIcon({ d }: { d: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d={d} />
+    </svg>
+  );
+}
+
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -241,45 +261,50 @@ function IdeaCard({
               </a>
             </p>
           )}
-          <div className="idea-actions">
-            <SearchButton research={research} disabled={busy || confirming} onStart={onOpen} />
+          <SearchButton research={research} disabled={busy || confirming} onStart={onOpen} />
+          <div className="act-grid">
             <button
               type="button"
-              className="secondary"
+              className="act"
+              aria-label="Eigenen Link einfügen"
               disabled={locked}
               onClick={() => {
                 research.setClosed(false);
                 research.setOwn(true);
               }}
             >
-              Eigenen Link einfügen
+              <ActIcon d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+              Eigenen Link
             </button>
             <a
-              className="button-link"
+              className="act"
               href={claudeSearchUrl(idea)}
               target="_blank"
               rel="noopener noreferrer"
               aria-describedby={hintId}
             >
+              <ActIcon d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
               In Claude suchen
             </a>
-            <button type="button" className="secondary" disabled={locked} onClick={() => setEditing(true)}>
+            <button type="button" className="act" disabled={locked} onClick={() => setEditing(true)}>
+              <ActIcon d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3" />
               Bearbeiten
             </button>
             <button
               type="button"
-              className="secondary"
+              className="act act-quiet"
               disabled={locked}
               onClick={() => {
                 remove.reset();
                 setConfirming(true);
               }}
             >
+              <ActIcon d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5" />
               Löschen
             </button>
           </div>
           <p id={hintId} className="muted idea-hint">
-            Link danach unter „Eigenen Link einfügen“ einfügen
+            Antwort danach über „Eigenen Link einfügen“ einfügen.
           </p>
           {editing && (
             <IdeaForm
