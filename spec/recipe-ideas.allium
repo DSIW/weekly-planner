@@ -1,0 +1,327 @@
+-- allium: 3
+-- recipe-ideas.allium
+
+-- Scope: Ideas for dishes the household might cook some day ("Kürbisgnocchi",
+--   "etwas mit Kürbis"), noted before there is a recipe for them, until they
+--   become a recipe or are given up.
+-- Includes: noting and editing an idea, research by a language model that
+--   proposes candidate recipes, handing a candidate or a member's own source
+--   to the import, letting go of an idea once its recipe exists, and marking
+--   ideas nobody has touched for a long time for cleanup.
+-- Excludes:
+--   - Reading, drafting, reviewing and creating the recipe
+--     (recipe-import.allium; an idea only hands it a source)
+--   - Planning (weekly-planning.allium sees the created recipe like any
+--     imported one, "new" tag included; an idea itself is never suggested)
+--   - Deleting ideas on its own: staleness only marks
+-- Dependencies: recipe-import.allium
+
+use "./recipe-import.allium" as import
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity Member {
+    name: String
+    -- The member's own picture in KitchenOwl, when they have set one. Shown
+    -- beside who noted an idea; without one the name's initial stands in.
+    avatar: String?
+}
+
+------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+-- One recipe the research model proposes for an idea, as it answered,
+-- after the checks in ReplaceCandidates.
+value CandidateProposal {
+    title: String
+    link: String
+    summary: String
+}
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+-- Ideas belong to the household: either member may edit, research, pick for
+-- or delete any idea, whoever noted it.
+entity RecipeIdea {
+    title: String                 -- free text, a dish or only a direction
+    note: String?
+    inspiration_link: String?     -- where the idea came from; shown, and read by research (ResearchIdea)
+    added_by: Member
+    added_at: Timestamp
+    -- Moved on by what a member does with the idea (edit, research, pick,
+    -- keep); merely looking at it does not count.
+    last_touched_at: Timestamp
+
+    candidates: IdeaCandidate with idea = this
+
+    -- Derived
+    -- Only a mark: a stale idea is listed for cleanup and stays until a
+    -- member keeps or deletes it.
+    is_stale: last_touched_at + config.idea_stale_after <= now
+}
+
+-- A recipe the research proposed for an idea. Its link comes from the model
+-- and is not trusted: the server reads it only as a source for the import,
+-- under the import's rules or not at all. The member may open it in their own
+-- browser (see IdeaList).
+entity IdeaCandidate {
+    idea: RecipeIdea
+    proposal: CandidateProposal
+}
+
+-- A research that brought at least one usable candidate, kept to count
+-- against the member's hourly limit. An attempt whose answer was unusable
+-- (the model failed, its answer did not fit, or no candidate survived the
+-- checks) leaves no ResearchRequest and so does not count.
+entity ResearchRequest {
+    requested_by: Member
+    requested_at: Timestamp
+}
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+config {
+    max_candidates: Integer = 5
+    idea_stale_after: Duration = 8.weeks
+    -- Per member, counting only researches that brought candidates. Separate
+    -- from the import's drafts allowance (import/config.max_drafts_per_hour),
+    -- which picks and own sources draw on.
+    max_research_per_hour: Integer = 20
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+rule NoteIdea {
+    when: NoteIdea(member, title, note?, inspiration_link?)
+    requires: title != ""
+    ensures: RecipeIdea.created(
+        title: title,
+        note: note,
+        inspiration_link: inspiration_link,
+        added_by: member,
+        added_at: now,
+        last_touched_at: now
+    )
+}
+
+-- Editing keeps who noted the idea and when; its candidates stay.
+rule EditIdea {
+    when: EditIdea(member, idea, title, note?, inspiration_link?)
+    requires: title != ""
+    ensures:
+        idea.title = title
+        idea.note = note
+        idea.inspiration_link = inspiration_link
+        idea.last_touched_at = now
+}
+
+-- The research model gets the idea's title and note and, when the idea has
+-- an inspiration link, the page behind it; nothing of the household's. The
+-- inspiration link is fetched only under the import's safe-fetch rules (see
+-- import/ReadRecipe: public addresses, bounded redirects, size and time
+-- limits, HTML only). A link that cannot be fetched under those rules does
+-- not fail the research: it proceeds with title and note only. The model may
+-- search the web, so the inspiration page and whatever it finds are read the
+-- way the import reads a page: as material, never as instructions.
+-- Only researches that brought usable candidates count against the limit
+-- (see CountUsefulResearch). The limit is checked when the member asks, the
+-- count grows when the answer arrives; researches running at the same time
+-- all pass the same check, so a member may overshoot the limit by the
+-- researches they had running at once. That overshoot is accepted.
+rule ResearchIdea {
+    when: ResearchIdea(member, idea)
+    let recent = ResearchRequests where requested_by = member and requested_at + 1.hour > now
+    requires: recent.count < config.max_research_per_hour
+    let inspiration = inspiration_text(idea.inspiration_link)   -- null when absent or not fetchable
+    ensures:
+        CandidatesFound(
+            member: member,
+            idea: idea,
+            found: candidates_for(idea.title, idea.note, inspiration)
+        )
+}
+
+-- A research counts against the member's limit only once it brought at least
+-- one usable candidate, whether or not the idea still exists to take them.
+rule CountUsefulResearch {
+    when: CandidatesFound(member, idea, found)
+    requires: found.count >= 1
+    ensures: ResearchRequest.created(requested_by: member, requested_at: now)
+}
+
+-- A failed or malformed answer arrives with no candidates, like an answer
+-- with none that survived the checks. The idea keeps its old candidates and
+-- its clock, nothing counts against the limit, and the member is told that
+-- nothing was found and may ask again.
+rule NothingFound {
+    when: CandidatesFound(member, idea, found)
+    requires: found.count = 0
+    ensures: ResearchFoundNothing(member: member, idea: idea)
+}
+
+-- A new research replaces the earlier candidates. An answer that fails,
+-- does not fit the candidates' shape or brings no candidate changes nothing
+-- here (see NothingFound).
+rule ReplaceCandidates {
+    when: CandidatesFound(member, idea, found)
+    -- The idea may have been deleted or realised while the model worked.
+    requires: exists idea
+    requires: found.count >= 1
+    -- Before this rule sees the answer, each proposed candidate is checked
+    -- on its own, and one that fails is dropped while the others stay:
+    --   - its title and summary are stripped of links and markup;
+    --   - a candidate whose title is then empty (or only whitespace) is
+    --     dropped (see invariant CandidatesHaveTitles);
+    --   - a candidate whose link is not an http(s) web link is dropped.
+    -- The model is asked for at most config.max_candidates. The failed
+    -- candidates are dropped first; of those that pass, the first
+    -- config.max_candidates in the model's order are kept and any beyond are
+    -- dropped. `found` is what is left.
+    requires: found.count <= config.max_candidates
+    ensures:
+        for old in idea.candidates:
+            not exists old
+        for c in found:
+            IdeaCandidate.created(idea: idea, proposal: c)
+        idea.last_touched_at = now
+}
+
+-- Picking a candidate starts the import with its link. The import decides
+-- whether the link may be read at all (safe-fetch rules) and whether the
+-- member still has drafts left (import/config.max_drafts_per_hour); a link
+-- it refuses leaves the member free to pick another or use their own source.
+-- The pick touches the idea even when the import then refuses: the member
+-- acted on it.
+rule PickCandidate {
+    when: PickCandidate(member, candidate)
+    ensures:
+        candidate.idea.last_touched_at = now
+        import/ReadRecipe(member: member, source: candidate.proposal.link)
+}
+
+-- Instead of a candidate, the member hands over a recipe they found
+-- themselves: a link or pasted text, read like any other import source.
+-- Exactly one of the two must be given; a value that is empty or only
+-- whitespace counts as not given (it arrives here as null). With neither or
+-- both, the member is told to give one source and nothing happens: the idea
+-- is left completely unchanged, its last_touched_at included, and nothing
+-- reaches the import. With one source, the idea is touched even when the
+-- import then refuses it (unsafe link, unreadable, or drafts allowance
+-- used up): the member acted on the idea.
+rule UseOwnRecipe {
+    when: UseOwnRecipe(member, idea, link?, text?)
+    requires: (link != null and text = null) or (link = null and text != null)
+    ensures:
+        idea.last_touched_at = now
+        import/ReadRecipe(member: member, source: link ?? text)
+}
+
+-- An idea has served its purpose once a recipe was created for it. The
+-- recipe was reviewed and created by the import like any other; the idea
+-- and its candidates go. If the idea was deleted during the review, the
+-- recipe is created all the same.
+rule ForgetRealisedIdea {
+    when: import/KitchenOwlRecipeCreated(draft, idea)
+    requires: exists idea
+    ensures:
+        for c in idea.candidates:
+            not exists c
+        not exists idea
+}
+
+-- Keeping a stale idea starts its clock again.
+rule KeepIdea {
+    when: KeepIdea(member, idea)
+    requires: idea.is_stale
+    ensures: idea.last_touched_at = now
+}
+
+-- A member may drop an idea at any time, stale or not.
+rule DeleteIdea {
+    when: DeleteIdea(member, idea)
+    ensures:
+        for c in idea.candidates:
+            not exists c
+        not exists idea
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant BoundedCandidates {
+    for idea in RecipeIdeas:
+        idea.candidates.count <= config.max_candidates
+}
+
+invariant TouchedNoEarlierThanAdded {
+    for idea in RecipeIdeas:
+        idea.last_touched_at >= idea.added_at
+}
+
+-- A candidate without a title never reaches an idea (see ReplaceCandidates).
+invariant CandidatesHaveTitles {
+    for c in IdeaCandidates:
+        c.proposal.title != ""
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor HouseholdMember {
+    identified_by: Member where true
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface IdeaList {
+    facing viewer: HouseholdMember
+
+    exposes:
+        for idea in RecipeIdeas:
+            idea.title
+            idea.note
+            idea.inspiration_link
+            idea.added_by.name
+            idea.added_by.avatar
+            idea.added_at
+            idea.is_stale
+            for c in idea.candidates:
+                c.proposal.title
+                c.proposal.link
+                c.proposal.summary
+
+    provides:
+        NoteIdea(viewer, title, note, inspiration_link)
+        EditIdea(viewer, idea, title, note, inspiration_link)
+        ResearchIdea(viewer, idea)
+        PickCandidate(viewer, candidate)
+        UseOwnRecipe(viewer, idea, link, text)
+        KeepIdea(viewer, idea)
+        DeleteIdea(viewer, idea)
+
+    @guarantee NoIdeaDeletedUnasked
+        -- An idea goes only when a member deletes it or a recipe was created
+        -- for it; being stale never removes it.
+
+    @guidance
+        -- Stale ideas are listed together for cleanup, each with keep and
+        -- delete. Picking a candidate or using an own source leads into the
+        -- import's draft review, which carries the idea along to
+        -- CreateImportedRecipe. A candidate's link is shown as a link the
+        -- member may open in their own browser to look at the page; the
+        -- server itself fetches it only through the import. A research that
+        -- found nothing is reported to the member as such.
+}

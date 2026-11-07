@@ -51,7 +51,7 @@ const recipes = [
 // What reached the fake KitchenOwl's write endpoints, and how it should behave on the next request.
 const written = { planner: [], list: [] };
 // What the import sent to KitchenOwl (recipes) and to the language model.
-const imported = { recipes: [], llm: [] };
+const imported = { recipes: [], llm: [], research: [] };
 // What the fake planner holds right now (a recipe taken off it in KitchenOwl is removed from here).
 const plannerHolds = [];
 const behaviour = { plannerStatus: 200, listHangs: false };
@@ -76,7 +76,13 @@ const kitchenowl = http.createServer((req, res) => {
       const name = String(req.headers.authorization ?? "").replace("Bearer t-", "");
       return members[name] ? send(200, { ...members[name], username: name }) : send(401, {});
     }
-    if (req.url === "/api/household/2") return send(200, { member: [{ id: 2 }, { id: 3 }] });
+    if (req.url === "/api/household/2")
+      return send(200, {
+        member: [
+          { id: 2, name: "Max", photo: "max.png" },
+          { id: 3, name: "AC", photo: null },
+        ],
+      });
     if (req.method === "GET" && req.url === "/api/household/2/recipe") return send(200, recipes);
     if (req.method === "POST" && req.url === "/api/household/2/planner/recipe") {
       if (behaviour.plannerStatus !== 200) return send(behaviour.plannerStatus, {});
@@ -102,7 +108,30 @@ const kitchenowl = http.createServer((req, res) => {
     }
     // A language model behind an OpenAI-compatible API, answering with a fixed recipe.
     if (req.method === "POST" && req.url === "/llm/chat/completions") {
-      imported.llm.push({ auth: req.headers.authorization, body: JSON.parse(body) });
+      const asked = JSON.parse(body);
+      // The idea research (web search, candidates) is told apart by its schema.
+      if (asked.response_format?.json_schema?.name === "candidates") {
+        imported.research.push({ auth: req.headers.authorization, body: asked });
+        return send(200, {
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  candidates: [
+                    {
+                      title: "<b>Linsensuppe</b> klassisch http://evil.example",
+                      link: `http://127.0.0.1:${req.socket.localPort}/linsensuppe`,
+                      summary: "Schnell gemacht.",
+                    },
+                    { title: "Skript", link: "javascript:alert(1)", summary: "x" },
+                  ],
+                }),
+              },
+            },
+          ],
+        });
+      }
+      imported.llm.push({ auth: req.headers.authorization, body: asked });
       const recipe = {
         name: "Linsensuppe",
         subtitle: "Wärmt von innen",
@@ -130,6 +159,12 @@ const kitchenowl = http.createServer((req, res) => {
       written.list.push(JSON.parse(body));
       // A hanging answer stands for the process dying between sending a request and hearing back.
       return behaviour.listHangs ? undefined : send(200, {});
+    }
+    if (req.url === "/api/upload/max.png") {
+      if (req.headers.authorization !== "Bearer service-token") return send(403, {});
+      res.setHeader("content-type", "image/png");
+      res.statusCode = 200;
+      return res.end(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     }
     if (req.url === "/api/upload/pasta.jpg") {
       if (req.headers.authorization !== "Bearer service-token") return send(401, {});
@@ -781,6 +816,125 @@ try {
     assert.deepEqual(await own.json(), { error: "address_not_public" });
     assert.equal(imported.llm.length, 1, "a refused address never reaches the model");
   });
+
+  await step(
+    "ideas: either member notes, edits and deletes; names and pictures come from KitchenOwl; live",
+    async () => {
+      const controller = new AbortController();
+      const stream = await realFetch(`${origin()}/plan/api/events`, {
+        headers: { cookie: [...jars.get("ac")].map(([k, v]) => `${k}=${v}`).join("; ") },
+        signal: controller.signal,
+      });
+      const reader = stream.body.getReader();
+      let received = "";
+      const until = async (needle) => {
+        while (!received.includes(needle)) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          received += new TextDecoder().decode(value);
+        }
+      };
+      await until("event: ready");
+
+      assert.deepEqual(await as("ac", () => web.fetchIdeas()), []);
+      const { idea } = await as("dsiw", () =>
+        web.addIdea({ title: "Kürbisgnocchi", note: "mit Salbei", inspirationLink: "https://example.org/kuerbis" }),
+      );
+      await until('data: {"type":"IdeasChanged"}');
+
+      const [seen] = await as("ac", () => web.fetchIdeas());
+      assert.equal(seen.title, "Kürbisgnocchi");
+      assert.equal(seen.note, "mit Salbei");
+      assert.deepEqual(seen.addedBy, { id: "2", name: "Max", avatar: "max.png" });
+      assert.equal(seen.isStale, false);
+      assert.ok(Math.abs(seen.addedAt - Date.now()) < 60_000);
+
+      const avatar = await as("ac", () =>
+        realFetch(new URL(web.memberAvatarUrl("2", "max.png"), origin()), {
+          headers: { cookie: [...jars.get("ac")].map(([k, v]) => `${k}=${v}`).join("; ") },
+        }),
+      );
+      assert.equal(avatar.status, 200);
+      assert.equal(avatar.headers.get("content-type"), "image/png");
+      assert.deepEqual([...new Uint8Array(await avatar.arrayBuffer())], [0x89, 0x50, 0x4e, 0x47]);
+      const none = await realFetch(`${origin()}/plan/api/members/3/avatar`, {
+        headers: { cookie: [...jars.get("ac")].map(([k, v]) => `${k}=${v}`).join("; ") },
+      });
+      assert.equal(none.status, 404, "a member without a picture has none");
+      const anon = await realFetch(`${origin()}/plan/api/members/2/avatar`);
+      assert.equal(anon.status, 401, "only members see pictures");
+
+      const edited = await as("ac", () => web.editIdea(idea.id, { title: "Gnocchi" }));
+      assert.equal(edited.idea.title, "Gnocchi");
+      assert.equal(edited.idea.note, null);
+      assert.equal(edited.idea.addedBy.name, "Max", "editing keeps who noted it");
+
+      const early = await as("ac", () => web.keepIdea(idea.id).catch((e) => e));
+      assert.equal(early.reason, "not_stale", "only a stale idea is kept");
+      const empty = await as("ac", () => web.addIdea({ title: "  " }).catch((e) => e));
+      assert.equal(empty.reason, "empty_title");
+      const evil = await as("ac", () =>
+        web.addIdea({ title: "x", inspirationLink: "javascript:alert(1)" }).catch((e) => e),
+      );
+      assert.equal(evil.reason, "invalid_request");
+      assert.equal((await as("ac", () => web.fetchIdeas())).length, 1);
+
+      await as("ac", () => web.deleteIdea(idea.id));
+      assert.deepEqual(await as("dsiw", () => web.fetchIdeas()), []);
+      const gone = await as("dsiw", () => web.deleteIdea(idea.id).catch((e) => e));
+      assert.equal(gone.reason, "idea_not_found");
+      const outside = await as("nobody", () => web.fetchIdeas().catch((e) => e));
+      assert.equal(outside.reason, "not_signed_in", "someone not signed in gets nothing");
+      controller.abort();
+    },
+  );
+
+  await step(
+    "ideas: research finds candidates, a refused link leaves the idea, an own source is created and the idea goes",
+    async () => {
+      const { idea } = await as("dsiw", () =>
+        // A private address is not read (safe fetch): the research goes on with title and note only.
+        web.addIdea({ title: "Linsensuppe", note: "ohne Sahne", inspirationLink: "http://127.0.0.1:9/inspo" }),
+      );
+      const found = await as("ac", () => web.researchIdea(idea.id));
+      assert.deepEqual(
+        found.candidates.map((c) => [c.title, c.link.startsWith("http://127.0.0.1")]),
+        [["Linsensuppe klassisch", true]],
+        "markup and links are cleaned from the title, a link that is not http(s) is dropped",
+      );
+      const [asked] = imported.research;
+      assert.equal(asked.auth, "Bearer llm-key");
+      assert.deepEqual(asked.body.plugins, undefined, "the fake model is not OpenRouter: no plugin option");
+      const content = JSON.stringify(asked.body.messages);
+      assert.ok(content.includes("Linsensuppe") && content.includes("ohne Sahne"));
+      assert.ok(!content.includes("127.0.0.1:9"), "an inspiration link that cannot be read adds nothing");
+      assert.ok(!content.includes("Zwiebel") && !content.includes("Max"), "no household data reaches the model");
+      assert.equal(imported.recipes.length, 1, "researching creates nothing");
+
+      const refused = await as("ac", () => web.pickCandidate(idea.id, 0).catch((e) => e));
+      assert.equal(
+        refused.reason,
+        "invalid_address",
+        "the import refuses a link to a private address on a non-default port",
+      );
+      const bad = await as("ac", () => web.pickCandidate(idea.id, 7).catch((e) => e));
+      assert.equal(bad.reason, "no_such_candidate");
+
+      const draft = await as("ac", () =>
+        web.submitOwnSource(idea.id, { text: "Linsensuppe: 200 g Linsen. Linsen waschen, kochen." }),
+      );
+      assert.equal(draft.name, "Linsensuppe");
+      assert.equal((await as("ac", () => web.fetchIdeas())).length, 1, "the idea stays until the recipe is created");
+      const before = imported.recipes.length;
+      const created = await as("ac", () => web.createImport(draft, idea.id));
+      assert.equal(created.recipeId, 900 + before + 1);
+      assert.equal(imported.recipes.length, before + 1);
+      assert.ok(imported.recipes.at(-1).tags.includes("🆕 Neu"), "the recipe is new like any import");
+      assert.deepEqual(await as("dsiw", () => web.fetchIdeas()), [], "the idea is gone for both members");
+      const again = await as("ac", () => web.researchIdea(idea.id).catch((e) => e));
+      assert.equal(again.reason, "idea_not_found");
+    },
+  );
 
   await step("signing out ends the session", async () => {
     await as("dsiw", () => web.logout());

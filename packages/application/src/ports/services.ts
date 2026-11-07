@@ -8,7 +8,12 @@ import type {
   SessionId,
 } from "@weekly-planner/domain";
 
-export type DomainEvent = PlanningEvent | MealLogEvent;
+/** The recipe ideas changed (noted, edited, kept or deleted); phones showing them fetch the list again. */
+export interface IdeaEvent {
+  readonly type: "IdeasChanged";
+}
+
+export type DomainEvent = PlanningEvent | MealLogEvent | IdeaEvent;
 
 /** A date that holds a planned dinner, with the dinner's name for the form that shows it. */
 export interface TakenDate {

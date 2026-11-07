@@ -14,7 +14,7 @@ import {
   type RecipeSource,
   type RecipeWriter,
 } from "../src/index.js";
-import type { RecipeCatalog } from "../src/index.js";
+import type { Clock, RecipeCatalog } from "../src/index.js";
 import { ME, aRecipe } from "./support/in-memory.js";
 
 const vocabulary: Vocabulary = { items: ["Zwiebel", "Spaghetti"], tags: ["🍲 Suppe"] };
@@ -72,7 +72,14 @@ function setup(
     created,
     uploaded,
     shelf,
-    draft: new DraftRecipeImport({ source, extractor, writer, images: { fetcher, shelf } }),
+    draft: new DraftRecipeImport({
+      source,
+      extractor,
+      writer,
+      images: { fetcher, shelf },
+      requests: { add: async () => {}, listSince: async () => [] },
+      clock: { now: () => 0 } as Clock,
+    }),
     create: new CreateImportedRecipe({ writer, shelf }),
   };
 }

@@ -1,4 +1,4 @@
-import type { RecipeDraft, Vocabulary } from "@weekly-planner/domain";
+import type { MemberId, RecipeDraft, Vocabulary } from "@weekly-planner/domain";
 
 /** Why a link could not be read. */
 export type SourceFailure =
@@ -52,4 +52,11 @@ export interface RecipeWriter {
   vocabulary(): Promise<Vocabulary>;
   /** Creates the recipe, with its picture if given and accepted; returns its id there. */
   create(draft: RecipeDraft, image?: DraftImage): Promise<{ recipeId: number; photoAttached: boolean }>;
+}
+
+/** Port: the drafts members asked for (a model was about to be asked), kept to count against the hourly allowance. */
+export interface DraftRequestLog {
+  add(request: { requestedBy: MemberId; requestedAt: number }): Promise<void>;
+  /** Drafts asked for at or after `from` (epoch ms), oldest first. */
+  listSince(from: number): Promise<readonly { requestedBy: MemberId; requestedAt: number }[]>;
 }

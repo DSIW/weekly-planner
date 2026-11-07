@@ -1,8 +1,11 @@
-import { memberId } from "@weekly-planner/domain";
+import { memberId, recipeIdeaId } from "@weekly-planner/domain";
 import { z } from "zod";
 import { COMMAND_REJECTIONS, type RouteContext } from "./context.js";
 
-const importDraftBody = z.object({ address: z.string().max(2000).optional(), text: z.string().max(60_000).optional() });
+export const importDraftBody = z.object({
+  address: z.string().max(2000).optional(),
+  text: z.string().max(60_000).optional(),
+});
 const importMatchBody = z.object({ names: z.array(z.string().max(200)).max(60) });
 const importTagsBody = z.object({ names: z.array(z.string().max(200)).max(30) });
 const importSuggestBody = z.object({ kind: z.enum(["item", "tag"]), query: z.string().max(200) });
@@ -11,23 +14,24 @@ const importRelatedBody = z.object({
   ingredients: z.array(z.string().max(200)).max(60),
   source: z.string().max(2000).optional(),
 });
-const importCreateBody = z.object({ draft: z.record(z.string(), z.unknown()) });
-
-/** Drafts a member may ask for per hour: each one costs money at the language model, so a loop cannot run it dry. */
-const DRAFTS_PER_HOUR = 20;
+const importCreateBody = z.object({
+  draft: z.record(z.string(), z.unknown()),
+  // The idea this recipe realises: an id as the planner hands them out (UUIDs), nothing else.
+  idea: z
+    .string()
+    .regex(/^[0-9a-zA-Z-]{1,100}$/)
+    .optional(),
+});
 
 export function registerImportRoutes(ctx: RouteContext): void {
-  const { app, api, options, requireMember, now } = ctx;
-  const drafts = new Map<string, number[]>();
+  const { app, api, options, requireMember } = ctx;
+  // Every draft costs money at the language model: DraftRecipeImport holds the hourly allowance the import and the
+  // idea routes share.
   app.post(`${api}/import/draft`, async (req, reply) => {
     const member = requireMember(req, reply);
     if (!member) return reply;
     const body = importDraftBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_request" });
-    const at = now();
-    const recent = (drafts.get(member.id) ?? []).filter((t) => at - t < 3_600_000);
-    if (recent.length >= DRAFTS_PER_HOUR) return reply.code(429).send({ error: "rate_limited" });
-    drafts.set(member.id, [...recent, at]);
     const result = await options.draftRecipeImport.execute({
       member: memberId(member.id),
       ...(body.data.address === undefined ? {} : { address: body.data.address }),
@@ -97,8 +101,14 @@ export function registerImportRoutes(ctx: RouteContext): void {
     if (!member) return reply;
     const body = importCreateBody.safeParse(req.body);
     if (!body.success) return reply.code(400).send({ error: "invalid_request" });
-    const result = await options.createImportedRecipe.execute({ member: memberId(member.id), draft: body.data.draft });
+    const idea = body.data.idea === undefined ? undefined : recipeIdeaId(body.data.idea);
+    const result = await options.createImportedRecipe.execute({
+      member: memberId(member.id),
+      draft: body.data.draft,
+      ...(idea === undefined ? {} : { idea }),
+    });
     if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    if (idea !== undefined) await ctx.options.ideaEvents.publish([{ type: "IdeasChanged" }]);
     return reply.code(201).send({
       recipeId: result.value.recipeId,
       draft: result.value.draft,

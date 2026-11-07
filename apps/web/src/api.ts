@@ -432,5 +432,80 @@ export const relatedRecipes = async (draft: { name: string; ingredients: string[
 export const importImageUrl = (token: string) => `${base}/import/image/${token}`;
 
 /** Creates the recipe a member confirmed in KitchenOwl. */
-export const createImport = (draft: RecipeDraft) =>
-  importCall<{ recipeId: number; draft: RecipeDraft; photoAttached: boolean }>("/import/create", { draft });
+export const createImport = (draft: RecipeDraft, idea?: string) =>
+  importCall<{ recipeId: number; draft: RecipeDraft; photoAttached: boolean }>("/import/create", {
+    draft,
+    ...(idea === undefined ? {} : { idea }),
+  });
+
+/** One recipe idea, with who noted it. */
+export interface Idea {
+  id: string;
+  title: string;
+  note: string | null;
+  inspirationLink: string | null;
+  addedBy: {
+    id: string;
+    name: string /** Identifies the member's picture; null when they have none. */;
+    avatar: string | null;
+  };
+  /** Epoch milliseconds. */
+  addedAt: number;
+  /** Nobody touched it for weeks: marked for cleanup, never removed by itself. */
+  isStale: boolean;
+  /** What the last research found (at most 5). */
+  candidates: Candidate[];
+}
+
+/** A recipe the research proposes; the link is not trusted and only ever read by the server's import. */
+export interface Candidate {
+  title: string;
+  link: string;
+  summary: string;
+}
+
+export type IdeaInput = { title: string; note?: string; inspirationLink?: string };
+
+/** An idea action was refused; `reason` is the server's word for why. */
+export class IdeaFailed extends Error {
+  constructor(readonly reason: string) {
+    super(reason);
+  }
+}
+
+async function ideaCall<T>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, {
+      method,
+      credentials: "same-origin",
+      ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    });
+  } catch {
+    throw new IdeaFailed("unavailable");
+  }
+  if (res.ok) return (res.status === 204 ? undefined : await res.json()) as T;
+  throw new IdeaFailed(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "unavailable");
+}
+
+export const fetchIdeas = async (): Promise<Idea[]> => (await ideaCall<{ ideas: Idea[] }>("GET", "/ideas")).ideas;
+export const addIdea = (idea: IdeaInput) => ideaCall<{ idea: Idea }>("POST", "/ideas", idea);
+export const editIdea = (id: string, idea: IdeaInput) => ideaCall<{ idea: Idea }>("PUT", `/ideas/${id}`, idea);
+export const keepIdea = (id: string) => ideaCall<{ idea: Idea }>("POST", `/ideas/${id}/keep`);
+export const deleteIdea = (id: string) => ideaCall<void>("DELETE", `/ideas/${id}`);
+
+/** Asks the model (with web search) for candidates. Can take a minute. */
+export const researchIdea = async (id: string): Promise<Idea> =>
+  (await ideaCall<{ idea: Idea }>("POST", `/ideas/${id}/research`)).idea;
+/** Starts the import's draft with a candidate's link. */
+export const pickCandidate = async (id: string, candidate: number): Promise<RecipeDraft> =>
+  (await ideaCall<{ draft: RecipeDraft }>("POST", `/ideas/${id}/pick`, { candidate })).draft;
+/** Starts the import's draft with a link or text of the member's own. */
+export const submitOwnSource = async (
+  id: string,
+  source: { address: string } | { text: string },
+): Promise<RecipeDraft> => (await ideaCall<{ draft: RecipeDraft }>("POST", `/ideas/${id}/own`, source)).draft;
+
+/** A member's own KitchenOwl picture, served by the planner; `version` changes with the picture. */
+export const memberAvatarUrl = (memberId: string, version: string) =>
+  `${base}/members/${encodeURIComponent(memberId)}/avatar?v=${encodeURIComponent(version)}`;

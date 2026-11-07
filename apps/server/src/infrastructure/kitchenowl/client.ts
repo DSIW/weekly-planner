@@ -8,6 +8,7 @@ import {
   itemListSchema,
   nameListSchema,
   householdSchema,
+  householdMembersSchema,
   plannerListSchema,
   userSchema,
 } from "./schemas.js";
@@ -255,5 +256,12 @@ export class KitchenOwlClient {
     const parsed = householdSchema.safeParse(await this.get(`/household/${this.config.householdId}`));
     if (!parsed.success) throw new KitchenOwlError("unexpected household response shape");
     return parsed.data.member.map((m) => m.id);
+  }
+
+  /** The household's members with the file name of their own picture (null when they have none), read with the service token. */
+  async householdMembers(): Promise<{ id: number; name: string; photo: string | null }[]> {
+    const parsed = householdMembersSchema.safeParse(await this.get(`/household/${this.config.householdId}`));
+    if (!parsed.success) throw new KitchenOwlError("unexpected household response shape");
+    return parsed.data.member.map((m) => ({ id: m.id, name: m.name, photo: m.photo ? m.photo : null }));
   }
 }

@@ -31,7 +31,7 @@ const MESSAGES: Record<string, string> = {
   kitchenowl_unavailable: "KitchenOwl ist gerade nicht erreichbar.",
   rate_limited: "Zu viele Versuche. Bitte in einer Stunde noch einmal.",
 };
-const messageFor = (e: unknown): string =>
+export const messageFor = (e: unknown): string =>
   MESSAGES[e instanceof ImportFailed ? e.reason : "unavailable"] ??
   "Das hat nicht geklappt. Bitte später noch einmal versuchen.";
 
@@ -95,21 +95,32 @@ function Choice({
 
 const isLink = (s: string): boolean => /^https?:\/\/\S+$/i.test(s);
 
-/** A link or a pasted text becomes a recipe in KitchenOwl: read, reviewed here, then created. */
-export function ImportPanel() {
+/**
+ * The review of a draft recipe, then its creation in KitchenOwl. Used by the import and by the ideas (which hand over a
+ * draft and the idea it is for: the idea goes when the recipe exists).
+ */
+export function DraftReview({
+  initial,
+  ideaId,
+  finishedLabel,
+  onDiscard,
+  onFinished,
+}: {
+  initial: RecipeDraft;
+  ideaId?: string;
+  finishedLabel: string;
+  onDiscard: () => void;
+  onFinished: () => void;
+}) {
   const links = useLinks();
-  const [input, setInput] = useState("");
-  const [draft, setDraft] = useState<RecipeDraft | null>(null);
-  const read = useMutation({
-    mutationFn: (text: string) => draftImport(isLink(text) ? { address: text } : { text }),
-    onSuccess: setDraft,
-  });
+  const [draft, setDraft] = useState<RecipeDraft>(initial);
   const client = useQueryClient();
   const create = useMutation({
-    mutationFn: createImport,
+    mutationFn: (d: RecipeDraft) => createImport(d, ideaId),
     // The new recipe is there for every list that offers recipes, and for the next check for look-alikes.
     onSuccess: () => {
-      for (const key of ["session", "meal-log", "related"]) void client.invalidateQueries({ queryKey: [key] });
+      const keys = ["session", "meal-log", "related", ...(ideaId === undefined ? [] : ["ideas"])];
+      for (const key of keys) void client.invalidateQueries({ queryKey: [key] });
     },
   });
   // A renamed ingredient is looked up again: it may be one of the household's items now, with its icon.
@@ -135,281 +146,294 @@ export function ImportPanel() {
             In KitchenOwl öffnen
           </a>
         )}
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            create.reset();
-            read.reset();
-            setDraft(null);
-            setInput("");
-          }}
-        >
-          Noch ein Rezept importieren
+        <button type="button" className="secondary" onClick={onFinished}>
+          {finishedLabel}
         </button>
       </section>
     );
   }
 
-  if (draft) {
-    const set = (change: Partial<RecipeDraft>) => setDraft({ ...draft, ...change });
-    const changeIngredient = (index: number, change: Partial<RecipeDraft["ingredients"][number]>) =>
-      setDraft((now) =>
-        now ? { ...now, ingredients: now.ingredients.map((x, n) => (n === index ? { ...x, ...change } : x)) } : now,
-      );
-    const rename = (index: number, typed: string) => {
-      const name = typed.trim();
-      if (name === "") return;
-      lookup.mutate(name, {
-        onSuccess: ([found]) => {
-          if (!found) return;
-          // Only if the field still holds what was looked up.
-          setDraft((now) =>
-            now && now.ingredients[index]?.name.trim() === name
-              ? {
-                  ...now,
-                  ingredients: now.ingredients.map((x, n) => {
-                    if (n !== index) return x;
-                    const { icon: _old, ...rest } = x;
-                    return {
-                      ...rest,
-                      name: found.name,
-                      isNewItem: found.isNewItem,
-                      ...(found.icon ? { icon: found.icon } : {}),
-                    };
-                  }),
-                }
-              : now,
-          );
-        },
-      });
-    };
-    const dropImage = () =>
-      setDraft((now) => {
-        if (!now) return now;
-        const { imageToken: _gone, ...rest } = now;
-        return rest;
-      });
-    const setTags = (change: (tags: string[]) => string[]) =>
-      setDraft((now) => (now ? { ...now, tags: change(now.tags) } : now));
-    const dedupe = (tags: string[]) => {
-      const seen = new Set<string>();
-      return tags.filter((t) => {
-        const key = t.toLowerCase();
-        const fresh = !seen.has(key);
-        seen.add(key);
-        return fresh;
-      });
-    };
-    const renameTag = (index: number, typed: string) => {
-      const name = typed.trim();
-      if (name === "") return setTags((tags) => tags.filter((_, n) => n !== index));
-      tagLookup.mutate(name, {
-        onSuccess: ([found]) =>
-          // Only if the field still holds what was looked up.
-          setDraft((now) =>
-            now && now.tags[index]?.trim() === name && found
-              ? { ...now, tags: dedupe(now.tags.map((t, n) => (n === index ? found.name : t))) }
-              : now,
-          ),
-      });
-    };
-    const addTag = (typed: string) => {
-      const name = typed.trim();
-      if (name === "" || draft.tags.length >= MAX_TAGS) return;
-      tagLookup.mutate(name, {
-        onSuccess: ([found]) => setTags((tags) => dedupe([...tags, found?.name ?? name])),
-      });
-    };
-    const replaceIngredient = (index: number, picked: { name: string; icon?: string; typed?: boolean }) => {
-      setReplacing(null);
-      setDraft((now) =>
-        now
-          ? {
-              ...now,
-              ingredients: now.ingredients.map((x, n) => {
-                if (n !== index) return x;
-                const { icon: _old, ...rest } = x;
-                return {
-                  ...rest,
-                  name: picked.name,
-                  isNewItem: picked.typed === true,
-                  ...(picked.icon ? { icon: picked.icon } : {}),
-                };
-              }),
-            }
-          : now,
-      );
-      // A name typed out may still be one of the household's items by another spelling.
-      if (picked.typed) rename(index, picked.name);
-    };
-    return (
-      <section className="card import-draft">
-        <h2>Rezept prüfen</h2>
-        {draft.imageToken !== undefined && (
-          <figure className="import-photo">
-            <img
-              src={importImageUrl(draft.imageToken)}
-              alt="Titelbild"
-              // The picture is held for a while only: when it is gone, the recipe is created without it.
-              onError={dropImage}
-            />
-            <button type="button" className="secondary" onClick={dropImage}>
-              Bild entfernen
-            </button>
-          </figure>
-        )}
+  const set = (change: Partial<RecipeDraft>) => setDraft({ ...draft, ...change });
+  const changeIngredient = (index: number, change: Partial<RecipeDraft["ingredients"][number]>) =>
+    setDraft((now) =>
+      now ? { ...now, ingredients: now.ingredients.map((x, n) => (n === index ? { ...x, ...change } : x)) } : now,
+    );
+  const rename = (index: number, typed: string) => {
+    const name = typed.trim();
+    if (name === "") return;
+    lookup.mutate(name, {
+      onSuccess: ([found]) => {
+        if (!found) return;
+        // Only if the field still holds what was looked up.
+        setDraft((now) =>
+          now && now.ingredients[index]?.name.trim() === name
+            ? {
+                ...now,
+                ingredients: now.ingredients.map((x, n) => {
+                  if (n !== index) return x;
+                  const { icon: _old, ...rest } = x;
+                  return {
+                    ...rest,
+                    name: found.name,
+                    isNewItem: found.isNewItem,
+                    ...(found.icon ? { icon: found.icon } : {}),
+                  };
+                }),
+              }
+            : now,
+        );
+      },
+    });
+  };
+  const dropImage = () =>
+    setDraft((now) => {
+      if (!now) return now;
+      const { imageToken: _gone, ...rest } = now;
+      return rest;
+    });
+  const setTags = (change: (tags: string[]) => string[]) =>
+    setDraft((now) => (now ? { ...now, tags: change(now.tags) } : now));
+  const dedupe = (tags: string[]) => {
+    const seen = new Set<string>();
+    return tags.filter((t) => {
+      const key = t.toLowerCase();
+      const fresh = !seen.has(key);
+      seen.add(key);
+      return fresh;
+    });
+  };
+  const renameTag = (index: number, typed: string) => {
+    const name = typed.trim();
+    if (name === "") return setTags((tags) => tags.filter((_, n) => n !== index));
+    tagLookup.mutate(name, {
+      onSuccess: ([found]) =>
+        // Only if the field still holds what was looked up.
+        setDraft((now) =>
+          now && now.tags[index]?.trim() === name && found
+            ? { ...now, tags: dedupe(now.tags.map((t, n) => (n === index ? found.name : t))) }
+            : now,
+        ),
+    });
+  };
+  const addTag = (typed: string) => {
+    const name = typed.trim();
+    if (name === "" || draft.tags.length >= MAX_TAGS) return;
+    tagLookup.mutate(name, {
+      onSuccess: ([found]) => setTags((tags) => dedupe([...tags, found?.name ?? name])),
+    });
+  };
+  const replaceIngredient = (index: number, picked: { name: string; icon?: string; typed?: boolean }) => {
+    setReplacing(null);
+    setDraft((now) =>
+      now
+        ? {
+            ...now,
+            ingredients: now.ingredients.map((x, n) => {
+              if (n !== index) return x;
+              const { icon: _old, ...rest } = x;
+              return {
+                ...rest,
+                name: picked.name,
+                isNewItem: picked.typed === true,
+                ...(picked.icon ? { icon: picked.icon } : {}),
+              };
+            }),
+          }
+        : now,
+    );
+    // A name typed out may still be one of the household's items by another spelling.
+    if (picked.typed) rename(index, picked.name);
+  };
+  return (
+    <section className="card import-draft">
+      <h2>Rezept prüfen</h2>
+      {draft.imageToken !== undefined && (
+        <figure className="import-photo">
+          <img
+            src={importImageUrl(draft.imageToken)}
+            alt="Titelbild"
+            // The picture is held for a while only: when it is gone, the recipe is created without it.
+            onError={dropImage}
+          />
+          <button type="button" className="secondary" onClick={dropImage}>
+            Bild entfernen
+          </button>
+        </figure>
+      )}
+      <label>
+        Name
+        <input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+      </label>
+      {draft.subtitle && <p className="muted">{draft.subtitle}</p>}
+      <div className="import-facts">
+        <Choice label="Art" value={draft.mealType} options={MEAL} onChange={(mealType) => set({ mealType })} />
+        <Choice label="Basis" value={draft.base} options={BASE} onChange={(base) => set({ base })} />
+        <Choice label="Ernährung" value={draft.diet} options={DIET} onChange={(diet) => set({ diet })} />
         <label>
-          Name
-          <input value={draft.name} onChange={(e) => set({ name: e.target.value })} />
+          Zeit (Min.)
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={1440}
+            value={draft.totalMinutes ?? ""}
+            onChange={(e) => {
+              const { totalMinutes: _old, ...rest } = draft;
+              const minutes = wholeNumber(e.target.value, 1440);
+              setDraft(minutes === undefined ? rest : { ...rest, totalMinutes: minutes });
+            }}
+          />
         </label>
-        {draft.subtitle && <p className="muted">{draft.subtitle}</p>}
-        <div className="import-facts">
-          <Choice label="Art" value={draft.mealType} options={MEAL} onChange={(mealType) => set({ mealType })} />
-          <Choice label="Basis" value={draft.base} options={BASE} onChange={(base) => set({ base })} />
-          <Choice label="Ernährung" value={draft.diet} options={DIET} onChange={(diet) => set({ diet })} />
-          <label>
-            Zeit (Min.)
+        <label>
+          Portionen
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={50}
+            value={draft.yields ?? ""}
+            onChange={(e) => {
+              const { yields: _old, ...rest } = draft;
+              const yields = wholeNumber(e.target.value, 50);
+              setDraft(yields === undefined ? rest : { ...rest, yields });
+            }}
+          />
+        </label>
+      </div>
+      <h3>Tags</h3>
+      <ul className="import-tags" aria-label="Tags">
+        {draft.tags.map((tag, index) => (
+          // Names can be edited, so a tag is identified by its place.
+          // biome-ignore lint/suspicious/noArrayIndexKey: the name is what the member is changing
+          <li key={index}>
             <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={1440}
-              value={draft.totalMinutes ?? ""}
-              onChange={(e) => {
-                const { totalMinutes: _old, ...rest } = draft;
-                const minutes = wholeNumber(e.target.value, 1440);
-                setDraft(minutes === undefined ? rest : { ...rest, totalMinutes: minutes });
-              }}
+              aria-label={`Tag ${index + 1}`}
+              value={tag}
+              onChange={(e) => setTags((tags) => tags.map((t, n) => (n === index ? e.target.value : t)))}
+              onBlur={() => renameTag(index, tag)}
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             />
-          </label>
-          <label>
-            Portionen
-            <input
-              type="number"
-              inputMode="numeric"
-              min={1}
-              max={50}
-              value={draft.yields ?? ""}
-              onChange={(e) => {
-                const { yields: _old, ...rest } = draft;
-                const yields = wholeNumber(e.target.value, 50);
-                setDraft(yields === undefined ? rest : { ...rest, yields });
-              }}
-            />
-          </label>
-        </div>
-        <h3>Tags</h3>
-        <ul className="import-tags" aria-label="Tags">
-          {draft.tags.map((tag, index) => (
-            // Names can be edited, so a tag is identified by its place.
-            // biome-ignore lint/suspicious/noArrayIndexKey: the name is what the member is changing
-            <li key={index}>
+            <button
+              type="button"
+              className="secondary small"
+              aria-label={`${tag} entfernen`}
+              onClick={() => setTags((tags) => tags.filter((_, n) => n !== index))}
+            >
+              ✕
+            </button>
+          </li>
+        ))}
+      </ul>
+      {draft.tags.length < MAX_TAGS && (
+        <Suggest
+          kind="tag"
+          label="Neuer Tag"
+          placeholder="Tag hinzufügen"
+          typedLabel={(text) => `„${text}“ als neuen Tag hinzufügen`}
+          onPick={(picked) => addTag(picked.name)}
+        />
+      )}
+      <h3>Zutaten</h3>
+      <ul className="ingredient-grid" aria-label="Zutaten">
+        {draft.ingredients.map((i, index) => (
+          // Names can be edited, so a tile is identified by its place.
+          // biome-ignore lint/suspicious/noArrayIndexKey: the name is what the member is changing
+          <li key={index}>
+            <div className="import-tile">
+              <ItemIcon icon={i.icon ?? null} name={i.name} />
               <input
-                aria-label={`Tag ${index + 1}`}
-                value={tag}
-                onChange={(e) => setTags((tags) => tags.map((t, n) => (n === index ? e.target.value : t)))}
-                onBlur={() => renameTag(index, tag)}
+                className="import-name"
+                aria-label={`Zutat ${index + 1}`}
+                value={i.name}
+                onChange={(e) => changeIngredient(index, { name: e.target.value })}
+                onBlur={() => rename(index, i.name)}
                 onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
               />
+              <input
+                className="import-amount"
+                aria-label={`Menge ${index + 1}`}
+                placeholder="Menge"
+                value={i.amount}
+                onChange={(e) => changeIngredient(index, { amount: e.target.value })}
+              />
+              {i.isNewItem && <span className="badge">neu</span>}
+              {i.optional && <span className="badge">optional</span>}
+              <button
+                type="button"
+                className="secondary small import-replace"
+                aria-label={`${i.name} ersetzen`}
+                onClick={() => setReplacing(index)}
+              >
+                ⇄
+              </button>
               <button
                 type="button"
                 className="secondary small"
-                aria-label={`${tag} entfernen`}
-                onClick={() => setTags((tags) => tags.filter((_, n) => n !== index))}
+                aria-label={`${i.name} entfernen`}
+                onClick={() => set({ ingredients: draft.ingredients.filter((x) => x !== i) })}
               >
                 ✕
               </button>
-            </li>
-          ))}
-        </ul>
-        {draft.tags.length < MAX_TAGS && (
-          <Suggest
-            kind="tag"
-            label="Neuer Tag"
-            placeholder="Tag hinzufügen"
-            typedLabel={(text) => `„${text}“ als neuen Tag hinzufügen`}
-            onPick={(picked) => addTag(picked.name)}
-          />
-        )}
-        <h3>Zutaten</h3>
-        <ul className="ingredient-grid" aria-label="Zutaten">
-          {draft.ingredients.map((i, index) => (
-            // Names can be edited, so a tile is identified by its place.
-            // biome-ignore lint/suspicious/noArrayIndexKey: the name is what the member is changing
-            <li key={index}>
-              <div className="import-tile">
-                <ItemIcon icon={i.icon ?? null} name={i.name} />
-                <input
-                  className="import-name"
-                  aria-label={`Zutat ${index + 1}`}
-                  value={i.name}
-                  onChange={(e) => changeIngredient(index, { name: e.target.value })}
-                  onBlur={() => rename(index, i.name)}
-                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                />
-                <input
-                  className="import-amount"
-                  aria-label={`Menge ${index + 1}`}
-                  placeholder="Menge"
-                  value={i.amount}
-                  onChange={(e) => changeIngredient(index, { amount: e.target.value })}
-                />
-                {i.isNewItem && <span className="badge">neu</span>}
-                {i.optional && <span className="badge">optional</span>}
-                <button
-                  type="button"
-                  className="secondary small import-replace"
-                  aria-label={`${i.name} ersetzen`}
-                  onClick={() => setReplacing(index)}
-                >
-                  ⇄
-                </button>
-                <button
-                  type="button"
-                  className="secondary small"
-                  aria-label={`${i.name} entfernen`}
-                  onClick={() => set({ ingredients: draft.ingredients.filter((x) => x !== i) })}
-                >
-                  ✕
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-        {replacing !== null && draft.ingredients[replacing] && (
-          <ReplaceIngredient
-            name={draft.ingredients[replacing].name}
-            onPick={(picked) => replaceIngredient(replacing, picked)}
-            onClose={() => setReplacing(null)}
-          />
-        )}
-        <h3>Schritte</h3>
-        <ol className="import-steps" aria-label="Schritte">
-          {draft.steps.map((s) => (
-            <li key={s}>{s}</li>
-          ))}
-        </ol>
-        <RelatedRecipes name={draft.name} ingredients={draft.ingredients.map((i) => i.name)} source={draft.source} />
-        {draft.source && <p className="muted">Quelle: {draft.source}</p>}
-        {create.isError && (
-          <p role="alert" className="error">
-            {messageFor(create.error)}
-          </p>
-        )}
-        <button
-          type="button"
-          disabled={create.isPending || draft.name.trim() === "" || draft.ingredients.length === 0}
-          onClick={() => create.mutate(draft)}
-        >
-          {create.isPending ? "Wird angelegt …" : "In KitchenOwl anlegen"}
-        </button>
-        <button type="button" className="secondary" disabled={create.isPending} onClick={() => setDraft(null)}>
-          Verwerfen
-        </button>
-      </section>
+            </div>
+          </li>
+        ))}
+      </ul>
+      {replacing !== null && draft.ingredients[replacing] && (
+        <ReplaceIngredient
+          name={draft.ingredients[replacing].name}
+          onPick={(picked) => replaceIngredient(replacing, picked)}
+          onClose={() => setReplacing(null)}
+        />
+      )}
+      <h3>Schritte</h3>
+      <ol className="import-steps" aria-label="Schritte">
+        {draft.steps.map((s) => (
+          <li key={s}>{s}</li>
+        ))}
+      </ol>
+      <RelatedRecipes name={draft.name} ingredients={draft.ingredients.map((i) => i.name)} source={draft.source} />
+      {draft.source && <p className="muted">Quelle: {draft.source}</p>}
+      {create.isError && (
+        <p role="alert" className="error">
+          {messageFor(create.error)}
+        </p>
+      )}
+      <button
+        type="button"
+        disabled={create.isPending || draft.name.trim() === "" || draft.ingredients.length === 0}
+        onClick={() => create.mutate(draft)}
+      >
+        {create.isPending ? "Wird angelegt …" : "In KitchenOwl anlegen"}
+      </button>
+      <button type="button" className="secondary" disabled={create.isPending} onClick={onDiscard}>
+        Verwerfen
+      </button>
+    </section>
+  );
+}
+
+/** A link or a pasted text becomes a recipe in KitchenOwl: read, reviewed here, then created. */
+export function ImportPanel() {
+  const [input, setInput] = useState("");
+  const [draft, setDraft] = useState<RecipeDraft | null>(null);
+  const read = useMutation({
+    mutationFn: (text: string) => draftImport(isLink(text) ? { address: text } : { text }),
+    onSuccess: setDraft,
+  });
+
+  if (draft)
+    return (
+      <DraftReview
+        initial={draft}
+        finishedLabel="Noch ein Rezept importieren"
+        onDiscard={() => setDraft(null)}
+        onFinished={() => {
+          read.reset();
+          setDraft(null);
+          setInput("");
+        }}
+      />
     );
-  }
 
   const text = input.trim();
   return (

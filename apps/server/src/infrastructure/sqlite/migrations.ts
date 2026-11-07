@@ -92,6 +92,32 @@ const MIGRATIONS: readonly string[] = [
   `
   alter table plan_day add column removed_in_planner integer not null default 0;
   `,
+  // 8: recipe ideas (I1). The candidates of the research (I2) stay with their idea as JSON: they are only ever loaded
+  // and replaced with it, and they go with it. The research requests are kept to count against the hourly limit.
+  `
+  create table recipe_idea (
+    id text primary key,
+    title text not null,
+    note text,
+    inspiration_link text,
+    added_by text not null,
+    added_at integer not null,
+    last_touched_at integer not null,
+    candidates_json text not null default '[]'
+  );
+  create table research_request (
+    requested_by text not null,
+    requested_at integer not null
+  );
+  create index research_request_by_time on research_request (requested_at);
+  `,
+  `
+  create table draft_request (
+    requested_by text not null,
+    requested_at integer not null
+  );
+  create index draft_request_by_time on draft_request (requested_at);
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

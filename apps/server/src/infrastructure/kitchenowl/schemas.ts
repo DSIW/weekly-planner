@@ -54,6 +54,11 @@ export const authResponseSchema = z.object({ access_token: z.string().min(1) });
 
 export const userSchema = z.object({ id: z.number().int(), name: z.string(), username: z.string() });
 
+/** The household with its members as KitchenOwl lists them: `photo` is the file name of the member's own picture. */
+export const householdMembersSchema = z.object({
+  member: z.array(z.object({ id: z.number().int(), name: z.string(), photo: z.string().nullish() })).default([]),
+});
+
 export const householdSchema = z.object({ member: z.array(z.object({ id: z.number().int() })).default([]) });
 
 /** What KitchenOwl answers to a file upload: the name the file is kept under. */

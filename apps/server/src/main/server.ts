@@ -8,6 +8,16 @@ import {
   DraftRecipeImport,
   AgreeInPerson,
   AddLoggedMeal,
+  DeleteIdea,
+  PickCandidate,
+  ResearchIdea,
+  UseOwnRecipe,
+  EditIdea,
+  GetMemberAvatar,
+  KeepIdea,
+  ListIdeas,
+  ListMembers,
+  NoteIdea,
   ConfirmCooked,
   CorrectLoggedMeal,
   ListMealLog,
@@ -53,7 +63,10 @@ import { InProcessEventHub } from "../infrastructure/events/in-process-event-hub
 import { CachedRecipeCatalog } from "../infrastructure/kitchenowl/cached-recipe-catalog.js";
 import { KitchenOwlClient } from "../infrastructure/kitchenowl/client.js";
 import { KitchenOwlHouseholdDirectory } from "../infrastructure/kitchenowl/kitchenowl-household-directory.js";
+import { KitchenOwlHouseholdMembers } from "../infrastructure/kitchenowl/kitchenowl-household-members.js";
 import { KitchenOwlPlannerGateway } from "../infrastructure/kitchenowl/kitchenowl-planner-gateway.js";
+import { LlmIdeaResearcher } from "../infrastructure/ideas/llm-idea-researcher.js";
+import { WebInspirationReader } from "../infrastructure/ideas/web-inspiration-reader.js";
 import { LlmRecipeExtractor } from "../infrastructure/import/llm-extractor.js";
 import { MemoryImageShelf } from "../infrastructure/import/image-shelf.js";
 import { WebImageFetcher, WebRecipeSource } from "../infrastructure/import/web-recipe-source.js";
@@ -66,6 +79,11 @@ import { startScheduler } from "../infrastructure/scheduling/scheduler.js";
 import { openDatabase } from "../infrastructure/sqlite/database.js";
 import { SqliteDinnerCalendar } from "../infrastructure/sqlite/sqlite-dinner-calendar.js";
 import { SqliteMealLogRepository } from "../infrastructure/sqlite/sqlite-meal-log-repository.js";
+import { SqliteDraftRequestLog } from "../infrastructure/sqlite/sqlite-draft-request-log.js";
+import {
+  SqliteRecipeIdeaRepository,
+  SqliteResearchRequestLog,
+} from "../infrastructure/sqlite/sqlite-recipe-idea-repository.js";
 import { SqliteRecipeExperienceRepository } from "../infrastructure/sqlite/sqlite-recipe-experience-repository.js";
 import { SqliteExportRepository } from "../infrastructure/sqlite/sqlite-export-repository.js";
 import { SqlitePushSubscriptions } from "../infrastructure/sqlite/sqlite-push-subscriptions.js";
@@ -134,8 +152,18 @@ async function main(): Promise<void> {
     uow: deps.uow,
     clock,
   });
+  const ideas = new SqliteRecipeIdeaRepository(db);
+  const members = new KitchenOwlHouseholdMembers(client);
   const recipeWriter = new KitchenOwlRecipeWriter(client);
   const draftImages = new MemoryImageShelf();
+  const draftRecipeImport = new DraftRecipeImport({
+    requests: new SqliteDraftRequestLog(db),
+    clock,
+    source: new WebRecipeSource(),
+    extractor: new LlmRecipeExtractor(config.llm),
+    writer: recipeWriter,
+    images: { fetcher: new WebImageFetcher(), shelf: draftImages },
+  });
   const app = await buildApp({
     signIn: new SignIn(new KitchenOwlHouseholdDirectory(client)),
     getCurrentSession: new GetCurrentSession({ sessions, exports }),
@@ -145,13 +173,8 @@ async function main(): Promise<void> {
     closeSession: new CloseSession(deps),
     listEligibleRecipes: new ListEligibleRecipes({ sessions, catalog }, planning),
     proposeRecipe: new ProposeRecipe({ ...deps, catalog, ids }, planning),
-    draftRecipeImport: new DraftRecipeImport({
-      source: new WebRecipeSource(),
-      extractor: new LlmRecipeExtractor(config.llm),
-      writer: recipeWriter,
-      images: { fetcher: new WebImageFetcher(), shelf: draftImages },
-    }),
-    createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter, shelf: draftImages, catalog }),
+    draftRecipeImport,
+    createImportedRecipe: new CreateImportedRecipe({ writer: recipeWriter, shelf: draftImages, catalog, ideas }),
     matchIngredients: new MatchIngredients({ writer: recipeWriter }),
     matchTags: new MatchTags({ writer: recipeWriter }),
     suggestNames: new SuggestNames({ writer: recipeWriter }),
@@ -185,6 +208,23 @@ async function main(): Promise<void> {
     sendTestNotification: new SendTestNotification(notifier),
     unsubscribeFromPush: new UnsubscribeFromPush(pushSubscriptions),
     pushPublicKey: vapid.publicKey,
+    listIdeas: new ListIdeas({ ideas, clock }),
+    noteIdea: new NoteIdea({ ideas, clock, ids }),
+    editIdea: new EditIdea({ ideas, clock }),
+    keepIdea: new KeepIdea({ ideas, clock }),
+    deleteIdea: new DeleteIdea({ ideas }),
+    researchIdea: new ResearchIdea({
+      ideas,
+      requests: new SqliteResearchRequestLog(db),
+      researcher: new LlmIdeaResearcher({ ...config.llm, model: config.researchModel }),
+      inspiration: new WebInspirationReader(),
+      clock,
+    }),
+    pickCandidate: new PickCandidate({ ideas, clock, draft: draftRecipeImport }),
+    useOwnRecipe: new UseOwnRecipe({ ideas, clock, draft: draftRecipeImport }),
+    listMembers: new ListMembers({ members }),
+    getMemberAvatar: new GetMemberAvatar({ members }),
+    ideaEvents: hub,
     planAheadMinutes: planning.planAheadMinutes,
     links: { kitchenowl: config.kitchenowlPublicUrl, householdId: config.householdId },
     subscribe: (listener) => hub.subscribe(listener),

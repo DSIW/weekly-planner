@@ -1,3 +1,4 @@
+import type { IdeaView } from "@weekly-planner/application";
 import {
   needsPlanningAhead,
   exportComplete,
@@ -76,3 +77,19 @@ export const entryView = (e: MealLogEntry, ahead: number) => ({
   source: e.source,
   confirmed: e.confirmed,
 });
+
+/** What the phones see of a recipe idea; the member who added it comes with name and picture. */
+export const ideaView = (idea: IdeaView, people: ReadonlyMap<string, { name: string; avatar: string | null }>) => {
+  const who = people.get(idea.addedBy);
+  return {
+    id: idea.id,
+    title: idea.title,
+    note: idea.note,
+    inspirationLink: idea.inspirationLink,
+    addedBy: { id: idea.addedBy, name: who?.name ?? "Jemand", avatar: who?.avatar ?? null },
+    addedAt: idea.addedAt,
+    lastTouchedAt: idea.lastTouchedAt,
+    isStale: idea.isStale,
+    candidates: idea.candidates,
+  };
+};

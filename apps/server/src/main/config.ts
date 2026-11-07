@@ -15,6 +15,8 @@ const serverSchema = kitchenowlSchema.extend({
   /** A language model for importing recipes, behind an OpenAI-compatible API (OpenRouter by default). */
   LLM_API_KEY: z.string().min(1).optional(),
   LLM_MODEL: z.string().min(1).optional(),
+  /** The model that searches the web for recipe ideas; default LLM_MODEL (OpenRouter's web plugin is switched on). */
+  LLM_SEARCH_MODEL: z.string().min(1).optional(),
   LLM_BASE_URL: z.string().url().default("https://openrouter.ai/api/v1"),
   SHOPPING_LIST_ID: z.coerce.number().int().positive().default(2),
   SESSION_SECRET: z.string().min(32),
@@ -45,6 +47,8 @@ type ServerConfig = Config & {
   shoppingListId: number;
   /** The language model that reads recipes; without a key and a model the import says it is not set up. */
   llm: { apiKey: string | null; model: string; baseUrl: string };
+  /** The model that researches recipe ideas with web search: LLM_SEARCH_MODEL, else LLM_MODEL. */
+  researchModel: string;
   /** KitchenOwl as the phones reach it, without a trailing slash ("" = same host); null: no links. */
   kitchenowlPublicUrl: string | null;
   sessionSecret: string;
@@ -90,6 +94,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     ...kitchenowl(d),
     shoppingListId: d.SHOPPING_LIST_ID,
     llm: { apiKey: d.LLM_API_KEY ?? null, model: d.LLM_MODEL ?? "", baseUrl: d.LLM_BASE_URL.replace(/\/+$/, "") },
+    researchModel: d.LLM_SEARCH_MODEL ?? d.LLM_MODEL ?? "",
     kitchenowlPublicUrl: d.KITCHENOWL_PUBLIC_URL === undefined ? null : d.KITCHENOWL_PUBLIC_URL.replace(/\/+$/, ""),
     sessionSecret: d.SESSION_SECRET,
     port: d.PORT,

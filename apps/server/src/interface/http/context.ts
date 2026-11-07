@@ -10,6 +10,17 @@ import type {
   SuggestNames,
   AgreeInPerson,
   AddLoggedMeal,
+  DeleteIdea,
+  PickCandidate,
+  ResearchIdea,
+  UseOwnRecipe,
+  EditIdea,
+  EventPublisher,
+  GetMemberAvatar,
+  KeepIdea,
+  ListIdeas,
+  ListMembers,
+  NoteIdea,
   ConfirmCooked,
   CorrectLoggedMeal,
   ListMealLog,
@@ -96,6 +107,18 @@ export interface AppOptions {
   readonly planAheadMinutes: number;
   /** Where the phones reach KitchenOwl ("" = same host); absent or null: the planner shows no links to it. */
   readonly links?: { kitchenowl: string | null; householdId: number };
+  readonly listIdeas: Pick<ListIdeas, "execute">;
+  readonly noteIdea: Pick<NoteIdea, "execute">;
+  readonly editIdea: Pick<EditIdea, "execute">;
+  readonly keepIdea: Pick<KeepIdea, "execute">;
+  readonly deleteIdea: Pick<DeleteIdea, "execute">;
+  readonly researchIdea: Pick<ResearchIdea, "execute">;
+  readonly pickCandidate: Pick<PickCandidate, "execute">;
+  readonly useOwnRecipe: Pick<UseOwnRecipe, "execute">;
+  readonly listMembers: Pick<ListMembers, "execute">;
+  readonly getMemberAvatar: Pick<GetMemberAvatar, "execute">;
+  /** Told when the ideas changed, so the other phone shows them live. */
+  readonly ideaEvents: EventPublisher;
   /** Told about every committed change; returns the way to stop listening. */
   readonly subscribe: (listener: (event: DomainEvent) => void) => () => void;
   readonly sessionSecret: string;
@@ -116,6 +139,15 @@ export const COMMAND_REJECTIONS: Record<string, number> = {
   not_a_page: 422,
   too_large: 422,
   empty: 422,
+  empty_title: 422,
+  idea_not_found: 404,
+  rate_limited: 429,
+  research_failed: 502,
+  nothing_found: 422,
+  no_candidates: 422,
+  too_many_candidates: 422,
+  no_such_candidate: 404,
+  not_stale: 409,
   not_configured: 503,
   extraction_failed: 502,
   not_a_recipe: 422,

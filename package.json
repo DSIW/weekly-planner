@@ -17,7 +17,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "knip": "knip",
+    "knip": "KNIP_DISABLE_RAW_TRANSFER=1 knip",
     "test:ci": "run-s typecheck lint test knip",
     "dev": "run-p dev:server dev:web",
     "dev:phone": "DEV_PHONE=1 DEV_ENV=.env.staging npm run dev",
