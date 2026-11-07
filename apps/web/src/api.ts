@@ -453,6 +453,8 @@ export interface Idea {
   addedAt: number;
   /** Nobody touched it for weeks: marked for cleanup, never removed by itself. */
   isStale: boolean;
+  /** Epoch milliseconds when it was put aside; null for an idea in the list. */
+  archivedAt: number | null;
   /** What the last research found (at most 5). */
   candidates: Candidate[];
 }
@@ -492,6 +494,8 @@ export const fetchIdeas = async (): Promise<Idea[]> => (await ideaCall<{ ideas: 
 export const addIdea = (idea: IdeaInput) => ideaCall<{ idea: Idea }>("POST", "/ideas", idea);
 export const editIdea = (id: string, idea: IdeaInput) => ideaCall<{ idea: Idea }>("PUT", `/ideas/${id}`, idea);
 export const keepIdea = (id: string) => ideaCall<{ idea: Idea }>("POST", `/ideas/${id}/keep`);
+export const archiveIdea = (id: string) => ideaCall<{ idea: Idea }>("POST", `/ideas/${id}/archive`);
+export const restoreIdea = (id: string) => ideaCall<{ idea: Idea }>("POST", `/ideas/${id}/restore`);
 export const deleteIdea = (id: string) => ideaCall<void>("DELETE", `/ideas/${id}`);
 
 /** Asks the model (with web search) for candidates. Can take a minute. */

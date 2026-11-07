@@ -21,11 +21,11 @@ export class SqliteRecipeIdeaRepository implements RecipeIdeaRepository {
   async save(idea: RecipeIdea): Promise<void> {
     this.db
       .prepare(
-        `insert into recipe_idea (id, title, note, inspiration_link, added_by, added_at, last_touched_at, candidates_json)
-         values (?, ?, ?, ?, ?, ?, ?, ?)
+        `insert into recipe_idea (id, title, note, inspiration_link, added_by, added_at, last_touched_at, archived_at, candidates_json)
+         values (?, ?, ?, ?, ?, ?, ?, ?, ?)
          on conflict (id) do update set title = excluded.title, note = excluded.note,
            inspiration_link = excluded.inspiration_link, added_by = excluded.added_by, added_at = excluded.added_at,
-           last_touched_at = excluded.last_touched_at, candidates_json = excluded.candidates_json`,
+           last_touched_at = excluded.last_touched_at, archived_at = excluded.archived_at, candidates_json = excluded.candidates_json`,
       )
       .run(
         idea.id,
@@ -35,6 +35,7 @@ export class SqliteRecipeIdeaRepository implements RecipeIdeaRepository {
         idea.addedBy,
         idea.addedAt,
         idea.lastTouchedAt,
+        idea.archivedAt,
         JSON.stringify(idea.candidates),
       );
   }
@@ -59,6 +60,7 @@ export class SqliteRecipeIdeaRepository implements RecipeIdeaRepository {
       addedBy: memberId(row.added_by as string),
       addedAt: row.added_at as number,
       lastTouchedAt: row.last_touched_at as number,
+      archivedAt: (row.archived_at as number | null) ?? null,
       candidates: JSON.parse(row.candidates_json as string) as CandidateProposal[],
     };
   }

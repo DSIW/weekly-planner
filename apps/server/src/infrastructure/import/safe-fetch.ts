@@ -2,7 +2,7 @@ import dns from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import { isIP } from "node:net";
-import { type Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import zlib from "node:zlib";
 import type { SourceFailure } from "@weekly-planner/application";
 

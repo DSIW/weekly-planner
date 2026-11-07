@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CreateImportedRecipe,
+  ArchiveIdea,
   DeleteIdea,
+  RestoreIdea,
   DraftRecipeImport,
   EditIdea,
   GetMemberAvatar,
@@ -131,6 +133,8 @@ beforeEach(async () => {
     noteIdea: new NoteIdea({ ideas, clock, ids: new UuidGenerator() }),
     editIdea: new EditIdea({ ideas, clock }),
     keepIdea: new KeepIdea({ ideas, clock }),
+    archiveIdea: new ArchiveIdea({ ideas, clock }),
+    restoreIdea: new RestoreIdea({ ideas, clock }),
     deleteIdea: new DeleteIdea({ ideas }),
     researchIdea: new ResearchIdea({
       ideas,
@@ -241,6 +245,8 @@ describe("recipe ideas over HTTP", () => {
       ["POST", "/ideas", { title: "x" }],
       ["PUT", `/ideas/${id}`, { title: "x" }],
       ["POST", `/ideas/${id}/keep`],
+      ["POST", `/ideas/${id}/archive`],
+      ["POST", `/ideas/${id}/restore`],
       ["DELETE", `/ideas/${id}`],
       ["POST", `/ideas/${id}/research`],
       ["POST", `/ideas/${id}/pick`, { candidate: 0 }],
@@ -362,6 +368,41 @@ describe("recipe ideas over HTTP", () => {
     expect(kept.json().idea).toMatchObject({ isStale: false, lastTouchedAt: NOW + 8 * WEEK });
     expect((await call("GET", "/ideas", max)).json().ideas[0].isStale).toBe(false);
     expect((await call("POST", "/ideas/unknown/keep", ac)).statusCode).toBe(404);
+  });
+
+  it("archives an idea for either member, keeps it listed with archivedAt, and restores it with a fresh clock", async () => {
+    const id = (await note(max, { title: "Zur Seite", note: "n" })).idea.id;
+    clockNow += 1000;
+    const archived = await call("POST", `/ideas/${id}/archive`, ac);
+    expect(archived.statusCode).toBe(200);
+    expect(archived.json().idea).toMatchObject({ archivedAt: NOW + 1000, lastTouchedAt: NOW, isStale: false });
+    expect((await call("POST", `/ideas/${id}/archive`, ac)).json()).toEqual({ error: "already_archived" });
+    const listed = (await call("GET", "/ideas", max)).json().ideas;
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ title: "Zur Seite", note: "n", archivedAt: NOW + 1000 });
+
+    // An archived idea is not worked on until it is back.
+    expect((await call("PUT", `/ideas/${id}`, max, { title: "x" })).json()).toEqual({ error: "archived" });
+    expect((await call("POST", `/ideas/${id}/research`, max)).json()).toEqual({ error: "archived" });
+    expect((await call("POST", `/ideas/${id}/own`, max, { address: "https://example.org/r" })).json()).toEqual({
+      error: "archived",
+    });
+
+    clockNow += 1000;
+    const restored = await call("POST", `/ideas/${id}/restore`, max);
+    expect(restored.json().idea).toMatchObject({ archivedAt: null, lastTouchedAt: NOW + 2000 });
+    expect((await call("POST", `/ideas/${id}/restore`, max)).json()).toEqual({ error: "not_archived" });
+    expect((await call("POST", "/ideas/unknown/archive", ac)).statusCode).toBe(404);
+    expect((await call("POST", "/ideas/unknown/restore", ac)).statusCode).toBe(404);
+  });
+
+  it("never lists an archived idea as stale, however old, and deletes it for good on request", async () => {
+    const id = (await note(max, { title: "Alt" })).idea.id;
+    await call("POST", `/ideas/${id}/archive`, max);
+    clockNow = NOW + 20 * WEEK;
+    expect((await call("GET", "/ideas", max)).json().ideas[0]).toMatchObject({ isStale: false });
+    expect((await call("DELETE", `/ideas/${id}`, max)).statusCode).toBe(204);
+    expect((await call("GET", "/ideas", max)).json().ideas).toEqual([]);
   });
 
   it("deletes an idea at any time, stale or not, and says so when it is already gone", async () => {

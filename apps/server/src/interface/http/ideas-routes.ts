@@ -102,6 +102,34 @@ export function registerIdeaRoutes(ctx: RouteContext): void {
     return { idea: ideaView({ ...result.value, isStale: false }, await peopleOf()) };
   });
 
+  app.post<{ Params: { id: string } }>(`${api}/ideas/:id/archive`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const params = ideaParam.safeParse(req.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.archiveIdea.execute({
+      member: memberId(member.id),
+      idea: recipeIdeaId(params.data.id),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    await ideaChanged();
+    return { idea: ideaView({ ...result.value, isStale: false }, await peopleOf()) };
+  });
+
+  app.post<{ Params: { id: string } }>(`${api}/ideas/:id/restore`, async (req, reply) => {
+    const member = requireMember(req, reply);
+    if (!member) return reply;
+    const params = ideaParam.safeParse(req.params);
+    if (!params.success) return reply.code(400).send({ error: "invalid_request" });
+    const result = await options.restoreIdea.execute({
+      member: memberId(member.id),
+      idea: recipeIdeaId(params.data.id),
+    });
+    if (!result.ok) return reply.code(COMMAND_REJECTIONS[result.reason] ?? 422).send({ error: result.reason });
+    await ideaChanged();
+    return { idea: ideaView({ ...result.value, isStale: false }, await peopleOf()) };
+  });
+
   // Research (I2): the model proposes candidates; the answer is the idea with them.
   app.post<{ Params: { id: string } }>(`${api}/ideas/:id/research`, async (req, reply) => {
     const member = requireMember(req, reply);

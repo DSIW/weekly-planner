@@ -6,14 +6,16 @@
 --   become a recipe or are given up.
 -- Includes: noting and editing an idea, research by a language model that
 --   proposes candidate recipes, handing a candidate or a member's own source
---   to the import, letting go of an idea once its recipe exists, and marking
---   ideas nobody has touched for a long time for cleanup.
+--   to the import, letting go of an idea once its recipe exists, marking
+--   ideas nobody has touched for a long time for cleanup, and putting an idea
+--   aside (archiving) so that it can come back.
 -- Excludes:
 --   - Reading, drafting, reviewing and creating the recipe
 --     (recipe-import.allium; an idea only hands it a source)
 --   - Planning (weekly-planning.allium sees the created recipe like any
 --     imported one, "new" tag included; an idea itself is never suggested)
---   - Deleting ideas on its own: staleness only marks
+--   - Deleting or archiving ideas on its own: staleness only marks, and an
+--     archived idea stays until a member deletes it
 -- Dependencies: recipe-import.allium
 
 use "./recipe-import.allium" as import
@@ -45,8 +47,8 @@ value CandidateProposal {
 -- Entities and Variants
 ------------------------------------------------------------
 
--- Ideas belong to the household: either member may edit, research, pick for
--- or delete any idea, whoever noted it.
+-- Ideas belong to the household: either member may edit, research, pick for,
+-- archive, restore or delete any idea, whoever noted it.
 entity RecipeIdea {
     title: String                 -- free text, a dish or only a direction
     note: String?
@@ -56,13 +58,17 @@ entity RecipeIdea {
     -- Moved on by what a member does with the idea (edit, research, pick,
     -- keep); merely looking at it does not count.
     last_touched_at: Timestamp
+    -- Set while the idea is put aside: it is out of the way of the list and of
+    -- cleanup, keeps everything it has (note, link, candidates), and can come
+    -- back (RestoreIdea). Null for an idea in the list.
+    archived_at: Timestamp?
 
     candidates: IdeaCandidate with idea = this
 
     -- Derived
     -- Only a mark: a stale idea is listed for cleanup and stays until a
-    -- member keeps or deletes it.
-    is_stale: last_touched_at + config.idea_stale_after <= now
+    -- member keeps, archives or deletes it. An archived idea is never stale.
+    is_stale: archived_at = null and last_touched_at + config.idea_stale_after <= now
 }
 
 -- A recipe the research proposed for an idea. Its link comes from the model
@@ -114,8 +120,10 @@ rule NoteIdea {
 }
 
 -- Editing keeps who noted the idea and when; its candidates stay.
+-- An archived idea is not edited; it is restored first.
 rule EditIdea {
     when: EditIdea(member, idea, title, note?, inspiration_link?)
+    requires: idea.archived_at = null
     requires: title != ""
     ensures:
         idea.title = title
@@ -139,6 +147,7 @@ rule EditIdea {
 -- researches they had running at once. That overshoot is accepted.
 rule ResearchIdea {
     when: ResearchIdea(member, idea)
+    requires: idea.archived_at = null
     let recent = ResearchRequests where requested_by = member and requested_at + 1.hour > now
     requires: recent.count < config.max_research_per_hour
     let inspiration = inspiration_text(idea.inspiration_link)   -- null when absent or not fetchable
@@ -203,6 +212,7 @@ rule ReplaceCandidates {
 -- acted on it.
 rule PickCandidate {
     when: PickCandidate(member, candidate)
+    requires: candidate.idea.archived_at = null
     ensures:
         candidate.idea.last_touched_at = now
         import/ReadRecipe(member: member, source: candidate.proposal.link)
@@ -219,6 +229,7 @@ rule PickCandidate {
 -- used up): the member acted on the idea.
 rule UseOwnRecipe {
     when: UseOwnRecipe(member, idea, link?, text?)
+    requires: idea.archived_at = null
     requires: (link != null and text = null) or (link = null and text != null)
     ensures:
         idea.last_touched_at = now
@@ -238,14 +249,34 @@ rule ForgetRealisedIdea {
         not exists idea
 }
 
--- Keeping a stale idea starts its clock again.
+-- Keeping a stale idea starts its clock again. (An archived idea is never
+-- stale, so it cannot be kept; it is restored.)
 rule KeepIdea {
     when: KeepIdea(member, idea)
     requires: idea.is_stale
     ensures: idea.last_touched_at = now
 }
 
--- A member may drop an idea at any time, stale or not.
+-- Putting an idea aside is how a member lets go of it without losing it: it
+-- leaves the list and cleanup and keeps its note, link and candidates. The
+-- clock is not touched; archiving is not working on the idea.
+rule ArchiveIdea {
+    when: ArchiveIdea(member, idea)
+    requires: idea.archived_at = null
+    ensures: idea.archived_at = now
+}
+
+-- Bringing an idea back starts its clock again, so that it does not return
+-- stale and straight into cleanup.
+rule RestoreIdea {
+    when: RestoreIdea(member, idea)
+    requires: idea.archived_at != null
+    ensures:
+        idea.archived_at = null
+        idea.last_touched_at = now
+}
+
+-- A member may drop an idea for good at any time, stale, archived or neither.
 rule DeleteIdea {
     when: DeleteIdea(member, idea)
     ensures:
@@ -298,6 +329,7 @@ surface IdeaList {
             idea.added_by.avatar
             idea.added_at
             idea.is_stale
+            idea.archived_at
             for c in idea.candidates:
                 c.proposal.title
                 c.proposal.link
@@ -310,15 +342,21 @@ surface IdeaList {
         PickCandidate(viewer, candidate)
         UseOwnRecipe(viewer, idea, link, text)
         KeepIdea(viewer, idea)
+        ArchiveIdea(viewer, idea)
+            when idea.archived_at = null
+        RestoreIdea(viewer, idea)
+            when idea.archived_at != null
         DeleteIdea(viewer, idea)
 
     @guarantee NoIdeaDeletedUnasked
         -- An idea goes only when a member deletes it or a recipe was created
-        -- for it; being stale never removes it.
+        -- for it; being stale or archived never removes it.
 
     @guidance
-        -- Stale ideas are listed together for cleanup, each with keep and
-        -- delete. Picking a candidate or using an own source leads into the
+        -- Stale ideas are listed together for cleanup, each with keep,
+        -- archive and delete. Archived ideas are listed apart, each with
+        -- restore and delete; a swipe on an idea may archive it, and a
+        -- member can undo that with restore. Picking a candidate or using an own source leads into the
         -- import's draft review, which carries the idea along to
         -- CreateImportedRecipe. A candidate's link is shown as a link the
         -- member may open in their own browser to look at the page; the

@@ -118,6 +118,9 @@ const MIGRATIONS: readonly string[] = [
   );
   create index draft_request_by_time on draft_request (requested_at);
   `,
+  `
+  alter table recipe_idea add column archived_at integer;
+  `,
 ];
 
 export function migrate(db: DatabaseSync): void {

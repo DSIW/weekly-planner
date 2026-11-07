@@ -10,6 +10,7 @@ import type {
   SuggestNames,
   AgreeInPerson,
   AddLoggedMeal,
+  ArchiveIdea,
   DeleteIdea,
   PickCandidate,
   ResearchIdea,
@@ -18,6 +19,7 @@ import type {
   EventPublisher,
   GetMemberAvatar,
   KeepIdea,
+  RestoreIdea,
   ListIdeas,
   ListMembers,
   NoteIdea,
@@ -111,6 +113,8 @@ export interface AppOptions {
   readonly noteIdea: Pick<NoteIdea, "execute">;
   readonly editIdea: Pick<EditIdea, "execute">;
   readonly keepIdea: Pick<KeepIdea, "execute">;
+  readonly archiveIdea: Pick<ArchiveIdea, "execute">;
+  readonly restoreIdea: Pick<RestoreIdea, "execute">;
   readonly deleteIdea: Pick<DeleteIdea, "execute">;
   readonly researchIdea: Pick<ResearchIdea, "execute">;
   readonly pickCandidate: Pick<PickCandidate, "execute">;
@@ -148,6 +152,9 @@ export const COMMAND_REJECTIONS: Record<string, number> = {
   too_many_candidates: 422,
   no_such_candidate: 404,
   not_stale: 409,
+  archived: 409,
+  already_archived: 409,
+  not_archived: 409,
   not_configured: 503,
   extraction_failed: 502,
   not_a_recipe: 422,

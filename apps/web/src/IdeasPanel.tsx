@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   addIdea,
+  archiveIdea,
   deleteIdea,
   editIdea,
   fetchIdeas,
@@ -9,6 +10,7 @@ import {
   keepIdea,
   listenForChanges,
   memberAvatarUrl,
+  restoreIdea,
   type Idea,
   type IdeaInput,
   type RecipeDraft,
@@ -27,12 +29,15 @@ const MESSAGES: Record<string, string> = {
   invalid_request: "Bitte einen gültigen Link mit http oder https eingeben.",
   idea_not_found: "Diese Idee gibt es nicht mehr.",
   not_stale: "Diese Idee ist noch nicht veraltet.",
+  archived: "Diese Idee ist archiviert. Bitte erst wiederherstellen.",
+  already_archived: "Diese Idee ist schon archiviert.",
+  not_archived: "Diese Idee ist nicht archiviert.",
 };
 const messageFor = (e: unknown): string =>
   MESSAGES[e instanceof IdeaFailed ? e.reason : "unavailable"] ??
   "Das hat nicht geklappt. Bitte später noch einmal versuchen.";
 
-/** How long a swiped-away idea can be taken back before it is deleted. */
+/** How long the "archived – undo" note stays. */
 const UNDO_MS = 6000;
 
 /** Only web links become links: the text is a member's, and `javascript:` must never be clickable. */
@@ -177,19 +182,17 @@ function IdeaCard({
   onDraft: (draft: RecipeDraft) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const edit = useMutation({
     mutationFn: (input: IdeaInput) => editIdea(idea.id, input),
     onSuccess: () => setEditing(false),
     onSettled: onChanged,
   });
   const keep = useMutation({ mutationFn: () => keepIdea(idea.id), onSettled: onChanged });
-  const remove = useMutation({ mutationFn: () => deleteIdea(idea.id), onSettled: onChanged });
   const research = useIdeaResearch(idea, onChanged, onDraft);
-  const busy = edit.isPending || keep.isPending || remove.isPending;
-  const failure = keep.error ?? remove.error;
-  const locked = busy || confirming || research.busy;
-  const pinned = editing || confirming || research.own || research.busy;
+  const busy = edit.isPending || keep.isPending;
+  const failure = keep.error;
+  const locked = busy || research.busy;
+  const pinned = editing || research.own || research.busy;
   const expanded = open || pinned;
   const link = idea.inspirationLink && isWebLink(idea.inspirationLink) ? idea.inspirationLink : null;
   const hintId = useId();
@@ -209,7 +212,7 @@ function IdeaCard({
       }}
     >
       <SwipeRow
-        left="Löschen"
+        left="Archivieren"
         onLeft={onArchive}
         {...(idea.isStale ? { right: "Behalten", onRight: () => keep.mutate() } : {})}
         disabled={expanded || locked}
@@ -260,7 +263,7 @@ function IdeaCard({
             </p>
             {idea.note && !expanded && <p className="idea-note">{idea.note}</p>}
           </div>
-          {idea.isStale && !confirming && (
+          {idea.isStale && (
             <button
               type="button"
               className="small idea-keep"
@@ -289,7 +292,7 @@ function IdeaCard({
               </a>
             </p>
           )}
-          <SearchButton research={research} disabled={busy || confirming} onStart={onOpen} />
+          <SearchButton research={research} disabled={busy} onStart={onOpen} />
           <div className="act-grid">
             <button
               type="button"
@@ -318,17 +321,9 @@ function IdeaCard({
               <ActIcon d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3" />
               Bearbeiten
             </button>
-            <button
-              type="button"
-              className="act act-quiet"
-              disabled={locked}
-              onClick={() => {
-                remove.reset();
-                setConfirming(true);
-              }}
-            >
-              <ActIcon d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12M10 11v5M14 11v5" />
-              Löschen
+            <button type="button" className="act act-quiet" disabled={locked} onClick={onArchive}>
+              <ActIcon d="M4 7h16v3H4zM6 10v9h12v-9M10 14h4" />
+              Archivieren
             </button>
           </div>
           <p id={hintId} className="muted idea-hint">
@@ -347,23 +342,7 @@ function IdeaCard({
               }}
             />
           )}
-          {confirming && (
-            <div className="idea-actions">
-              <button
-                type="button"
-                className="danger"
-                disabled={busy}
-                aria-label={`${idea.title} wirklich löschen`}
-                onClick={() => remove.mutate()}
-              >
-                Ja, löschen
-              </button>
-              <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(false)}>
-                Abbrechen
-              </button>
-            </div>
-          )}
-          <ResearchPanel idea={idea} research={research} disabled={busy || confirming} />
+          <ResearchPanel idea={idea} research={research} disabled={busy} />
         </div>
       )}
     </li>
@@ -475,7 +454,7 @@ function QuickAdd({
   );
 }
 
-type Filter = "all" | "stale" | "researched" | "mine";
+type Filter = "all" | "stale" | "researched" | "mine" | "archive";
 
 /** Steps through the stale ideas one by one: keep, delete or leave for later. Nothing goes without a second tap. */
 function Cleanup({
@@ -490,16 +469,14 @@ function Cleanup({
   onDone: () => void;
 }) {
   const [later, setLater] = useState<ReadonlySet<string>>(new Set());
-  const [confirming, setConfirming] = useState(false);
   const remaining = queue
     .map((id) => ideas.find((i) => i.id === id))
     .filter((i): i is Idea => i !== undefined && i.isStale && !later.has(i.id));
   const current = remaining[0];
-  const next = () => setConfirming(false);
-  const keep = useMutation({ mutationFn: (id: string) => keepIdea(id), onSuccess: next, onSettled: onChanged });
-  const remove = useMutation({ mutationFn: (id: string) => deleteIdea(id), onSuccess: next, onSettled: onChanged });
-  const busy = keep.isPending || remove.isPending;
-  const failure = keep.error ?? remove.error;
+  const keep = useMutation({ mutationFn: (id: string) => keepIdea(id), onSettled: onChanged });
+  const archive = useMutation({ mutationFn: (id: string) => archiveIdea(id), onSettled: onChanged });
+  const busy = keep.isPending || archive.isPending;
+  const failure = keep.error ?? archive.error;
 
   if (!current)
     return (
@@ -536,33 +513,20 @@ function Cleanup({
         >
           Behalten
         </button>
-        {confirming ? (
-          <button
-            type="button"
-            className="danger"
-            disabled={busy}
-            aria-label={`${current.title} wirklich löschen`}
-            onClick={() => remove.mutate(current.id)}
-          >
-            Ja, löschen
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            aria-label={`${current.title} löschen`}
-            onClick={() => setConfirming(true)}
-          >
-            Löschen
-          </button>
-        )}
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          aria-label={`${current.title} archivieren`}
+          onClick={() => archive.mutate(current.id)}
+        >
+          Archivieren
+        </button>
         <button
           type="button"
           className="secondary"
           disabled={busy}
           onClick={() => {
-            setConfirming(false);
             setLater((l) => new Set(l).add(current.id));
           }}
         >
@@ -573,6 +537,77 @@ function Cleanup({
         Aufräumen beenden
       </button>
     </div>
+  );
+}
+
+/** The archive: ideas put aside, each with restore and (after a second tap) delete for good. */
+function ArchivedList({ ideas, onChanged }: { ideas: Idea[]; onChanged: () => void }) {
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const restore = useMutation({ mutationFn: (id: string) => restoreIdea(id), onSettled: onChanged });
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteIdea(id),
+    onSuccess: () => setConfirming(null),
+    onSettled: onChanged,
+  });
+  const busy = restore.isPending || remove.isPending;
+  const failure = restore.error ?? remove.error;
+  return (
+    <>
+      {failure && (
+        <p role="alert" className="error">
+          {messageFor(failure)}
+        </p>
+      )}
+      <ul className="ideas-list" aria-label="Archivierte Ideen">
+        {ideas.map((idea) => (
+          <li key={idea.id} className="idea archived">
+            <div className="idea-row">
+              <Avatar member={idea.addedBy} />
+              <div className="idea-main">
+                <h3>{idea.title}</h3>
+                <p className="idea-meta">
+                  {idea.addedBy.name} · archiviert {idea.archivedAt === null ? "" : relativeTime(idea.archivedAt)}
+                </p>
+              </div>
+            </div>
+            <div className="idea-actions">
+              <button
+                type="button"
+                disabled={busy}
+                aria-label={`${idea.title} wiederherstellen`}
+                onClick={() => restore.mutate(idea.id)}
+              >
+                Wiederherstellen
+              </button>
+              {confirming === idea.id ? (
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={busy}
+                  aria-label={`${idea.title} endgültig löschen bestätigen`}
+                  onClick={() => remove.mutate(idea.id)}
+                >
+                  Ja, endgültig löschen
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  aria-label={`${idea.title} endgültig löschen`}
+                  onClick={() => {
+                    remove.reset();
+                    setConfirming(idea.id);
+                  }}
+                >
+                  Endgültig löschen
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -615,74 +650,60 @@ export function IdeasPanel({ meId }: { meId?: string }) {
       setBulk(null);
     }
   };
-  // Swiped away: hidden at once, deleted for good after a few seconds unless the member takes it back.
+  // Archived by a swipe or a button: out of the list at once, and a note offers to take it back for a few seconds.
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
   const [undoable, setUndoable] = useState<Idea[]>([]);
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  const finish = useRef((_id: string) => {});
-  finish.current = (id: string) => {
-    const timer = timers.current.get(id);
-    if (timer === undefined) return;
-    clearTimeout(timer);
-    timers.current.delete(id);
-    setUndoable((list) => list.filter((i) => i.id !== id));
-    // If the server refuses, the idea is back with the next fetch.
-    void deleteIdea(id)
-      .catch(() => {})
-      .then(() => changed())
-      .then(() =>
-        setHidden((set) => {
-          const rest = new Set(set);
-          rest.delete(id);
-          return rest;
-        }),
-      );
-  };
-  const archive = (idea: Idea) => {
-    setHidden((set) => new Set(set).add(idea.id));
-    setUndoable((list) => [...list, idea]);
-    setOpenId((id) => (id === idea.id ? null : id));
-    timers.current.set(
-      idea.id,
-      setTimeout(() => finish.current(idea.id), UNDO_MS),
-    );
-  };
-  const undo = (id: string) => {
-    const timer = timers.current.get(id);
-    if (timer !== undefined) clearTimeout(timer);
-    timers.current.delete(id);
-    setUndoable((list) => list.filter((i) => i.id !== id));
+  const forget = (id: string) =>
     setHidden((set) => {
       const rest = new Set(set);
       rest.delete(id);
       return rest;
     });
+  const [failed, setFailed] = useState<string | null>(null);
+  const archive = (idea: Idea) => {
+    setFailed(null);
+    setHidden((set) => new Set(set).add(idea.id));
+    setUndoable((list) => [...list, idea]);
+    setOpenId((id) => (id === idea.id ? null : id));
+    setTimeout(() => setUndoable((list) => list.filter((i) => i.id !== idea.id)), UNDO_MS);
+    archiveIdea(idea.id)
+      .catch((e) => {
+        // The server refused: the idea stays where it was.
+        setUndoable((list) => list.filter((i) => i.id !== idea.id));
+        setFailed(messageFor(e));
+      })
+      .then(() => changed())
+      .then(() => forget(idea.id));
   };
-  // Leaving the tab means "yes, delete": nothing waits on a screen that is gone.
-  useEffect(() => {
-    const pending = timers.current;
-    return () => {
-      for (const id of [...pending.keys()]) finish.current(id);
-    };
-  }, []);
+  const undo = (id: string) => {
+    setUndoable((list) => list.filter((i) => i.id !== id));
+    restoreIdea(id)
+      .catch((e) => setFailed(messageFor(e)))
+      .then(() => changed())
+      .then(() => forget(id));
+  };
   // A picked candidate or an own source leads into the import's review, which carries the idea along.
   const [review, setReview] = useState<{ ideaId: string; draft: RecipeDraft } | null>(null);
-  const all = (ideas.data ?? []).filter((i) => !hidden.has(i.id));
+  const everything = ideas.data ?? [];
+  const all = everything.filter((i) => i.archivedAt === null && !hidden.has(i.id));
+  const archived = everything.filter((i) => i.archivedAt !== null);
   const matches: Record<Filter, (i: Idea) => boolean> = {
     all: () => true,
     stale: (i) => i.isStale,
     researched: (i) => i.candidates.length > 0,
     mine: (i) => i.addedBy.id === meId,
+    archive: () => false,
   };
   const counts: Record<Filter, number> = {
     all: all.length,
     stale: all.filter(matches.stale).length,
     researched: all.filter(matches.researched).length,
     mine: meId === undefined ? 0 : all.filter(matches.mine).length,
+    archive: archived.length,
   };
   // A filter that has run out of ideas (the last stale one was kept) falls back to everything.
   const active: Filter = filter !== "all" && counts[filter] === 0 ? "all" : filter;
-  const shown = all.filter(matches[active]);
+  const shown = active === "archive" ? [] : all.filter(matches[active]);
   const stale = shown.filter((i) => i.isStale);
   const fresh = shown.filter((i) => !i.isStale);
   const chips: { id: Filter; label: string }[] = [
@@ -690,6 +711,7 @@ export function IdeasPanel({ meId }: { meId?: string }) {
     { id: "stale", label: "Veraltet" },
     { id: "researched", label: "Mit Vorschlägen" },
     { id: "mine", label: "Von mir" },
+    { id: "archive", label: "Archiv" },
   ];
   const row = (idea: Idea) => (
     <IdeaCard
@@ -746,13 +768,18 @@ export function IdeasPanel({ meId }: { meId?: string }) {
           }}
         />
       )}
+      {failed && (
+        <p role="alert" className="error">
+          {failed}
+        </p>
+      )}
       {ideas.isPending && <Loading what="Ideen werden geladen …" />}
       {ideas.isError && (
         <p role="alert" className="error">
           Die Ideen konnten nicht geladen werden.
         </p>
       )}
-      {ideas.data && all.length === 0 && (
+      {ideas.data && all.length === 0 && archived.length === 0 && (
         <div className="empty-state">
           <p>Noch keine Ideen.</p>
           <p className="muted">
@@ -762,7 +789,7 @@ export function IdeasPanel({ meId }: { meId?: string }) {
           </p>
         </div>
       )}
-      {all.length > 0 && !cleanup && (
+      {(all.length > 0 || archived.length > 0) && !cleanup && (
         <fieldset className="chips">
           <legend className="sr-only">Ideen filtern</legend>
           {chips
@@ -784,7 +811,7 @@ export function IdeasPanel({ meId }: { meId?: string }) {
         <Cleanup queue={cleanup} ideas={all} onChanged={changed} onDone={() => setCleanup(null)} />
       ) : (
         <>
-          {counts.stale > 0 && (
+          {counts.stale > 0 && active !== "archive" && (
             <button
               type="button"
               className="secondary small cleanup-start"
@@ -793,6 +820,7 @@ export function IdeasPanel({ meId }: { meId?: string }) {
               Veraltete aufräumen ({counts.stale})
             </button>
           )}
+          {active === "archive" && <ArchivedList ideas={archived} onChanged={changed} />}
           {stale.length > 0 && (
             <>
               {active !== "stale" && (
@@ -816,7 +844,7 @@ export function IdeasPanel({ meId }: { meId?: string }) {
         <div className="toasts">
           {undoable.map((i) => (
             <p key={i.id} role="status" className="toast">
-              <span>„{i.title}“ gelöscht</span>
+              <span>„{i.title}“ archiviert</span>
               <button type="button" className="link-text" onClick={() => undo(i.id)}>
                 Rückgängig
               </button>

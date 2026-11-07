@@ -90,6 +90,7 @@ export const ideaView = (idea: IdeaView, people: ReadonlyMap<string, { name: str
     addedAt: idea.addedAt,
     lastTouchedAt: idea.lastTouchedAt,
     isStale: idea.isStale,
+    archivedAt: idea.archivedAt,
     candidates: idea.candidates,
   };
 };

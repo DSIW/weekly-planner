@@ -24,6 +24,7 @@ const idea = (id: string, over: Record<string, unknown> = {}) => ({
   addedBy: { id: "2", name: "Max", avatar: null },
   addedAt: Date.now(),
   isStale: false,
+  archivedAt: null,
   candidates: [],
   ...over,
 });
@@ -130,24 +131,28 @@ describe("filters", () => {
 describe("cleanup of stale ideas", () => {
   const stale = (id: string) => idea(id, { title: `Alt ${id}`, isStale: true, addedBy: other, note: `Notiz ${id}` });
 
-  it("steps through them: keep, delete after a second tap, later", async () => {
+  it("steps through them: keep, archive, later", async () => {
     let kept = false;
-    let deleted = false;
+    let archived = false;
     const calls = server({
       ...base,
       [LIST]: () =>
         list(
-          ...[stale("x"), stale("y"), stale("z")]
-            .filter((i) => !(i.id === "y" && deleted))
-            .map((i) => (i.id === "x" && kept ? { ...i, isStale: false } : i)),
+          ...[stale("x"), stale("y"), stale("z")].map((i) =>
+            i.id === "x" && kept
+              ? { ...i, isStale: false }
+              : i.id === "y" && archived
+                ? { ...i, isStale: false, archivedAt: Date.now() }
+                : i,
+          ),
         ),
       [`POST ${api}/ideas/x/keep`]: () => {
         kept = true;
         return { status: 200, body: { idea: stale("x") } };
       },
-      [`DELETE ${api}/ideas/y`]: () => {
-        deleted = true;
-        return { status: 204 };
+      [`POST ${api}/ideas/y/archive`]: () => {
+        archived = true;
+        return { status: 200, body: { idea: stale("y") } };
       },
     });
     await openIdeas();
@@ -159,10 +164,10 @@ describe("cleanup of stale ideas", () => {
     expect(await screen.findByText("Aufräumen · 2 von 3")).toBeInTheDocument();
     expect(calls.some((c) => c.key === `POST ${api}/ideas/x/keep`)).toBe(true);
 
-    await userEvent.click(screen.getByRole("button", { name: "Alt y löschen" }));
-    expect(calls.some((c) => c.key === `DELETE ${api}/ideas/y`)).toBe(false); // one tap is not enough
-    await userEvent.click(screen.getByRole("button", { name: "Alt y wirklich löschen" }));
+    await userEvent.click(screen.getByRole("button", { name: "Alt y archivieren" }));
     expect(await screen.findByText("Aufräumen · 3 von 3")).toBeInTheDocument();
+    expect(calls.some((c) => c.key === `POST ${api}/ideas/y/archive`)).toBe(true);
+    expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false);
 
     await userEvent.click(screen.getByRole("button", { name: "Später" }));
     expect(await screen.findByText("Aufgeräumt.")).toBeInTheDocument();
@@ -373,18 +378,18 @@ const swipe = (title: string, from: number, to: number) => {
   return front;
 };
 
-describe("swiping an idea away", () => {
+describe("swiping an idea to the archive", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("takes the row off at once, offers to bring it back, and deletes it for good after a while", async () => {
+  it("archives at once, takes the row off, and the note offers to bring it back", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
-    let deleted = false;
+    let archivedAt: number | null = null;
     const calls = server({
       ...base,
-      [LIST]: () => list(...(deleted ? [] : [idea("a", { title: "Alt" })]), idea("b", { title: "Bleibt" })),
-      [`DELETE ${api}/ideas/a`]: () => {
-        deleted = true;
-        return { status: 204 };
+      [LIST]: () => list(idea("a", { title: "Alt", archivedAt }), idea("b", { title: "Bleibt" })),
+      [`POST ${api}/ideas/a/archive`]: () => {
+        archivedAt = Date.now();
+        return { status: 200, body: { idea: idea("a") } };
       },
     });
     await openIdeas();
@@ -392,42 +397,47 @@ describe("swiping an idea away", () => {
     swipe("Alt", 250, 100);
     expect(screen.queryByRole("button", { name: "Alt" })).toBeNull();
     expect(screen.getByRole("button", { name: "Bleibt" })).toBeInTheDocument();
-    expect(screen.getByText(/„Alt“ gelöscht/)).toBeInTheDocument();
-    expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false); // not yet
+    expect(screen.getByText(/„Alt“ archiviert/)).toBeInTheDocument();
+    await waitFor(() => expect(calls.some((c) => c.key === `POST ${api}/ideas/a/archive`)).toBe(true));
 
     await act(async () => {
       vi.advanceTimersByTime(6100);
     });
-    await waitFor(() => expect(calls.some((c) => c.key === `DELETE ${api}/ideas/a`)).toBe(true));
-    await waitFor(() => expect(screen.queryByText(/„Alt“ gelöscht/)).toBeNull());
-    expect(screen.queryByRole("button", { name: "Alt" })).toBeNull();
+    await waitFor(() => expect(screen.queryByText(/„Alt“ archiviert/)).toBeNull()); // the note goes, the idea stays archived
+    expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false);
+    expect(screen.getByRole("button", { name: "Archiv 1" })).toBeInTheDocument();
   });
 
-  it("brings the idea back on undo and never deletes it", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const calls = server({ ...base, [LIST]: list(idea("a", { title: "Alt" })) });
+  it("brings the idea back on undo", async () => {
+    let archivedAt: number | null = null;
+    const calls = server({
+      ...base,
+      [LIST]: () => list(idea("a", { title: "Alt", archivedAt })),
+      [`POST ${api}/ideas/a/archive`]: () => {
+        archivedAt = Date.now();
+        return { status: 200, body: { idea: idea("a") } };
+      },
+      [`POST ${api}/ideas/a/restore`]: () => {
+        archivedAt = null;
+        return { status: 200, body: { idea: idea("a") } };
+      },
+    });
     await openIdeas();
     await screen.findByRole("button", { name: "Alt" });
     swipe("Alt", 250, 100);
     await userEvent.click(screen.getByRole("button", { name: "Rückgängig" }));
-    expect(screen.getByRole("button", { name: "Alt" })).toBeInTheDocument();
-    await act(async () => {
-      vi.advanceTimersByTime(10_000);
-    });
+    expect(await screen.findByRole("button", { name: "Alt" })).toBeInTheDocument();
+    expect(calls.some((c) => c.key === `POST ${api}/ideas/a/restore`)).toBe(true);
     expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false);
   });
 
-  it("deletes when the member leaves the tab meanwhile", async () => {
-    const calls = server({
-      ...base,
-      [LIST]: list(idea("a", { title: "Alt" })),
-      [`DELETE ${api}/ideas/a`]: { status: 204 },
-    });
+  it("puts the idea back and says so when the server refuses", async () => {
+    server({ ...base, [LIST]: list(idea("a", { title: "Alt" })), [`POST ${api}/ideas/a/archive`]: { status: 500 } });
     await openIdeas();
     await screen.findByRole("button", { name: "Alt" });
     swipe("Alt", 250, 100);
-    await userEvent.click(screen.getByRole("button", { name: "Planung" }));
-    await waitFor(() => expect(calls.some((c) => c.key === `DELETE ${api}/ideas/a`)).toBe(true));
+    expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
+    expect(await screen.findByRole("button", { name: "Alt" })).toBeInTheDocument();
   });
 
   it("ignores short drags, vertical drags and a swipe to the right on a fresh idea", async () => {
@@ -445,7 +455,7 @@ describe("swiping an idea away", () => {
     at("pointermove", 120, 300); // a scroll with a bit of drift
     at("pointerup", 120, 300);
     expect(screen.getByRole("button", { name: "Alt" })).toBeInTheDocument();
-    expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false);
+    expect(calls.some((c) => c.key.startsWith("DELETE") || c.key.endsWith("/archive"))).toBe(false);
   });
 
   it("keeps a stale idea on a swipe to the right", async () => {

@@ -28,6 +28,7 @@ const idea = (over: Record<string, unknown> = {}) => ({
   addedBy: { id: "2", name: "Max", avatar: null },
   addedAt: Date.now(),
   isStale: false,
+  archivedAt: null,
   candidates: [],
   ...over,
 });

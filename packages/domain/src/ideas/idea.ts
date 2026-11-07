@@ -40,6 +40,8 @@ export interface RecipeIdea {
   readonly addedAt: number;
   /** Moved on by what a member does with the idea; merely looking at it does not count. */
   readonly lastTouchedAt: number;
+  /** Set while the idea is put aside: out of the list and cleanup, everything else kept. Null in the list. */
+  readonly archivedAt: number | null;
   readonly candidates: readonly CandidateProposal[];
 }
 
@@ -63,6 +65,7 @@ export function noteIdea(
     addedBy: cmd.member,
     addedAt: now,
     lastTouchedAt: now,
+    archivedAt: null,
     candidates: [],
   });
 }
@@ -73,6 +76,7 @@ export function editIdea(
   cmd: { member: MemberId; title: string; note?: string; inspirationLink?: string },
   now: number,
 ): Result<RecipeIdea> {
+  if (idea.archivedAt !== null) return reject("archived");
   if (cmd.title.trim() === "") return reject("empty_title");
   return succeed({
     ...idea,
@@ -83,9 +87,21 @@ export function editIdea(
   });
 }
 
-/** Derived is_stale: only a mark, the idea stays until a member keeps or deletes it. */
+/** Derived is_stale: only a mark, the idea stays until a member keeps, archives or deletes it; never for an archived idea. */
 export const isStale = (idea: RecipeIdea, now: number, config: IdeaConfig): boolean =>
-  idea.lastTouchedAt + config.ideaStaleAfterMs <= now;
+  idea.archivedAt === null && idea.lastTouchedAt + config.ideaStaleAfterMs <= now;
+
+/** rule ArchiveIdea: put aside without touching the idea's clock; note, link and candidates stay. */
+export function archiveIdea(idea: RecipeIdea, _cmd: { member: MemberId }, now: number): Result<RecipeIdea> {
+  if (idea.archivedAt !== null) return reject("already_archived");
+  return succeed({ ...idea, archivedAt: now });
+}
+
+/** rule RestoreIdea: back in the list, with its clock started again so it does not return stale. */
+export function restoreIdea(idea: RecipeIdea, _cmd: { member: MemberId }, now: number): Result<RecipeIdea> {
+  if (idea.archivedAt === null) return reject("not_archived");
+  return succeed({ ...idea, archivedAt: null, lastTouchedAt: now });
+}
 
 /** rule KeepIdea: keeping a stale idea starts its clock again. */
 export function keepIdea(
@@ -154,6 +170,7 @@ export function pickCandidate(
   cmd: { member: MemberId; candidate: number },
   now: number,
 ): Result<{ source: string; idea: RecipeIdea }> {
+  if (idea.archivedAt !== null) return reject("archived");
   const picked = Number.isInteger(cmd.candidate) ? idea.candidates[cmd.candidate] : undefined;
   if (picked === undefined) return reject("no_such_candidate");
   return succeed({ source: picked.link, idea: { ...idea, lastTouchedAt: now } });
