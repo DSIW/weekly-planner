@@ -17,7 +17,9 @@ import { relativeTime } from "./dates";
 import { DraftReview } from "./ImportPanel";
 import { claudeSearchUrl } from "./claude-search";
 import { ResearchPanel, SearchButton, useIdeaResearch } from "./IdeaResearch";
+import { isWebLink as isLinkText, titleFromLink } from "./idea-title";
 import { Loading } from "./Loading";
+import { researchSeen, useResearchActivity } from "./research-activity";
 
 const MESSAGES: Record<string, string> = {
   empty_title: "Bitte einen Titel eingeben.",
@@ -54,7 +56,7 @@ function IdeaForm({
   onSubmit,
   onCancel,
 }: {
-  initial?: Idea;
+  initial?: { title: string; note?: string | null; inspirationLink?: string | null };
   submitLabel: string;
   pending: boolean;
   error: string | null;
@@ -222,6 +224,18 @@ function IdeaCard({
           <p className="idea-meta" id={metaId}>
             {idea.addedBy.name} · {relativeTime(idea.addedAt)}
             {idea.isStale && <span className="badge stale-badge">veraltet</span>}
+            {research.searching ? (
+              <span className="badge searching" role="status">
+                <span className="spinner" aria-hidden="true" />
+                Suche läuft …
+              </span>
+            ) : (
+              idea.candidates.length > 0 && (
+                <span className="badge">
+                  {idea.candidates.length} {idea.candidates.length === 1 ? "Vorschlag" : "Vorschläge"}
+                </span>
+              )
+            )}
             {link && !expanded && (
               <>
                 {" · "}
@@ -342,26 +356,220 @@ function IdeaCard({
   );
 }
 
+/**
+ * The quickest way to note an idea: one line. A pasted link becomes the idea's link and a guess from the address its
+ * title; "Mehr" opens the full form with what is typed so far.
+ */
+function QuickAdd({
+  pending,
+  error,
+  onAdd,
+  onMore,
+}: {
+  pending: boolean;
+  error: string | null;
+  onAdd: (idea: IdeaInput, done: () => void) => void;
+  onMore: (prefill: { title: string; inspirationLink?: string }) => void;
+}) {
+  const [text, setText] = useState("");
+  const typed = text.trim();
+  const isLink = isLinkText(typed);
+  const guess = isLink ? titleFromLink(typed) : typed;
+  const prefill = isLink ? { title: guess, inspirationLink: typed } : { title: guess };
+  return (
+    <form
+      className="quick-add"
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        if (typed === "") return;
+        onAdd(isLink ? { title: guess, inspirationLink: typed } : { title: typed }, () => setText(""));
+      }}
+    >
+      <div className="quick-add-row">
+        <input
+          type="text"
+          value={text}
+          maxLength={2000}
+          placeholder="Neue Idee oder Link einfügen …"
+          aria-label="Neue Idee"
+          enterKeyHint="done"
+          onChange={(ev) => setText(ev.target.value)}
+        />
+        <button type="submit" disabled={pending || typed === ""}>
+          Hinzufügen
+        </button>
+      </div>
+      {isLink && (
+        <p className="muted quick-add-hint">
+          Link erkannt – Titel „{guess}“.{" "}
+          <button type="button" className="link-text" onClick={() => onMore(prefill)}>
+            Anpassen
+          </button>
+        </p>
+      )}
+      {!isLink && typed !== "" && (
+        <p className="muted quick-add-hint">
+          <button type="button" className="link-text" onClick={() => onMore(prefill)}>
+            Mit Notiz oder Link
+          </button>
+        </p>
+      )}
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+    </form>
+  );
+}
+
+type Filter = "all" | "stale" | "researched" | "mine";
+
+/** Steps through the stale ideas one by one: keep, delete or leave for later. Nothing goes without a second tap. */
+function Cleanup({
+  queue,
+  ideas,
+  onChanged,
+  onDone,
+}: {
+  queue: string[];
+  ideas: Idea[];
+  onChanged: () => void;
+  onDone: () => void;
+}) {
+  const [later, setLater] = useState<ReadonlySet<string>>(new Set());
+  const [confirming, setConfirming] = useState(false);
+  const remaining = queue
+    .map((id) => ideas.find((i) => i.id === id))
+    .filter((i): i is Idea => i !== undefined && i.isStale && !later.has(i.id));
+  const current = remaining[0];
+  const next = () => setConfirming(false);
+  const keep = useMutation({ mutationFn: (id: string) => keepIdea(id), onSuccess: next, onSettled: onChanged });
+  const remove = useMutation({ mutationFn: (id: string) => deleteIdea(id), onSuccess: next, onSettled: onChanged });
+  const busy = keep.isPending || remove.isPending;
+  const failure = keep.error ?? remove.error;
+
+  if (!current)
+    return (
+      <div className="cleanup">
+        <p role="status" className="success">
+          Aufgeräumt.
+        </p>
+        <button type="button" onClick={onDone}>
+          Fertig
+        </button>
+      </div>
+    );
+  return (
+    <div className="cleanup">
+      <p className="muted" aria-live="polite">
+        Aufräumen · {queue.length - remaining.length + 1} von {queue.length}
+      </p>
+      <h3>{current.title}</h3>
+      <p className="idea-meta">
+        {current.addedBy.name} · {relativeTime(current.addedAt)}
+      </p>
+      {current.note && <p className="idea-note-full">{current.note}</p>}
+      {failure && (
+        <p role="alert" className="error">
+          {messageFor(failure)}
+        </p>
+      )}
+      <div className="idea-actions">
+        <button
+          type="button"
+          disabled={busy}
+          aria-label={`${current.title} behalten`}
+          onClick={() => keep.mutate(current.id)}
+        >
+          Behalten
+        </button>
+        {confirming ? (
+          <button
+            type="button"
+            className="danger"
+            disabled={busy}
+            aria-label={`${current.title} wirklich löschen`}
+            onClick={() => remove.mutate(current.id)}
+          >
+            Ja, löschen
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            aria-label={`${current.title} löschen`}
+            onClick={() => setConfirming(true)}
+          >
+            Löschen
+          </button>
+        )}
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={() => {
+            setConfirming(false);
+            setLater((l) => new Set(l).add(current.id));
+          }}
+        >
+          Später
+        </button>
+      </div>
+      <button type="button" className="link-text" onClick={onDone}>
+        Aufräumen beenden
+      </button>
+    </div>
+  );
+}
+
 /** The household's recipe ideas: note one, see who added it and when, edit, delete, and clean up the stale ones. */
-export function IdeasPanel() {
+export function IdeasPanel({ meId }: { meId?: string }) {
   const client = useQueryClient();
   const ideas = useQuery({ queryKey: ["ideas"], queryFn: fetchIdeas });
   const changed = () => client.invalidateQueries({ queryKey: ["ideas"] });
   // The other phone's changes arrive live; the list is also fetched again after every (re)connect.
   useEffect(() => listenForChanges(() => void client.invalidateQueries({ queryKey: ["ideas"] })), [client]);
-  const [adding, setAdding] = useState(false);
+  // Searches that finished while the member was elsewhere are news no longer once the list is in front of them.
+  const activity = useResearchActivity();
+  useEffect(() => {
+    if (activity.unseen.size > 0) researchSeen();
+  }, [activity.unseen]);
+  // The full form (note and link), opened from the quick line with what was typed there.
+  const [form, setForm] = useState<{ title: string; inspirationLink?: string } | null>(null);
   // Accordion: at most one row is opened by the member (a row with unsaved work additionally stays open by itself).
   const [openId, setOpenId] = useState<string | null>(null);
-  const add = useMutation({
-    mutationFn: addIdea,
-    onSuccess: () => setAdding(false),
-    onSettled: changed,
-  });
+  const [filter, setFilter] = useState<Filter>("all");
+  // The stale ideas the cleanup walks through, fixed when it starts.
+  const [cleanup, setCleanup] = useState<string[] | null>(null);
+  const add = useMutation({ mutationFn: addIdea, onSettled: changed });
   // A picked candidate or an own source leads into the import's review, which carries the idea along.
   const [review, setReview] = useState<{ ideaId: string; draft: RecipeDraft } | null>(null);
   const all = ideas.data ?? [];
-  const stale = all.filter((i) => i.isStale);
-  const fresh = all.filter((i) => !i.isStale);
+  const matches: Record<Filter, (i: Idea) => boolean> = {
+    all: () => true,
+    stale: (i) => i.isStale,
+    researched: (i) => i.candidates.length > 0,
+    mine: (i) => i.addedBy.id === meId,
+  };
+  const counts: Record<Filter, number> = {
+    all: all.length,
+    stale: all.filter(matches.stale).length,
+    researched: all.filter(matches.researched).length,
+    mine: meId === undefined ? 0 : all.filter(matches.mine).length,
+  };
+  // A filter that has run out of ideas (the last stale one was kept) falls back to everything.
+  const active: Filter = filter !== "all" && counts[filter] === 0 ? "all" : filter;
+  const shown = all.filter(matches[active]);
+  const stale = shown.filter((i) => i.isStale);
+  const fresh = shown.filter((i) => !i.isStale);
+  const chips: { id: Filter; label: string }[] = [
+    { id: "all", label: "Alle" },
+    { id: "stale", label: "Veraltet" },
+    { id: "researched", label: "Mit Vorschlägen" },
+    { id: "mine", label: "Von mir" },
+  ];
   const row = (idea: Idea) => (
     <IdeaCard
       key={idea.id}
@@ -389,21 +597,27 @@ export function IdeasPanel() {
     <section className="card ideas">
       <div className="ideas-head">
         <h2>Ideen {ideas.data && <span className="muted ideas-count">({all.length})</span>}</h2>
-        {!adding && (
-          <button type="button" className="small" aria-label="Neue Idee hinzufügen" onClick={() => setAdding(true)}>
-            + Neu
-          </button>
-        )}
       </div>
-      {adding && (
+      {form ? (
         <IdeaForm
+          initial={form}
           submitLabel="Idee hinzufügen"
           pending={add.isPending}
           error={add.isError ? messageFor(add.error) : null}
-          onSubmit={(input) => add.mutate(input)}
+          onSubmit={(input) => add.mutate(input, { onSuccess: () => setForm(null) })}
           onCancel={() => {
             add.reset();
-            setAdding(false);
+            setForm(null);
+          }}
+        />
+      ) : (
+        <QuickAdd
+          pending={add.isPending}
+          error={add.isError ? messageFor(add.error) : null}
+          onAdd={(input, done) => add.mutate(input, { onSuccess: done })}
+          onMore={(prefill) => {
+            add.reset();
+            setForm(prefill);
           }}
         />
       )}
@@ -414,22 +628,64 @@ export function IdeasPanel() {
         </p>
       )}
       {ideas.data && all.length === 0 && (
-        <p className="muted">Noch keine Ideen. Hier landet alles, was ihr irgendwann einmal kochen möchtet.</p>
+        <div className="empty-state">
+          <p>Noch keine Ideen.</p>
+          <p className="muted">
+            Schreib oben ein Gericht auf, das ihr einmal kochen möchtet – oder füge einen Link ein. Aus einer Idee wird
+            per Suche ein Rezept, das ihr einplanen könnt. Links aus dem Browser lassen sich auch direkt mit der App
+            teilen.
+          </p>
+        </div>
       )}
-      {stale.length > 0 && (
+      {all.length > 0 && !cleanup && (
+        <fieldset className="chips">
+          <legend className="sr-only">Ideen filtern</legend>
+          {chips
+            .filter((c) => c.id === "all" || counts[c.id] > 0)
+            .map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className="chip"
+                aria-pressed={active === c.id}
+                onClick={() => setFilter(c.id)}
+              >
+                {c.label} <span>{counts[c.id]}</span>
+              </button>
+            ))}
+        </fieldset>
+      )}
+      {cleanup ? (
+        <Cleanup queue={cleanup} ideas={all} onChanged={changed} onDone={() => setCleanup(null)} />
+      ) : (
         <>
-          <h3 className="idea-group">
-            Veraltet <span>· Lange nichts damit gemacht</span>
-          </h3>
-          <ul className="ideas-list" aria-label="Veraltete Ideen">
-            {stale.map(row)}
-          </ul>
+          {counts.stale > 0 && (
+            <button
+              type="button"
+              className="secondary small cleanup-start"
+              onClick={() => setCleanup(all.filter((i) => i.isStale).map((i) => i.id))}
+            >
+              Veraltete aufräumen ({counts.stale})
+            </button>
+          )}
+          {stale.length > 0 && (
+            <>
+              {active !== "stale" && (
+                <h3 className="idea-group">
+                  Veraltet <span>· Lange nichts damit gemacht</span>
+                </h3>
+              )}
+              <ul className="ideas-list" aria-label="Veraltete Ideen">
+                {stale.map(row)}
+              </ul>
+            </>
+          )}
+          {fresh.length > 0 && (
+            <ul className="ideas-list" aria-label="Ideen">
+              {fresh.map(row)}
+            </ul>
+          )}
         </>
-      )}
-      {fresh.length > 0 && (
-        <ul className="ideas-list" aria-label="Ideen">
-          {fresh.map(row)}
-        </ul>
       )}
     </section>
   );

@@ -11,6 +11,7 @@ import {
   type RecipeDraft,
 } from "./api";
 import { messageFor as importMessageFor } from "./ImportPanel";
+import { researchFinished, researchStarted, useResearchActivity } from "./research-activity";
 import { Loading } from "./Loading";
 
 const FALLBACK = "Das hat nicht geklappt. Bitte später noch einmal versuchen.";
@@ -51,7 +52,23 @@ export function useIdeaResearch(idea: Idea, onChanged: () => void, onDraft: (dra
   const [own, setOwn] = useState(false);
   const [ownText, setOwnText] = useState("");
   const [closed, setClosed] = useState(false);
-  const search = useMutation({ mutationFn: () => researchIdea(idea.id), onSettled: onChanged });
+  const activity = useResearchActivity();
+  const search = useMutation({
+    mutationFn: async () => {
+      researchStarted(idea.id);
+      try {
+        const found = await researchIdea(idea.id);
+        researchFinished(idea.id, true);
+        return found;
+      } catch (e) {
+        researchFinished(idea.id, false);
+        throw e;
+      }
+    },
+    onSettled: onChanged,
+  });
+  // The request outlives the row: after a visit to another tab the row learns of it from the shared activity.
+  const searching = search.isPending || activity.running.has(idea.id);
   const pick = useMutation({
     mutationFn: (n: number) => pickCandidate(idea.id, n),
     onSuccess: onDraft,
@@ -63,8 +80,8 @@ export function useIdeaResearch(idea: Idea, onChanged: () => void, onDraft: (dra
     onSuccess: onDraft,
     onSettled: onChanged,
   });
-  const busy = search.isPending || pick.isPending || useOwn.isPending;
-  return { own, setOwn, ownText, setOwnText, closed, setClosed, search, pick, useOwn, busy };
+  const busy = searching || pick.isPending || useOwn.isPending;
+  return { searching, own, setOwn, ownText, setOwnText, closed, setClosed, search, pick, useOwn, busy };
 }
 export type IdeaResearchState = ReturnType<typeof useIdeaResearch>;
 
@@ -125,14 +142,14 @@ export function ResearchPanel({
   research: IdeaResearchState;
   disabled: boolean;
 }) {
-  const { own, setOwn, ownText, setOwnText, closed, setClosed, search, pick, useOwn, busy } = research;
+  const { searching, own, setOwn, ownText, setOwnText, closed, setClosed, search, pick, useOwn, busy } = research;
   const candidates = idea.candidates ?? [];
   const showCandidates = candidates.length > 0 && !own && !closed;
-  if (!own && !search.isPending && !search.isError && candidates.length === 0) return null;
+  if (!own && !searching && !search.isError && candidates.length === 0) return null;
 
   return (
     <div className="idea-research">
-      {search.isPending && <Loading what="Es wird gesucht … das kann eine Minute dauern" />}
+      {searching && <Loading what="Es wird gesucht … das kann eine Minute dauern" />}
       {search.isError && (
         <p role="alert" className="error">
           {researchMessage(search.error)}

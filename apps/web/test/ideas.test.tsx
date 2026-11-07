@@ -192,20 +192,20 @@ describe("the ideas tab", () => {
       },
     });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Neue Idee hinzufügen" }));
-    await userEvent.type(screen.getByLabelText("Titel"), "Etwas mit Kürbis");
-    await userEvent.click(screen.getByRole("button", { name: "Idee hinzufügen" }));
+    await userEvent.type(await screen.findByLabelText("Neue Idee"), "Etwas mit Kürbis");
+    await userEvent.click(screen.getByRole("button", { name: "Hinzufügen" }));
     expect(await screen.findByRole("heading", { name: "Etwas mit Kürbis" })).toBeInTheDocument();
     expect(calls.find((c) => c.key === ADD)?.body).toEqual({ title: "Etwas mit Kürbis" });
     expect(screen.getByText(/Max · heute/)).toBeInTheDocument();
-    expect(screen.queryByLabelText("Titel")).toBeNull(); // the form closed
+    expect(screen.getByLabelText("Neue Idee")).toHaveValue(""); // the line is empty again
   });
 
   it("sends note and link when given", async () => {
     const calls = server({ ...base, [LIST]: list(), [ADD]: { status: 201, body: { idea: idea("i9") } } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Neue Idee hinzufügen" }));
-    await userEvent.type(screen.getByLabelText("Titel"), "Gnocchi");
+    await userEvent.type(await screen.findByLabelText("Neue Idee"), "Gnocchi");
+    await userEvent.click(screen.getByRole("button", { name: "Mit Notiz oder Link" }));
+    expect(screen.getByLabelText("Titel")).toHaveValue("Gnocchi");
     await userEvent.type(screen.getByLabelText(/Notiz/), "mit Salbei");
     await userEvent.type(screen.getByLabelText(/Link/), "https://example.org/g");
     await userEvent.click(screen.getByRole("button", { name: "Idee hinzufügen" }));
@@ -254,16 +254,13 @@ describe("the ideas tab", () => {
 });
 
 describe("the compact list", () => {
-  it("has a slim header with the count and a compact add button", async () => {
+  it("has a slim header with the count and a one-line add field", async () => {
     server({ ...base, [LIST]: list(fresh, stale) });
     await openIdeas();
     const heading = await screen.findByRole("heading", { level: 2, name: /Ideen/ });
     await waitFor(() => expect(heading).toHaveTextContent("Ideen (2)"));
-    const add = screen.getByRole("button", { name: "Neue Idee hinzufügen" });
-    expect(add).toHaveTextContent("+ Neu");
-    await userEvent.click(add);
-    expect(screen.getByLabelText("Titel")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Neue Idee hinzufügen" })).toBeNull();
+    expect(screen.getByLabelText("Neue Idee")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Titel")).toBeNull(); // the full form is one tap away, not in the way
   });
 
   it("shows avatar, title, meta line and a chevron toggle, but no action buttons while collapsed", async () => {
@@ -435,19 +432,17 @@ describe("failed idea actions are visible", () => {
   it("adding an idea that the server fails on, and the form keeps what was typed", async () => {
     server({ ...base, [LIST]: list(), [ADD]: { status: 500, body: {} } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Neue Idee hinzufügen" }));
-    await userEvent.type(screen.getByLabelText("Titel"), "Gnocchi");
-    await userEvent.click(screen.getByRole("button", { name: "Idee hinzufügen" }));
+    await userEvent.type(await screen.findByLabelText("Neue Idee"), "Gnocchi");
+    await userEvent.click(screen.getByRole("button", { name: "Hinzufügen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
-    expect(screen.getByLabelText("Titel")).toHaveValue("Gnocchi");
+    expect(screen.getByLabelText("Neue Idee")).toHaveValue("Gnocchi");
   });
 
   it("adding an idea with a link the server refuses", async () => {
     server({ ...base, [LIST]: list(), [ADD]: { status: 400, body: { error: "invalid_request" } } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Neue Idee hinzufügen" }));
-    await userEvent.type(screen.getByLabelText("Titel"), "Gnocchi");
-    await userEvent.click(screen.getByRole("button", { name: "Idee hinzufügen" }));
+    await userEvent.type(await screen.findByLabelText("Neue Idee"), "https://example.org/gnocchi");
+    await userEvent.click(screen.getByRole("button", { name: "Hinzufügen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("gültigen Link");
   });
 

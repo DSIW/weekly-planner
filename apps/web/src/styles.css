@@ -1642,3 +1642,104 @@ button.danger {
   gap: 8px;
   font-size: 0.9rem;
 }
+
+/* Ideas: quick add, filter chips, cleanup, research status, share to plan */
+.quick-add {
+  display: grid;
+  gap: 4px;
+}
+.quick-add-row {
+  display: flex;
+  gap: 8px;
+}
+.quick-add-row input {
+  flex: 1;
+  min-width: 0;
+}
+.quick-add-hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.link-text {
+  background: none;
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  color: var(--primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.chip {
+  padding: 5px 12px;
+  min-height: 0;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.chip span {
+  opacity: 0.7;
+}
+.chip[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.cleanup-start {
+  justify-self: start;
+}
+.cleanup {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+}
+.cleanup h3 {
+  margin: 0;
+}
+.empty-state p {
+  margin: 0 0 6px;
+}
+.badge.searching {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.badge.searching .spinner,
+.tab-badge .spinner {
+  position: static;
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  border-width: 2px;
+}
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--on-primary);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.add-to-plan {
+  display: grid;
+  gap: 8px;
+}

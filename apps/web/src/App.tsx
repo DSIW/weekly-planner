@@ -51,6 +51,8 @@ import { ProposalCard } from "./ProposalCard";
 import { RecipePicker } from "./RecipePicker";
 import { StartSessionForm } from "./StartSessionForm";
 import { Stepper } from "./Stepper";
+import { useResearchActivity } from "./research-activity";
+import { hasShare, sharedFrom } from "./share-target";
 import { SwipeDeck } from "./SwipeDeck";
 
 const SESSION_MESSAGES: Record<SessionError, string> = {
@@ -425,7 +427,13 @@ export function App() {
     onSuccess: (member) => client.setQueryData(["me"], member),
   });
   const signOut = useMutation({ mutationFn: logout, onSuccess: () => client.setQueryData(["me"], null) });
-  const [tab, setTab] = useState<"plan" | "log" | "ideas" | "import">("plan");
+  // A link shared to the installed app opens the import with it; the address is cleaned so a reload starts fresh.
+  const research = useResearchActivity();
+  const [shared] = useState(() => sharedFrom(window.location.search));
+  const [tab, setTab] = useState<"plan" | "log" | "ideas" | "import">(shared === null ? "plan" : "import");
+  useEffect(() => {
+    if (hasShare(window.location.search)) window.history.replaceState(null, "", window.location.pathname);
+  }, []);
   const links = useQuery({ queryKey: ["links"], queryFn: fetchLinks, enabled: me.data != null, staleTime: Infinity });
 
   if (me.isPending)
@@ -482,6 +490,18 @@ export function App() {
           </button>
           <button type="button" aria-pressed={tab === "ideas"} onClick={() => setTab("ideas")}>
             Ideen
+            {tab !== "ideas" && research.running.size > 0 && (
+              <span className="tab-badge searching">
+                <span className="spinner" aria-hidden="true" />
+                <span className="sr-only"> Suche läuft</span>
+              </span>
+            )}
+            {tab !== "ideas" && research.running.size === 0 && research.unseen.size > 0 && (
+              <span className="tab-badge">
+                {research.unseen.size}
+                <span className="sr-only"> neue Vorschläge</span>
+              </span>
+            )}
           </button>
           <button type="button" aria-pressed={tab === "import"} onClick={() => setTab("import")}>
             Import
@@ -490,9 +510,9 @@ export function App() {
         {tab === "log" ? (
           <MealHistory messageFor={messageFor} />
         ) : tab === "ideas" ? (
-          <IdeasPanel />
+          <IdeasPanel meId={me.data.id} />
         ) : tab === "import" ? (
-          <ImportPanel />
+          <ImportPanel initialInput={shared ?? ""} />
         ) : (
           <>
             <DueMeals messageFor={messageFor} />

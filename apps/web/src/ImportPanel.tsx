@@ -9,6 +9,7 @@ import {
   matchTags,
   type RecipeDraft,
 } from "./api";
+import { AddToPlan } from "./AddToPlan";
 import { claudeExtractUrl } from "./claude-search";
 import { ItemIcon } from "./ItemIcon";
 import { RelatedRecipes } from "./RelatedRecipes";
@@ -146,6 +147,7 @@ export function DraftReview({
         {create.data.draft.imageToken !== undefined && !create.data.photoAttached && (
           <p className="muted">Das Titelbild konnte nicht übernommen werden.</p>
         )}
+        <AddToPlan recipeId={create.data.recipeId} />
         {recipeHref && (
           <a className="link-button" href={recipeHref} target="_blank" rel="noopener noreferrer">
             In KitchenOwl öffnen
@@ -426,8 +428,8 @@ export function DraftReview({
 }
 
 /** A link or a pasted text becomes a recipe in KitchenOwl: read, reviewed here, then created. */
-export function ImportPanel() {
-  const [input, setInput] = useState("");
+export function ImportPanel({ initialInput = "" }: { initialInput?: string }) {
+  const [input, setInput] = useState(initialInput);
   const [draft, setDraft] = useState<RecipeDraft | null>(null);
   const read = useMutation({
     mutationFn: (text: string) => draftImport(isLink(text) ? { address: text } : { text }),
