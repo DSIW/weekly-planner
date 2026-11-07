@@ -179,7 +179,7 @@ function IdeaCard({
   onOpen: () => void;
   onClose: () => void;
   onChanged: () => void;
-  /** The row was swiped away: the list takes it off and offers to bring it back before it is deleted for good. */
+  /** The row was swiped away or archived: the list takes it off and offers to bring it back for a few seconds. */
   onArchive: () => void;
   onDraft: (draft: RecipeDraft) => void;
 }) {
@@ -497,7 +497,7 @@ function QuickAdd({
 
 type Filter = "all" | "stale" | "researched" | "mine" | "archive";
 
-/** Steps through the stale ideas one by one: keep, delete or leave for later. Nothing goes without a second tap. */
+/** Steps through the stale ideas one by one: keep, archive or leave for later. Nothing is deleted here. */
 function Cleanup({
   queue,
   ideas,
@@ -652,7 +652,7 @@ function ArchivedList({ ideas, onChanged }: { ideas: Idea[]; onChanged: () => vo
   );
 }
 
-/** The household's recipe ideas: note one, see who added it and when, edit, delete, and clean up the stale ones. */
+/** The household's recipe ideas: note, edit, research, archive (restore or delete from the archive) and clean up. */
 export function IdeasPanel({ meId, initialText = "" }: { meId?: string; initialText?: string }) {
   const client = useQueryClient();
   const ideas = useQuery({ queryKey: ["ideas"], queryFn: fetchIdeas });
@@ -701,25 +701,36 @@ export function IdeasPanel({ meId, initialText = "" }: { meId?: string; initialT
       return rest;
     });
   const [failed, setFailed] = useState<string | null>(null);
+  // Archive requests still on their way, by idea: an undo waits for its archive, or the restore would arrive first.
+  const archiving = useRef(new Map<string, Promise<boolean>>());
   const archive = (idea: Idea) => {
     setFailed(null);
     setHidden((set) => new Set(set).add(idea.id));
     setUndoable((list) => [...list, idea]);
     setOpenId((id) => (id === idea.id ? null : id));
     setTimeout(() => setUndoable((list) => list.filter((i) => i.id !== idea.id)), UNDO_MS);
-    archiveIdea(idea.id)
-      .catch((e) => {
+    const done = archiveIdea(idea.id).then(
+      () => true,
+      (e: unknown) => {
         // The server refused: the idea stays where it was.
         setUndoable((list) => list.filter((i) => i.id !== idea.id));
         setFailed(messageFor(e));
-      })
+        return false;
+      },
+    );
+    archiving.current.set(idea.id, done);
+    void done
       .then(() => changed())
-      .then(() => forget(idea.id));
+      .then(() => {
+        if (archiving.current.get(idea.id) === done) archiving.current.delete(idea.id);
+        forget(idea.id);
+      });
   };
   const undo = (id: string) => {
     setUndoable((list) => list.filter((i) => i.id !== id));
-    restoreIdea(id)
-      .catch((e) => setFailed(messageFor(e)))
+    void (archiving.current.get(id) ?? Promise.resolve(true))
+      .then((archived) => (archived ? restoreIdea(id).then(() => undefined) : undefined))
+      .catch((e: unknown) => setFailed(messageFor(e)))
       .then(() => changed())
       .then(() => forget(id));
   };

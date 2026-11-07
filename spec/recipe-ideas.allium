@@ -353,9 +353,10 @@ surface IdeaList {
         -- for it; being stale or archived never removes it.
 
     @guidance
-        -- Stale ideas are listed together for cleanup, each with keep,
-        -- archive and delete. Archived ideas are listed apart, each with
-        -- restore and delete; a swipe on an idea may archive it, and a
+        -- Stale ideas are listed together for cleanup, each with keep and
+        -- archive. Archived ideas are listed apart, each with restore and
+        -- delete for good (the only place the surface offers deleting,
+        -- though DeleteIdea works on any idea); a swipe on an idea may archive it, and a
         -- member can undo that with restore. Picking a candidate or using an own source leads into the
         -- import's draft review, which carries the idea along to
         -- CreateImportedRecipe. A candidate's link is shown as a link the
