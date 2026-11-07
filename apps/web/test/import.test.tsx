@@ -14,6 +14,7 @@ const base = {
   [`GET ${api}/sessions/current`]: { status: 200, body: { session: null } },
   [`GET ${api}/planned-dates`]: { status: 200, body: { dates: [] } },
   [`GET ${api}/meal-log?days=14`]: { status: 200, body: { entries: [] } },
+  [`GET ${api}/ideas`]: { status: 200, body: { ideas: [] } },
 };
 const draft = {
   name: "Linsensuppe",
@@ -40,10 +41,10 @@ afterEach(() => vi.unstubAllGlobals());
 
 const openImport = async () => {
   renderApp();
-  await userEvent.click(await screen.findByRole("button", { name: "Import" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Ideen" }));
 };
 const paste = async (text: string) => {
-  await userEvent.click(screen.getByRole("textbox", { name: /Link oder Rezepttext/ }));
+  await userEvent.click(await screen.findByRole("textbox", { name: "Neue Idee" }));
   await userEvent.paste(text);
 };
 
@@ -107,9 +108,10 @@ describe("recipe import", () => {
   it("needs something to read before the button works", async () => {
     server(base);
     await openImport();
-    expect(screen.getByRole("button", { name: "Rezept lesen" })).toBeDisabled();
+    await screen.findByRole("textbox", { name: "Neue Idee" });
+    expect(screen.queryByRole("button", { name: "Rezept lesen" })).toBeNull();
     await paste("   ");
-    expect(screen.getByRole("button", { name: "Rezept lesen" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Rezept lesen" })).toBeNull();
   });
 
   it.each([
@@ -138,14 +140,14 @@ describe("recipe import", () => {
       expect(claude()).toBeNull();
       await paste("Linsensuppe: 200 g Linsen kochen.");
       expect(claude()).toBeNull();
-      await userEvent.clear(screen.getByRole("textbox", { name: /Link oder Rezepttext/ }));
+      await userEvent.clear(screen.getByRole("textbox", { name: "Neue Idee" }));
       await paste(LINK);
       const link = claude() as HTMLAnchorElement;
       expect(link.href.startsWith("https://claude.ai/new?q=")).toBe(true);
       expect(decodeURIComponent(link.href.split("?q=")[1] ?? "")).toContain(LINK);
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
-      expect(screen.getByText("Antwort kopieren und unten als Text einfügen.")).toBeInTheDocument();
+      expect(screen.getByText("Antwort kopieren und hier als Text einfügen.")).toBeInTheDocument();
       const before = calls.length;
       link.addEventListener("click", (e) => e.preventDefault());
       await userEvent.click(link);
@@ -221,8 +223,8 @@ describe("recipe import", () => {
     await paste("Text");
     await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
     await userEvent.click(await screen.findByRole("button", { name: "In KitchenOwl anlegen" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Noch ein Rezept importieren" }));
-    expect(screen.getByRole("textbox", { name: /Link oder Rezepttext/ })).toHaveValue("");
+    await userEvent.click(await screen.findByRole("button", { name: "Zurück zu den Ideen" }));
+    expect(screen.getByRole("textbox", { name: "Neue Idee" })).toHaveValue("");
   });
 });
 

@@ -41,7 +41,6 @@ import { Loading } from "./Loading";
 import { LinksContext } from "./Links";
 import { PlanDone } from "./PlanDone";
 import { IdeasPanel } from "./IdeasPanel";
-import { ImportPanel } from "./ImportPanel";
 import { LoginForm } from "./LoginForm";
 import { DueMeals, MealHistory } from "./MealLogPanel";
 import { Notifications } from "./Notifications";
@@ -430,7 +429,7 @@ export function App() {
   // A link shared to the installed app opens the import with it; the address is cleaned so a reload starts fresh.
   const research = useResearchActivity();
   const [shared] = useState(() => sharedFrom(window.location.search));
-  const [tab, setTab] = useState<"plan" | "log" | "ideas" | "import">(shared === null ? "plan" : "import");
+  const [tab, setTab] = useState<"plan" | "log" | "ideas">(shared === null ? "plan" : "ideas");
   useEffect(() => {
     if (hasShare(window.location.search)) window.history.replaceState(null, "", window.location.pathname);
   }, []);
@@ -503,16 +502,11 @@ export function App() {
               </span>
             )}
           </button>
-          <button type="button" aria-pressed={tab === "import"} onClick={() => setTab("import")}>
-            Import
-          </button>
         </fieldset>
         {tab === "log" ? (
           <MealHistory messageFor={messageFor} />
         ) : tab === "ideas" ? (
-          <IdeasPanel meId={me.data.id} />
-        ) : tab === "import" ? (
-          <ImportPanel initialInput={shared ?? ""} />
+          <IdeasPanel meId={me.data.id} initialText={shared ?? ""} />
         ) : (
           <>
             <DueMeals messageFor={messageFor} />

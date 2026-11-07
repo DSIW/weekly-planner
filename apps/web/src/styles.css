@@ -880,7 +880,7 @@ fieldset.switch {
 }
 /* The main areas: one row of equal tabs, whatever the number of them. */
 fieldset.tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
 }
 fieldset.tabs button {
@@ -1795,4 +1795,19 @@ button.danger {
 .toast .link-text {
   color: #8be0b0;
   font-weight: 700;
+}
+.quick-add-read {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 0.85rem;
+}
+.quick-add-claude {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.quick-add-claude p {
+  margin: 0;
 }

@@ -4,6 +4,7 @@ import {
   addIdea,
   archiveIdea,
   deleteIdea,
+  draftImport,
   editIdea,
   fetchIdeas,
   IdeaFailed,
@@ -16,11 +17,12 @@ import {
   type RecipeDraft,
 } from "./api";
 import { relativeTime } from "./dates";
-import { DraftReview } from "./ImportPanel";
+import { DraftReview, messageFor as importMessageFor } from "./DraftReview";
 import { claudeSearchUrl } from "./claude-search";
 import { ResearchPanel, SearchButton, useIdeaResearch } from "./IdeaResearch";
 import { isWebLink as isLinkText, parseIdeaLines, titleFromLink } from "./idea-title";
 import { Loading } from "./Loading";
+import { claudeExtractUrl } from "./claude-search";
 import { researchSeen, useResearchActivity } from "./research-activity";
 import { SwipeRow } from "./SwipeRow";
 
@@ -354,16 +356,28 @@ function IdeaCard({
  * title; "Mehr" opens the full form with what is typed so far.
  */
 function QuickAdd({
+  text,
+  onText,
   pending,
   error,
   known,
   bulk,
+  reading,
+  readError,
   onAdd,
   onAddMany,
+  onRead,
   onMore,
 }: {
+  text: string;
+  onText: (text: string) => void;
   pending: boolean;
   error: string | null;
+  /** The text is being read as a recipe (a link or pasted text), which can take a minute. */
+  reading: boolean;
+  /** Why reading it failed, told as the import tells it. */
+  readError: string | null;
+  onRead: (text: string) => void;
   /** Lower-cased titles of the ideas that exist, so a pasted list does not add them twice. */
   known: ReadonlySet<string>;
   bulk: { done: number; total: number; failed: number } | null;
@@ -371,8 +385,8 @@ function QuickAdd({
   onAddMany: (ideas: IdeaInput[], done: () => void) => void;
   onMore: (prefill: { title: string; inspirationLink?: string }) => void;
 }) {
-  const [text, setText] = useState("");
   const typed = text.trim();
+  const claudeUrl = claudeExtractUrl(typed);
   // Several lines (a list pasted from a note) become one idea each.
   const lines = parseIdeaLines(text);
   const many = lines.length > 1;
@@ -388,10 +402,10 @@ function QuickAdd({
         ev.preventDefault();
         if (typed === "") return;
         if (many) {
-          if (fresh.length > 0 && !running) onAddMany(fresh, () => setText(""));
+          if (fresh.length > 0 && !running) onAddMany(fresh, () => onText(""));
           return;
         }
-        onAdd(isLink ? { title: guess, inspirationLink: typed } : { title: typed }, () => setText(""));
+        onAdd(isLink ? { title: guess, inspirationLink: typed } : { title: typed }, () => onText(""));
       }}
     >
       <div className="quick-add-row">
@@ -399,10 +413,10 @@ function QuickAdd({
           rows={many ? Math.min(lines.length, 6) : 1}
           value={text}
           maxLength={20000}
-          placeholder="Neue Idee oder Link einfügen …"
+          placeholder="Idee notieren, oder Rezept-Link oder -Text einfügen …"
           aria-label="Neue Idee"
           enterKeyHint="done"
-          onChange={(ev) => setText(ev.target.value)}
+          onChange={(ev) => onText(ev.target.value)}
           onKeyDown={(ev) => {
             // Enter adds, as in the one-line field it was; Shift+Enter starts another line of a list.
             if (ev.key === "Enter" && !ev.shiftKey) {
@@ -415,6 +429,33 @@ function QuickAdd({
           {many ? `${fresh.length} Ideen hinzufügen` : "Hinzufügen"}
         </button>
       </div>
+      {typed !== "" && (
+        <div className="quick-add-read">
+          <button type="button" className="secondary small" disabled={reading} onClick={() => onRead(typed)}>
+            {reading ? "Wird gelesen … das kann eine Minute dauern" : "Rezept lesen"}
+          </button>
+          <span className="muted">
+            {isLink
+              ? "Sofort als Rezept importieren statt als Idee merken."
+              : many
+                ? "Ein Rezepttext statt einer Liste? Dann direkt importieren."
+                : "Oder gleich als Rezept importieren (Link oder Text)."}
+          </span>
+        </div>
+      )}
+      {(readError || claudeUrl) && (
+        <div className="quick-add-claude" {...(readError ? { role: "alert" } : {})}>
+          {readError && <p className="error">{readError}</p>}
+          {claudeUrl && (
+            <>
+              <a className="link-button" href={claudeUrl} target="_blank" rel="noopener noreferrer">
+                In Claude extrahieren
+              </a>
+              <p className="muted">Antwort kopieren und hier als Text einfügen.</p>
+            </>
+          )}
+        </div>
+      )}
       {many && (
         <p className="muted quick-add-hint">
           {lines.length} Zeilen erkannt
@@ -612,7 +653,7 @@ function ArchivedList({ ideas, onChanged }: { ideas: Idea[]; onChanged: () => vo
 }
 
 /** The household's recipe ideas: note one, see who added it and when, edit, delete, and clean up the stale ones. */
-export function IdeasPanel({ meId }: { meId?: string }) {
+export function IdeasPanel({ meId, initialText = "" }: { meId?: string; initialText?: string }) {
   const client = useQueryClient();
   const ideas = useQuery({ queryKey: ["ideas"], queryFn: fetchIdeas });
   const changed = () => client.invalidateQueries({ queryKey: ["ideas"] });
@@ -683,7 +724,13 @@ export function IdeasPanel({ meId }: { meId?: string }) {
       .then(() => forget(id));
   };
   // A picked candidate or an own source leads into the import's review, which carries the idea along.
-  const [review, setReview] = useState<{ ideaId: string; draft: RecipeDraft } | null>(null);
+  const [review, setReview] = useState<{ ideaId?: string; draft: RecipeDraft } | null>(null);
+  // What the member typed or pasted (or shared to the app): it can become an idea or be read as a recipe.
+  const [text, setText] = useState(initialText);
+  const read = useMutation({
+    mutationFn: (typed: string) => draftImport(isLinkText(typed) ? { address: typed } : { text: typed }),
+    onSuccess: (draft) => setReview({ draft }),
+  });
   const everything = ideas.data ?? [];
   const all = everything.filter((i) => i.archivedAt === null && !hidden.has(i.id));
   const archived = everything.filter((i) => i.archivedAt !== null);
@@ -730,10 +777,17 @@ export function IdeasPanel({ meId }: { meId?: string }) {
     return (
       <DraftReview
         initial={review.draft}
-        ideaId={review.ideaId}
+        {...(review.ideaId === undefined ? {} : { ideaId: review.ideaId })}
         finishedLabel="Zurück zu den Ideen"
         onDiscard={() => setReview(null)}
-        onFinished={() => setReview(null)}
+        onFinished={() => {
+          // A recipe read from the field is done with: what was typed there goes. An idea's recipe leaves it alone.
+          if (review.ideaId === undefined) {
+            setText("");
+            read.reset();
+          }
+          setReview(null);
+        }}
       />
     );
 
@@ -756,6 +810,14 @@ export function IdeasPanel({ meId }: { meId?: string }) {
         />
       ) : (
         <QuickAdd
+          text={text}
+          onText={(value) => {
+            read.reset();
+            setText(value);
+          }}
+          reading={read.isPending}
+          readError={read.isError ? importMessageFor(read.error) : null}
+          onRead={(typed) => read.mutate(typed)}
           pending={add.isPending}
           error={add.isError ? messageFor(add.error) : null}
           known={new Set(all.map((i) => i.title.trim().toLowerCase()))}
@@ -783,9 +845,9 @@ export function IdeasPanel({ meId }: { meId?: string }) {
         <div className="empty-state">
           <p>Noch keine Ideen.</p>
           <p className="muted">
-            Schreib oben ein Gericht auf, das ihr einmal kochen möchtet – oder füge einen Link ein. Aus einer Idee wird
-            per Suche ein Rezept, das ihr einplanen könnt. Links aus dem Browser lassen sich auch direkt mit der App
-            teilen.
+            Schreib oben ein Gericht auf, das ihr einmal kochen möchtet. Aus einer Idee wird per Suche ein Rezept, das
+            ihr einplanen könnt. Habt ihr schon ein Rezept, fügt den Link oder den Text ein und lest es direkt ein.
+            Links aus dem Browser lassen sich auch mit der App teilen.
           </p>
         </div>
       )}

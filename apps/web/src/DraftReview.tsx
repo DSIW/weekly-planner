@@ -1,16 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import {
-  createImport,
-  draftImport,
-  ImportFailed,
-  importImageUrl,
-  matchIngredients,
-  matchTags,
-  type RecipeDraft,
-} from "./api";
+import { createImport, ImportFailed, importImageUrl, matchIngredients, matchTags, type RecipeDraft } from "./api";
 import { AddToPlan } from "./AddToPlan";
-import { claudeExtractUrl } from "./claude-search";
 import { ItemIcon } from "./ItemIcon";
 import { RelatedRecipes } from "./RelatedRecipes";
 import { ReplaceIngredient } from "./ReplaceIngredient";
@@ -94,8 +85,6 @@ function Choice({
     </label>
   );
 }
-
-const isLink = (s: string): boolean => /^https?:\/\/\S+$/i.test(s);
 
 /**
  * The review of a draft recipe, then its creation in KitchenOwl. Used by the import and by the ideas (which hand over a
@@ -423,64 +412,6 @@ export function DraftReview({
       <button type="button" className="secondary" disabled={create.isPending} onClick={onDiscard}>
         Verwerfen
       </button>
-    </section>
-  );
-}
-
-/** A link or a pasted text becomes a recipe in KitchenOwl: read, reviewed here, then created. */
-export function ImportPanel({ initialInput = "" }: { initialInput?: string }) {
-  const [input, setInput] = useState(initialInput);
-  const [draft, setDraft] = useState<RecipeDraft | null>(null);
-  const read = useMutation({
-    mutationFn: (text: string) => draftImport(isLink(text) ? { address: text } : { text }),
-    onSuccess: setDraft,
-  });
-
-  if (draft)
-    return (
-      <DraftReview
-        initial={draft}
-        finishedLabel="Noch ein Rezept importieren"
-        onDiscard={() => setDraft(null)}
-        onFinished={() => {
-          read.reset();
-          setDraft(null);
-          setInput("");
-        }}
-      />
-    );
-
-  const text = input.trim();
-  const claudeUrl = claudeExtractUrl(text);
-  const claudeLink = claudeUrl && (
-    <a className="link-button" href={claudeUrl} target="_blank" rel="noopener noreferrer">
-      In Claude extrahieren
-    </a>
-  );
-  return (
-    <section className="card">
-      <h2>Rezept importieren</h2>
-      <label>
-        Link oder Rezepttext
-        <textarea
-          rows={5}
-          placeholder="https://… oder den Text eines Rezepts einfügen"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-      </label>
-      <p className="muted">Bei einem eingefügten Text kann die erste Zeile der Link zum Titelbild sein.</p>
-      {read.isError && (
-        <div role="alert" className="error">
-          <p>{messageFor(read.error)}</p>
-          {claudeLink}
-        </div>
-      )}
-      <button type="button" disabled={read.isPending || text === ""} onClick={() => read.mutate(text)}>
-        {read.isPending ? "Wird gelesen … das kann eine Minute dauern" : "Rezept lesen"}
-      </button>
-      {!read.isError && claudeLink}
-      {claudeLink && <p className="muted">Antwort kopieren und unten als Text einfügen.</p>}
     </section>
   );
 }

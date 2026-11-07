@@ -10,7 +10,7 @@ import {
   type Idea,
   type RecipeDraft,
 } from "./api";
-import { messageFor as importMessageFor } from "./ImportPanel";
+import { messageFor as importMessageFor } from "./DraftReview";
 import { researchFinished, researchStarted, useResearchActivity } from "./research-activity";
 import { Loading } from "./Loading";
 

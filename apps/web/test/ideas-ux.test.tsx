@@ -241,19 +241,18 @@ describe("research progress", () => {
 });
 
 describe("sharing a link to the app", () => {
-  it("opens the import with the shared link and cleans the address", async () => {
+  it("opens the ideas with the shared link in the field, ready to note or read, and cleans the address", async () => {
     window.history.replaceState(null, "", "/?title=Gnocchi&text=Siehe%20https%3A%2F%2Fwww.lecker.de%2Fgnocchi");
-    server({ ...base });
+    server({ ...base, [LIST]: list() });
     renderApp();
-    expect(await screen.findByRole("textbox", { name: /Link oder Rezepttext/ })).toHaveValue(
-      "https://www.lecker.de/gnocchi",
-    );
-    expect(screen.getByRole("button", { name: "Import" })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByRole("textbox", { name: "Neue Idee" })).toHaveValue("https://www.lecker.de/gnocchi");
+    expect(screen.getByRole("button", { name: "Ideen" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Rezept lesen" })).toBeInTheDocument();
     expect(window.location.search).toBe("");
   });
 
   it("opens the plan as usual without a share", async () => {
-    server({ ...base });
+    server({ ...base, [LIST]: list() });
     renderApp();
     expect(await screen.findByRole("button", { name: "Planung" })).toHaveAttribute("aria-pressed", "true");
   });
@@ -285,8 +284,8 @@ describe("adding a created recipe to the plan", () => {
   const PROPOSE = `POST ${api}/sessions/s1/proposals`;
   const create = async () => {
     renderApp();
-    await userEvent.click(await screen.findByRole("button", { name: "Import" }));
-    await userEvent.click(screen.getByRole("textbox", { name: /Link oder Rezepttext/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Ideen" }));
+    await userEvent.click(await screen.findByRole("textbox", { name: "Neue Idee" }));
     await userEvent.paste("https://example.org/linsen");
     await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
     await userEvent.click(await screen.findByRole("button", { name: "In KitchenOwl anlegen" }));
@@ -294,6 +293,7 @@ describe("adding a created recipe to the plan", () => {
   };
   const routes = {
     ...base,
+    [LIST]: list(),
     [`POST ${api}/import/draft`]: { status: 200, body: { draft } },
     [`POST ${api}/import/create`]: { status: 201, body: { recipeId: 173, draft } },
     [`GET ${api}/links`]: { status: 200, body: { links: null } },
