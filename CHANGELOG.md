@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.36](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.35...weekly-planner-v0.1.36) (2026-11-07)
+
+
+### Features
+
+* recipe ideas with research, picking and stale cleanup ([#62](https://github.com/DSIW/weekly-planner/issues/62)) ([ef2bccb](https://github.com/DSIW/weekly-planner/commit/ef2bccba8a9f75c10a577ff8559803d55dfb06ec))
+
 ## [0.1.35](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.34...weekly-planner-v0.1.35) (2026-11-05)
 
 
