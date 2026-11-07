@@ -37,3 +37,16 @@ export function dayParts(planDate: string): { weekday: string; date: string } {
   const day = new Date(y, m - 1, d);
   return { weekday: weekday.format(day).replace(/\.$/, ""), date: dayMonth.format(day) };
 }
+
+const relative = new Intl.RelativeTimeFormat("de-DE", { numeric: "auto" });
+const DAY_MS = 86_400_000;
+
+/** "heute", "gestern", "vor 3 Tagen", "vor 2 Wochen", "vor 4 Monaten": when something happened, in the household's words. */
+export function relativeTime(at: number, now: number = Date.now()): string {
+  const startOfDay = (ms: number) =>
+    new Date(new Date(ms).getFullYear(), new Date(ms).getMonth(), new Date(ms).getDate());
+  const days = Math.max(0, Math.round((startOfDay(now).getTime() - startOfDay(at).getTime()) / DAY_MS));
+  if (days < 14) return relative.format(-days, "day");
+  if (days < 60) return relative.format(-Math.floor(days / 7), "week");
+  return relative.format(-Math.floor(days / 30), "month");
+}

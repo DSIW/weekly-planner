@@ -6,14 +6,15 @@
 --   items KitchenOwl already knows, steps as a numbered list, and the tags
 --   the planning rules read (meal type, base, diet, new).
 -- Includes: reading a source, drafting with a language model, checking the
---   draft against the household's vocabulary, the review by a member, and
---   creating the recipe.
+--   draft against the household's vocabulary, the review by a member,
+--   creating the recipe, and each member's hourly allowance of drafts.
 -- Excludes:
 --   - Planning (weekly-planning.allium reads the recipe afterwards)
 --   - Photos and screenshots as a source (the title picture of a web page is
 --     not a source: it is only the recipe's photo)
 --   - Bulk import of an existing collection (Notion, KptnCook)
--- Dependencies: none
+-- Dependencies: none (recipe-ideas.allium hands its sources to ReadRecipe and
+--   passes an idea along to CreateImportedRecipe)
 
 ------------------------------------------------------------
 -- External Entities
@@ -82,6 +83,19 @@ value DraftImage {
 }
 
 ------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+-- A draft a member asked for, kept to count against their hourly allowance.
+-- The allowance is shared: a source handed over from the Import tab and one
+-- handed over from an idea (recipe-ideas.allium: PickCandidate, UseOwnRecipe)
+-- both go through ReadRecipe and both count.
+entity DraftRequest {
+    requested_by: Member
+    requested_at: Timestamp
+}
+
+------------------------------------------------------------
 -- Configuration
 ------------------------------------------------------------
 
@@ -92,6 +106,7 @@ config {
     max_fetch_redirects: Integer = 3
     max_tags: Integer = 12
     max_image_bytes: Integer = 5000000
+    max_drafts_per_hour: Integer = 20   -- per member, Import tab and ideas together
 }
 
 ------------------------------------------------------------
@@ -102,11 +117,22 @@ config {
 -- the draft. The model has no tools and no access to household data; its
 -- answer must fit the draft's shape, and what does not fit is dropped or
 -- refused before anyone sees it.
+-- A web link is fetched only under the safe-fetch rules, which
+-- recipe-ideas.allium also uses for an idea's inspiration link: public
+-- addresses only, at most config.max_fetch_redirects redirects (each target
+-- checked like the first), bounded in size and time, and HTML pages only.
+-- A member past config.max_drafts_per_hour is told so and nothing changes:
+-- no draft, no DraftRequest, and an idea that handed over the source is
+-- touched by its own rule only (recipe-ideas.allium).
 rule ReadRecipe {
     when: ReadRecipe(member, source)
+    let recent = DraftRequests where requested_by = member and requested_at + 1.hour > now
+    requires: recent.count < config.max_drafts_per_hour
     requires: source.is_web_link implies source.address_is_public
     requires: source.text.length > 0
-    ensures: DraftChecked(draft_from(source.text))
+    ensures:
+        DraftRequest.created(requested_by: member, requested_at: now)
+        DraftChecked(draft_from(source.text))
 }
 
 -- A draft is accepted for review only when it is a recipe at all.
@@ -133,15 +159,18 @@ rule FindRelatedRecipes {
 }
 
 -- Nothing is created without a member having seen the draft and said yes.
+-- A draft read for an idea (recipe-ideas.allium) carries that idea along, so
+-- the idea can be let go once its recipe exists; the recipe itself is
+-- created like any other.
 rule CreateImportedRecipe {
-    when: CreateImportedRecipe(member, draft)
+    when: CreateImportedRecipe(member, draft, idea?)
     -- The draft is checked again: what a phone sends is not trusted either.
     requires: draft.name != ""
     requires: draft.steps.count >= 1
     requires: draft.ingredients.count >= 1
     -- The picture goes along as the recipe's photo; if KitchenOwl does not
     -- take it, the recipe is created without.
-    ensures: KitchenOwlRecipeCreated(draft)
+    ensures: KitchenOwlRecipeCreated(draft: draft, idea: idea)
 }
 
 ------------------------------------------------------------
@@ -161,5 +190,5 @@ surface RecipeImport {
 
     provides:
         ReadRecipe(viewer, source)
-        CreateImportedRecipe(viewer, draft)
+        CreateImportedRecipe(viewer, draft, idea)
 }

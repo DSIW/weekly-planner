@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SignIn } from "@weekly-planner/application";
+import { DraftRecipeImport as DraftRecipeImportClass, type SignIn } from "@weekly-planner/application";
 import { memberId } from "@weekly-planner/domain";
 import { beforeEach, describe, expect, it } from "vitest";
 import type {
@@ -71,6 +71,17 @@ const noSessions = {
   resetFinalizedDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   swapPlannedDays: { execute: async () => ({ ok: false as const, reason: "unused" }) },
   movePlannedDay: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  listIdeas: { execute: async () => ({ ok: true as const, value: [] }) },
+  noteIdea: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  editIdea: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  keepIdea: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  deleteIdea: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  researchIdea: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  pickCandidate: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  useOwnRecipe: { execute: async () => ({ ok: false as const, reason: "unused" }) },
+  listMembers: { execute: async () => [] },
+  getMemberAvatar: { execute: async () => null },
+  ideaEvents: { publish: async () => {} },
   planAheadMinutes: 360,
   subscribe: () => () => {},
 };
@@ -391,8 +402,33 @@ describe("recipe import", () => {
     expect(res.json()).toEqual({ error: reason });
   });
 
-  it("lets a member ask for a limited number of drafts an hour, then lets them again", async () => {
-    const a = await app({ draftRecipeImport: draftImport });
+  it("answers a member past the hourly drafts allowance with 429, and lets them again an hour later", async () => {
+    // The allowance lives in DraftRecipeImport; the route only maps its refusal.
+    const log: { requestedBy: never; requestedAt: number }[] = [];
+    const real = new DraftRecipeImportClass({
+      requests: {
+        add: async (r) => void log.push(r as never),
+        listSince: async (from) => log.filter((r) => r.requestedAt >= from) as never,
+      },
+      clock: { now: () => clock } as never,
+      source: { read: async () => ({ ok: true, text: "Pasta" }) },
+      extractor: {
+        extract: async () => ({
+          name: "Pasta",
+          steps: ["Kochen."],
+          ingredients: [{ name: "Nudeln" }],
+          mealType: "main",
+          base: "pasta",
+          diet: "vegetarian",
+          tags: [],
+        }),
+      },
+      writer: {
+        vocabulary: async () => ({ items: [], tags: [] }),
+        create: async () => ({ recipeId: 1, photoAttached: false }),
+      },
+    });
+    const a = await app({ draftRecipeImport: real });
     const cookies = { session: sessionCookie(await login(a))!.value };
     const ask = () => a.inject({ method: "POST", url: "/plan/api/import/draft", payload: { text: "x" }, cookies });
     for (let i = 0; i < 20; i++) expect((await ask()).statusCode).toBe(200);

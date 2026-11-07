@@ -15,3 +15,4 @@ export * from "./meal-log/meal-log.js";
 export * from "./meal-log/recipe-experience.js";
 export * from "./import/draft.js";
 export * from "./import/related.js";
+export * from "./ideas/idea.js";

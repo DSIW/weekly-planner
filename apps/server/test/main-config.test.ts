@@ -53,6 +53,14 @@ describe("loadServerConfig", () => {
     expect(() => loadServerConfig({ ...base, LLM_BASE_URL: "not a url" })).toThrow(/LLM_BASE_URL/);
   });
 
+  it("researches ideas with LLM_SEARCH_MODEL, else with LLM_MODEL", () => {
+    expect(loadServerConfig(base).researchModel).toBe("");
+    expect(loadServerConfig({ ...base, LLM_MODEL: "a/b" }).researchModel).toBe("a/b");
+    expect(loadServerConfig({ ...base, LLM_MODEL: "a/b", LLM_SEARCH_MODEL: "c/d:online" }).researchModel).toBe(
+      "c/d:online",
+    );
+  });
+
   it("never puts the language model's key into an error message", () => {
     try {
       loadServerConfig({ ...base, LLM_API_KEY: "sk-secret-key", LLM_BASE_URL: "not a url" });

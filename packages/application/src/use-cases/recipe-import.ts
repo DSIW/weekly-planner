@@ -10,18 +10,27 @@ import {
   tagMatcher,
   type MemberId,
   type RecipeDraft,
+  type RecipeIdeaId,
   type RelatedRecipe,
   type Result,
 } from "@weekly-planner/domain";
 import type { RecipeCatalog } from "../ports/recipe-catalog.js";
+import type { Clock } from "../ports/services.js";
+import type { RecipeIdeaRepository } from "../ports/recipe-ideas.js";
 import {
   ExtractorNotConfigured,
+  type DraftRequestLog,
   type ImageFetcher,
   type ImageShelf,
   type RecipeExtractor,
   type RecipeSource,
   type RecipeWriter,
 } from "../ports/recipe-import.js";
+
+const HOUR_MS = 3_600_000;
+
+/** import/config.max_drafts_per_hour: per member, the Import tab and the ideas together. */
+export const defaultDraftAllowance = { maxDraftsPerHour: 20 };
 
 /**
  * rule ReadRecipe: a web link or pasted text becomes a draft for a member to review. The source is read, never
@@ -35,10 +44,21 @@ export class DraftRecipeImport {
       writer: RecipeWriter;
       /** Without it a draft has no picture. */
       images?: { fetcher: ImageFetcher; shelf: ImageShelf };
+      /** The drafts asked for, counted against the hourly allowance. */
+      requests: DraftRequestLog;
+      clock: Clock;
     },
+    private readonly config: { maxDraftsPerHour: number } = defaultDraftAllowance,
   ) {}
 
   async execute(cmd: { member: MemberId; address?: string; text?: string }): Promise<Result<RecipeDraft>> {
+    // Every draft costs money at the language model: a member past the allowance is refused before anything else.
+    const now = this.deps.clock.now();
+    const recent = (await this.deps.requests.listSince(now - HOUR_MS)).filter(
+      (r) => r.requestedBy === cmd.member && r.requestedAt + HOUR_MS > now,
+    );
+    if (recent.length >= this.config.maxDraftsPerHour) return { ok: false, reason: "rate_limited" };
+
     const address = cmd.address?.trim() ?? "";
     const pasted = cmd.text?.trim() ?? "";
     if ((address === "") === (pasted === "")) return { ok: false, reason: "need_one_source" };
@@ -62,6 +82,8 @@ export class DraftRecipeImport {
     } catch {
       return { ok: false, reason: "kitchenowl_unavailable" };
     }
+    // The model is about to be asked: the draft counts, whatever it then answers.
+    await this.deps.requests.add({ requestedBy: cmd.member, requestedAt: this.deps.clock.now() });
     let answer: unknown;
     try {
       answer = await this.deps.extractor.extract(text, vocabulary);
@@ -177,12 +199,16 @@ export class CreateImportedRecipe {
       shelf?: ImageShelf;
       /** Told to read the recipes again: the planner offers a new recipe at once, not when its copy runs out. */
       catalog?: Pick<RecipeCatalog, "refresh">;
+      /** Rule ForgetRealisedIdea: the idea a recipe was created for goes with it. */
+      ideas?: Pick<RecipeIdeaRepository, "remove">;
     },
   ) {}
 
   async execute(cmd: {
     member: MemberId;
     draft: unknown;
+    /** The idea this recipe realises; it is removed only once the recipe exists. */
+    idea?: RecipeIdeaId;
   }): Promise<Result<{ recipeId: number; draft: RecipeDraft; photoAttached: boolean }>> {
     let vocabulary: Awaited<ReturnType<RecipeWriter["vocabulary"]>>;
     try {
@@ -201,6 +227,8 @@ export class CreateImportedRecipe {
       const { recipeId, photoAttached } = await this.deps.writer.create(checked.value, image ?? undefined);
       // The recipe exists now; failing to refresh only means it shows up when the catalogue renews itself.
       await this.deps.catalog?.refresh().catch(() => undefined);
+      // An idea deleted meanwhile is simply gone; the recipe is created all the same.
+      if (cmd.idea !== undefined) await this.deps.ideas?.remove(cmd.idea).catch(() => undefined);
       return { ok: true, value: { recipeId, draft: checked.value, photoAttached } };
     } catch {
       return { ok: false, reason: "kitchenowl_unavailable" };

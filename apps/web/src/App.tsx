@@ -40,6 +40,7 @@ import { KitchenNav } from "./KitchenNav";
 import { Loading } from "./Loading";
 import { LinksContext } from "./Links";
 import { PlanDone } from "./PlanDone";
+import { IdeasPanel } from "./IdeasPanel";
 import { ImportPanel } from "./ImportPanel";
 import { LoginForm } from "./LoginForm";
 import { DueMeals, MealHistory } from "./MealLogPanel";
@@ -424,7 +425,7 @@ export function App() {
     onSuccess: (member) => client.setQueryData(["me"], member),
   });
   const signOut = useMutation({ mutationFn: logout, onSuccess: () => client.setQueryData(["me"], null) });
-  const [tab, setTab] = useState<"plan" | "log" | "import">("plan");
+  const [tab, setTab] = useState<"plan" | "log" | "ideas" | "import">("plan");
   const links = useQuery({ queryKey: ["links"], queryFn: fetchLinks, enabled: me.data != null, staleTime: Infinity });
 
   if (me.isPending)
@@ -479,12 +480,17 @@ export function App() {
           <button type="button" aria-pressed={tab === "log"} onClick={() => setTab("log")}>
             Verlauf
           </button>
+          <button type="button" aria-pressed={tab === "ideas"} onClick={() => setTab("ideas")}>
+            Ideen
+          </button>
           <button type="button" aria-pressed={tab === "import"} onClick={() => setTab("import")}>
             Import
           </button>
         </fieldset>
         {tab === "log" ? (
           <MealHistory messageFor={messageFor} />
+        ) : tab === "ideas" ? (
+          <IdeasPanel />
         ) : tab === "import" ? (
           <ImportPanel />
         ) : (

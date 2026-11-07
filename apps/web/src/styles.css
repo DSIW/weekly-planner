@@ -880,7 +880,7 @@ fieldset.switch {
 }
 /* The main areas: one row of equal tabs, whatever the number of them. */
 fieldset.tabs {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   width: 100%;
 }
 fieldset.tabs button {
@@ -1325,4 +1325,109 @@ button.found-other {
 .incomplete-use {
   padding: 6px 12px;
   font-size: 0.9rem;
+}
+
+/* Recipe ideas */
+.ideas-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.idea {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--outline);
+  border-radius: 16px;
+  min-width: 0;
+}
+.idea.stale {
+  border-color: var(--warn);
+}
+.idea h3,
+.idea-group {
+  margin: 0;
+  font-size: 1.05rem;
+  overflow-wrap: anywhere;
+}
+.idea-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.idea-who {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+.avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 700;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.stale-badge {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.idea-note {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.idea-link {
+  color: var(--primary-ink);
+  font-weight: 600;
+}
+.idea-form {
+  display: grid;
+  gap: 12px;
+}
+.idea-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+button.danger {
+  background: var(--error);
+  color: var(--surface);
+}
+
+/* Research candidates of an idea */
+.idea-research {
+  display: grid;
+  gap: 8px;
+}
+.candidates {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.candidate {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.candidate p {
+  margin: 0;
 }
