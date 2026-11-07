@@ -121,6 +121,10 @@ config {
 -- recipe-ideas.allium also uses for an idea's inspiration link: public
 -- addresses only, at most config.max_fetch_redirects redirects (each target
 -- checked like the first), bounded in size and time, and HTML pages only.
+-- A page may arrive compressed (gzip, deflate or brotli); it is decoded
+-- before use and the size bound applies to the decoded text, so a small
+-- download that expands hugely is refused as too large. An encoding the
+-- server cannot decode counts as unreadable.
 -- A member past config.max_drafts_per_hour is told so and nothing changes:
 -- no draft, no DraftRequest, and an idea that handed over the source is
 -- touched by its own rule only (recipe-ideas.allium).
@@ -191,4 +195,14 @@ surface RecipeImport {
     provides:
         ReadRecipe(viewer, source)
         CreateImportedRecipe(viewer, draft, idea)
+
+    @guidance
+        -- When a link cannot be read or yields no recipe, the surface may
+        -- offer the member a link that opens an outside assistant (claude.ai)
+        -- in their own browser, with a prompt made from the link asking for
+        -- the recipe as plain text in the household's simple layout (title,
+        -- portions, time, ingredients, numbered steps). The member pastes the
+        -- answer into the existing pasted-text source, so the import's checks
+        -- and review apply unchanged. The planner sends and reads nothing
+        -- outside itself for this.
 }
