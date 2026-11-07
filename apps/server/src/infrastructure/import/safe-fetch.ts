@@ -2,6 +2,8 @@ import dns from "node:dns";
 import http from "node:http";
 import https from "node:https";
 import { isIP } from "node:net";
+import { type Readable } from "node:stream";
+import zlib from "node:zlib";
 import type { SourceFailure } from "@weekly-planner/application";
 
 /** Groups of an IPv6 address, or null when it is not one. Handles "::", an embedded dotted IPv4 and a zone id. */
@@ -153,7 +155,7 @@ async function fetchBody(address: string, options: Options, kind: Kind): Promise
           headers: {
             "User-Agent": "weekly-planner-recipe-import/1.0",
             Accept: kind.accept,
-            "Accept-Encoding": "identity",
+            "Accept-Encoding": "gzip, deflate, br",
           },
         },
         (res) => {
@@ -179,18 +181,32 @@ async function fetchBody(address: string, options: Options, kind: Kind): Promise
             res.resume();
             return done({ ok: false, reason: kind.wrong });
           }
+          const encoding = String(res.headers["content-encoding"] ?? "")
+            .trim()
+            .toLowerCase();
+          let source: Readable = res;
+          if (encoding === "gzip" || encoding === "x-gzip") source = res.pipe(zlib.createGunzip());
+          else if (encoding === "deflate") source = res.pipe(zlib.createInflate());
+          else if (encoding === "br") source = res.pipe(zlib.createBrotliDecompress());
+          else if (encoding !== "" && encoding !== "identity") {
+            res.resume();
+            return done({ ok: false, reason: "unreachable" });
+          }
           const chunks: Buffer[] = [];
           let size = 0;
-          res.on("data", (chunk: Buffer) => {
+          // The limit counts decoded bytes, and destroying the request stops the decoding with it.
+          source.on("data", (chunk: Buffer) => {
             size += chunk.length;
             if (size > options.maxBytes) {
               req.destroy();
+              source.destroy();
               return done({ ok: false, reason: "too_large" });
             }
             chunks.push(chunk);
           });
-          res.on("end", () => done({ ok: true, body: Buffer.concat(chunks), contentType, url: url.toString() }));
-          res.on("error", () => done({ ok: false, reason: "unreachable" }));
+          source.on("end", () => done({ ok: true, body: Buffer.concat(chunks), contentType, url: url.toString() }));
+          source.on("error", () => done({ ok: false, reason: "unreachable" }));
+          if (source !== res) res.on("error", () => done({ ok: false, reason: "unreachable" }));
         },
       );
       req.setTimeout(remaining, () => req.destroy(new Error("timeout")));

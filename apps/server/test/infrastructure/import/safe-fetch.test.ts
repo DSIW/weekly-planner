@@ -1,4 +1,5 @@
 import http from "node:http";
+import zlib from "node:zlib";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -110,6 +111,24 @@ beforeAll(async () => {
       return picture([0x00, 0x00, 0x00, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66], "image/avif");
     if (url === "/pic.svg") return picture([0x3c, 0x73, 0x76, 0x67], "image/svg+xml");
     if (url === "/pic-big.png") return picture([0x89, 0x50, 0x4e, 0x47, ...new Array(6000).fill(0)]);
+    const packed = (body: Buffer | string, encoding: string, pack: (b: Buffer) => Buffer) => {
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8", "content-encoding": encoding });
+      res.end(pack(Buffer.from(body)));
+    };
+    const RECIPE_PAGE =
+      '<html><head><script type="application/ld+json">{"@context":"https://schema.org","@type":"Recipe","name":"Zürcher Geschnetzeltes","recipeIngredient":["400 g Kalbfleisch","200 ml Sahne"],"recipeInstructions":"Fleisch anbraten."}</script></head><body><p>Hallo Käse</p></body></html>';
+    if (url === "/gzip") return packed("<p>Hallo Käse</p>", "gzip", zlib.gzipSync);
+    if (url === "/deflate") return packed("<p>Hallo Käse</p>", "deflate", zlib.deflateSync);
+    if (url === "/br") return packed("<p>Hallo Käse</p>", "br", zlib.brotliCompressSync);
+    if (url === "/gzip-recipe") return packed(RECIPE_PAGE, "gzip", zlib.gzipSync);
+    if (url === "/gzip-bomb") return packed("a".repeat(5_000_000), "gzip", zlib.gzipSync);
+    if (url === "/zstd") return packed("<p>x</p>", "zstd", (b) => b);
+    if (url === "/gzip-corrupt") return packed("<p>Hallo Käse</p>", "gzip", (b) => zlib.gzipSync(b).subarray(0, 12));
+    if (url === "/gzip-lies") return packed("<p>Hallo Käse</p>", "gzip", (b) => b);
+    if (url === "/identity") {
+      res.writeHead(200, { "content-type": "text/html", "content-encoding": "identity" });
+      return res.end("<p>Hallo Käse</p>");
+    }
     if (url === "/slow") return void setTimeout(() => html("late"), 3000);
     if (url === "/empty") return html("<script>only code</script>");
     res.writeHead(500);
@@ -180,6 +199,45 @@ describe("fetchPage", () => {
       "",
     ])
       expect(await fetchPage(bad, limits), bad).toEqual({ ok: false, reason: "invalid_address" });
+  });
+});
+
+describe("compressed answers", () => {
+  const opts = { ...limits, ...open };
+  it.each(["gzip", "deflate", "br", "identity"])("decodes a %s page", async (kind) => {
+    expect(await fetchPage(`${base}/${kind}`, opts)).toMatchObject({ ok: true, html: "<p>Hallo Käse</p>" });
+  });
+
+  it("asks for compressed pages, and decodes one even when the server was asked for identity", async () => {
+    let asked = "";
+    const probe = http.createServer((req, res) => {
+      asked = String(req.headers["accept-encoding"]);
+      res.writeHead(200, { "content-type": "text/html", "content-encoding": "gzip" });
+      res.end(zlib.gzipSync("<p>Käse</p>"));
+    });
+    await new Promise<void>((r) => probe.listen(0, "127.0.0.1", r));
+    const got = await fetchPage(`http://127.0.0.1:${(probe.address() as AddressInfo).port}/`, opts);
+    await new Promise<void>((r) => probe.close(() => r()));
+    expect(asked).toBe("gzip, deflate, br");
+    expect(got).toMatchObject({ ok: true, html: "<p>Käse</p>" });
+  });
+
+  it("limits the decoded size: a small download that expands hugely is too large", async () => {
+    expect(await fetchPage(`${base}/gzip-bomb`, opts)).toEqual({ ok: false, reason: "too_large" });
+  });
+
+  it("refuses an encoding it cannot decode, and a broken or lying one, without crashing", async () => {
+    for (const path of ["zstd", "gzip-corrupt", "gzip-lies"])
+      expect(await fetchPage(`${base}/${path}`, opts)).toEqual({ ok: false, reason: "unreachable" });
+  });
+
+  it("gives the text of a compressed page with a recipe in its structured data", async () => {
+    const read = await new WebRecipeSource({ ...open, ...limits }).read(`${base}/gzip-recipe`);
+    expect(read.ok).toBe(true);
+    if (read.ok) {
+      expect(read.text).toContain("Kalbfleisch");
+      expect(read.text).toContain("Sahne");
+    }
   });
 });
 
