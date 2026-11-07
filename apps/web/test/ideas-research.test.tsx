@@ -89,8 +89,9 @@ describe("research for an idea", () => {
         body: { ideas: [idea({ note: "ohne Sahne", inspirationLink: "https://x.example/a" })] },
       }),
     });
+    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: Weitere Aktionen" }));
     const before = calls.length;
-    const link = screen.getByRole("link", { name: "Kürbisgnocchi: In Claude suchen" });
+    const link = screen.getByRole("menuitem", { name: "In Claude suchen" });
     const href = link.getAttribute("href") ?? "";
     expect(href.startsWith("https://claude.ai/new?q=")).toBe(true);
     const q = new URL(href).searchParams.get("q") ?? "";
@@ -101,6 +102,7 @@ describe("research for an idea", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     link.addEventListener("click", (e) => e.preventDefault());
     await userEvent.click(link);
+    expect(screen.queryByRole("menu")).toBeNull();
     // no request of any kind (a stray refetch would show here too)
     expect(calls.length).toBe(before);
   });
@@ -211,7 +213,8 @@ describe("picking a candidate or an own source", () => {
 
   it("takes an own link, or an own text, instead", async () => {
     const calls = await openIdea({ ...withCandidates, [OWN]: { status: 200, body: { draft } } });
-    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: eigenen Link einfügen" }));
+    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: Weitere Aktionen" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Eigenen Link einfügen" }));
     await userEvent.click(screen.getByRole("textbox", { name: /Link oder Rezepttext/ }));
     await userEvent.paste("https://example.org/mein-rezept");
     await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
@@ -221,7 +224,8 @@ describe("picking a candidate or an own source", () => {
 
   it("sends pasted text as text, and shows the import's refusal of an own source", async () => {
     const calls = await openIdea({ ...withCandidates, [OWN]: { status: 422, body: { error: "address_not_public" } } });
-    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: eigenen Link einfügen" }));
+    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: Weitere Aktionen" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Eigenen Link einfügen" }));
     await userEvent.click(screen.getByRole("textbox", { name: /Link oder Rezepttext/ }));
     await userEvent.paste("Kürbis kochen und stampfen");
     await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));

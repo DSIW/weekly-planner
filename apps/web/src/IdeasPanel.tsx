@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   addIdea,
   deleteIdea,
@@ -15,7 +15,9 @@ import {
 } from "./api";
 import { relativeTime } from "./dates";
 import { DraftReview } from "./ImportPanel";
-import { IdeaResearch } from "./IdeaResearch";
+import { claudeSearchUrl } from "./claude-search";
+import { ResearchPanel, SearchButton, useIdeaResearch } from "./IdeaResearch";
+import { OverflowMenu } from "./OverflowMenu";
 import { Loading } from "./Loading";
 
 const MESSAGES: Record<string, string> = {
@@ -124,51 +126,109 @@ function IdeaCard({
   });
   const keep = useMutation({ mutationFn: () => keepIdea(idea.id), onSettled: onChanged });
   const remove = useMutation({ mutationFn: () => deleteIdea(idea.id), onSettled: onChanged });
+  const research = useIdeaResearch(idea, onChanged, onDraft);
   const busy = edit.isPending || keep.isPending || remove.isPending;
   const failure = keep.error ?? remove.error;
+  const locked = busy || confirming || research.busy;
+  const link = idea.inspirationLink && isWebLink(idea.inspirationLink) ? idea.inspirationLink : null;
+  const hintId = useId();
+  const labelId = useId();
 
-  if (editing)
-    return (
-      <li className="idea">
-        <IdeaForm
-          initial={idea}
-          submitLabel="Speichern"
-          pending={edit.isPending}
-          error={edit.isError ? messageFor(edit.error) : null}
-          onSubmit={(input) => edit.mutate(input)}
-          onCancel={() => {
-            edit.reset();
-            setEditing(false);
-          }}
-        />
-      </li>
-    );
   return (
     <li className={idea.isStale ? "idea stale" : "idea"}>
-      <div className="idea-head">
+      <div className="idea-row">
         <Avatar member={idea.addedBy} />
-        <div className="idea-who">
-          <strong>{idea.addedBy.name}</strong>
-          <span className="muted">{relativeTime(idea.addedAt)}</span>
+        <div className="idea-main">
+          <h3>{idea.title}</h3>
+          <p className="idea-meta">
+            {idea.addedBy.name} · {relativeTime(idea.addedAt)}
+            {idea.isStale && <span className="badge stale-badge">veraltet</span>}
+            {link && (
+              <>
+                {" · "}
+                <a className="idea-link" href={link} target="_blank" rel="noopener noreferrer">
+                  Inspiration ansehen
+                </a>
+              </>
+            )}
+          </p>
+          {idea.note && <p className="idea-note">{idea.note}</p>}
         </div>
-        {idea.isStale && <span className="badge stale-badge">veraltet</span>}
-      </div>
-      <h3>{idea.title}</h3>
-      {idea.note && <p className="idea-note">{idea.note}</p>}
-      {idea.inspirationLink &&
-        (isWebLink(idea.inspirationLink) ? (
-          <a className="idea-link" href={idea.inspirationLink} target="_blank" rel="noopener noreferrer">
-            Inspiration ansehen
+        {idea.isStale && !confirming && (
+          <button
+            type="button"
+            className="small"
+            disabled={busy}
+            aria-label={`${idea.title} behalten`}
+            onClick={() => keep.mutate()}
+          >
+            Behalten
+          </button>
+        )}
+        <SearchButton idea={idea} research={research} disabled={busy || confirming} />
+        <OverflowMenu label={`${idea.title}: Weitere Aktionen`}>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={locked}
+            onClick={() => {
+              research.setClosed(false);
+              research.setOwn(true);
+            }}
+          >
+            Eigenen Link einfügen
+          </button>
+          <a
+            role="menuitem"
+            href={claudeSearchUrl(idea)}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-labelledby={labelId}
+            aria-describedby={hintId}
+          >
+            <span id={labelId}>In Claude suchen</span>
+            <span id={hintId} className="muted">
+              Link danach unter „Eigenen Link einfügen“ einfügen
+            </span>
           </a>
-        ) : null)}
+          <button type="button" role="menuitem" disabled={locked} onClick={() => setEditing(true)}>
+            Bearbeiten
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={locked}
+            onClick={() => {
+              remove.reset();
+              setConfirming(true);
+            }}
+          >
+            Löschen
+          </button>
+        </OverflowMenu>
+      </div>
       {failure && (
-        <p role="alert" className="error">
+        <p role="alert" className="error idea-panel">
           {messageFor(failure)}
         </p>
       )}
-      <IdeaResearch idea={idea} onChanged={onChanged} onDraft={onDraft} disabled={busy || confirming} />
-      {confirming ? (
-        <div className="idea-actions">
+      {editing && (
+        <div className="idea-panel">
+          <IdeaForm
+            initial={idea}
+            submitLabel="Speichern"
+            pending={edit.isPending}
+            error={edit.isError ? messageFor(edit.error) : null}
+            onSubmit={(input) => edit.mutate(input)}
+            onCancel={() => {
+              edit.reset();
+              setEditing(false);
+            }}
+          />
+        </div>
+      )}
+      {confirming && (
+        <div className="idea-panel idea-actions">
           <button
             type="button"
             className="danger"
@@ -182,36 +242,8 @@ function IdeaCard({
             Abbrechen
           </button>
         </div>
-      ) : (
-        <div className="idea-actions">
-          {idea.isStale && (
-            <button type="button" disabled={busy} aria-label={`${idea.title} behalten`} onClick={() => keep.mutate()}>
-              Behalten
-            </button>
-          )}
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            aria-label={`${idea.title} bearbeiten`}
-            onClick={() => setEditing(true)}
-          >
-            Bearbeiten
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy}
-            aria-label={`${idea.title} löschen`}
-            onClick={() => {
-              remove.reset();
-              setConfirming(true);
-            }}
-          >
-            Löschen
-          </button>
-        </div>
       )}
+      <ResearchPanel idea={idea} research={research} disabled={busy || confirming} />
     </li>
   );
 }
@@ -248,8 +280,15 @@ export function IdeasPanel() {
 
   return (
     <section className="card ideas">
-      <h2>Ideen</h2>
-      {adding ? (
+      <div className="ideas-head">
+        <h2>Ideen {ideas.data && <span className="muted ideas-count">({all.length})</span>}</h2>
+        {!adding && (
+          <button type="button" className="small" aria-label="Neue Idee hinzufügen" onClick={() => setAdding(true)}>
+            + Neu
+          </button>
+        )}
+      </div>
+      {adding && (
         <IdeaForm
           submitLabel="Idee hinzufügen"
           pending={add.isPending}
@@ -260,10 +299,6 @@ export function IdeasPanel() {
             setAdding(false);
           }}
         />
-      ) : (
-        <button type="button" onClick={() => setAdding(true)}>
-          Idee hinzufügen
-        </button>
       )}
       {ideas.isPending && <Loading what="Ideen werden geladen …" />}
       {ideas.isError && (
@@ -276,8 +311,9 @@ export function IdeasPanel() {
       )}
       {stale.length > 0 && (
         <>
-          <h3 className="idea-group">Veraltet</h3>
-          <p className="muted">Lange nichts damit gemacht. Nichts wird von selbst gelöscht: behalten oder löschen.</p>
+          <h3 className="idea-group">
+            Veraltet <span>· Lange nichts damit gemacht</span>
+          </h3>
           <ul className="ideas-list" aria-label="Veraltete Ideen">
             {stale.map((idea) => (
               <IdeaCard

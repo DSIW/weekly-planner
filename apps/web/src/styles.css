@@ -1327,46 +1327,85 @@ button.found-other {
   font-size: 0.9rem;
 }
 
-/* Recipe ideas */
+/* Recipe ideas: one slim row each, the rest behind the search and overflow buttons */
+.card.ideas {
+  padding: 16px;
+  gap: 10px;
+}
+.ideas-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ideas-count {
+  font-size: 0.95rem;
+  font-weight: 400;
+}
 .ideas-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 .idea {
   display: grid;
   gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--outline);
-  border-radius: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--outline);
   min-width: 0;
 }
-.idea.stale {
-  border-color: var(--warn);
+.idea:last-child {
+  border-bottom: 0;
 }
-.idea h3,
-.idea-group {
-  margin: 0;
-  font-size: 1.05rem;
-  overflow-wrap: anywhere;
-}
-.idea-head {
+.idea-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+  min-height: 48px;
 }
-.idea-who {
-  display: grid;
+.idea-main {
   flex: 1;
   min-width: 0;
-  font-size: 0.9rem;
+  display: grid;
+  gap: 1px;
+}
+.idea-main h3 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.idea-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.idea-meta .badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 0.75rem;
+}
+.idea-group {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.idea-group span {
+  font-weight: 400;
 }
 .avatar {
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   overflow: hidden;
   display: grid;
@@ -1374,6 +1413,7 @@ button.found-other {
   background: var(--primary);
   color: var(--on-primary);
   font-weight: 700;
+  font-size: 0.9rem;
 }
 .avatar img {
   width: 100%;
@@ -1386,48 +1426,129 @@ button.found-other {
 }
 .idea-note {
   margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .idea-link {
   color: var(--primary-ink);
   font-weight: 600;
 }
+.icon-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--text);
+  border-radius: 50%;
+}
+.icon-btn.primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.overflow {
+  position: relative;
+  flex: none;
+}
+.overflow-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 10;
+  min-width: 230px;
+  max-width: calc(100vw - 32px);
+  display: grid;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+}
+.overflow-menu [role="menuitem"] {
+  display: grid;
+  gap: 1px;
+  min-height: 44px;
+  align-content: center;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+}
+.overflow-menu [role="menuitem"] .muted {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+.overflow-menu [role="menuitem"]:focus-visible {
+  outline: 2px solid var(--primary);
+}
+.idea-panel {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 0 40px;
+  min-width: 0;
+}
 .idea-form {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 .idea-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
+.idea-panel :is(.idea-actions, .candidate-actions) button,
+.ideas > .idea-form button {
+  padding: 8px 14px;
+  font-size: 0.9rem;
+}
 button.danger {
   background: var(--error);
   color: var(--surface);
 }
+button.idea-toggle {
+  justify-self: start;
+}
 
 /* Research candidates of an idea */
-.idea-research {
-  display: grid;
-  gap: 8px;
-}
 .candidates {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 .candidate {
   display: grid;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 2px;
+  padding: 8px 10px;
   border: 1px solid var(--outline);
   border-radius: 12px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.candidate p {
+.candidate-site {
+  font-size: 0.8rem;
+}
+.candidate-summary {
   margin: 0;
+  font-size: 0.85rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.candidate-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.9rem;
 }

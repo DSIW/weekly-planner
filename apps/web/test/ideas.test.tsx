@@ -68,6 +68,11 @@ const openIdeas = async () => {
   renderApp();
   await userEvent.click(await screen.findByRole("button", { name: "Ideen" }));
 };
+/** Opens the "⋯" menu of an idea and chooses an item. */
+const chooseFromMenu = async (title: string, item: string) => {
+  await userEvent.click(await screen.findByRole("button", { name: `${title}: Weitere Aktionen` }));
+  await userEvent.click(screen.getByRole("menuitem", { name: item }));
+};
 
 describe("the ideas tab", () => {
   it("shows each idea with who added it, their KitchenOwl picture, and when", async () => {
@@ -109,7 +114,7 @@ describe("the ideas tab", () => {
     expect(await screen.findByText(/Noch keine Ideen/)).toBeInTheDocument();
   });
 
-  it("marks stale ideas as veraltet with Behalten and Löschen, apart from the others", async () => {
+  it("marks stale ideas as veraltet with a visible Behalten and Löschen in the menu, apart from the others", async () => {
     server({ ...base, [LIST]: list(fresh, stale) });
     await openIdeas();
     const staleList = await screen.findByRole("list", { name: "Veraltete Ideen" });
@@ -117,7 +122,8 @@ describe("the ideas tab", () => {
     expect(card).toHaveTextContent("veraltet");
     expect(card).toHaveTextContent("vor 2 Monaten");
     expect(within(card).getByRole("button", { name: "Linsencurry behalten" })).toBeInTheDocument();
-    expect(within(card).getByRole("button", { name: "Linsencurry löschen" })).toBeInTheDocument();
+    await userEvent.click(within(card).getByRole("button", { name: "Linsencurry: Weitere Aktionen" }));
+    expect(within(card).getByRole("menuitem", { name: "Löschen" })).toBeInTheDocument();
     const freshCard = screen.getByRole("heading", { name: "Kürbisgnocchi" }).closest("li")!;
     expect(freshCard).not.toHaveTextContent("veraltet");
     expect(within(freshCard).queryByRole("button", { name: /behalten/ })).toBeNull();
@@ -151,7 +157,7 @@ describe("the ideas tab", () => {
       },
     });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Kürbisgnocchi löschen" }));
+    await chooseFromMenu("Kürbisgnocchi", "Löschen");
     expect(calls.some((c) => c.key === DELETE1)).toBe(false);
     await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi wirklich löschen" }));
     expect(await screen.findByText(/Noch keine Ideen/)).toBeInTheDocument();
@@ -161,9 +167,10 @@ describe("the ideas tab", () => {
   it("can back out of deleting", async () => {
     const calls = server({ ...base, [LIST]: list(fresh) });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Kürbisgnocchi löschen" }));
+    await chooseFromMenu("Kürbisgnocchi", "Löschen");
     await userEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
-    expect(screen.getByRole("button", { name: "Kürbisgnocchi löschen" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Kürbisgnocchi wirklich löschen" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Kürbisgnocchi: Weitere Aktionen" })).toBeInTheDocument();
     expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false);
   });
 
@@ -178,19 +185,19 @@ describe("the ideas tab", () => {
       },
     });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Idee hinzufügen" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Neue Idee hinzufügen" }));
     await userEvent.type(screen.getByLabelText("Titel"), "Etwas mit Kürbis");
     await userEvent.click(screen.getByRole("button", { name: "Idee hinzufügen" }));
     expect(await screen.findByRole("heading", { name: "Etwas mit Kürbis" })).toBeInTheDocument();
     expect(calls.find((c) => c.key === ADD)?.body).toEqual({ title: "Etwas mit Kürbis" });
-    expect(screen.getByText("heute")).toBeInTheDocument();
+    expect(screen.getByText(/Max · heute/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Titel")).toBeNull(); // the form closed
   });
 
   it("sends note and link when given", async () => {
     const calls = server({ ...base, [LIST]: list(), [ADD]: { status: 201, body: { idea: idea("i9") } } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Idee hinzufügen" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Neue Idee hinzufügen" }));
     await userEvent.type(screen.getByLabelText("Titel"), "Gnocchi");
     await userEvent.type(screen.getByLabelText(/Notiz/), "mit Salbei");
     await userEvent.type(screen.getByLabelText(/Link/), "https://example.org/g");
@@ -211,7 +218,7 @@ describe("the ideas tab", () => {
       [EDIT]: { status: 200, body: { idea: { ...fresh, title: "Gnocchi" } } },
     });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Kürbisgnocchi bearbeiten" }));
+    await chooseFromMenu("Kürbisgnocchi", "Bearbeiten");
     const title = screen.getByLabelText("Titel");
     expect(title).toHaveValue("Kürbisgnocchi");
     expect(screen.getByLabelText(/Notiz/)).toHaveValue("mit Salbei");
@@ -239,6 +246,107 @@ describe("the ideas tab", () => {
   });
 });
 
+describe("the compact list", () => {
+  it("has a slim header with the count and a compact add button", async () => {
+    server({ ...base, [LIST]: list(fresh, stale) });
+    await openIdeas();
+    const heading = await screen.findByRole("heading", { level: 2, name: /Ideen/ });
+    await waitFor(() => expect(heading).toHaveTextContent("Ideen (2)"));
+    const add = screen.getByRole("button", { name: "Neue Idee hinzufügen" });
+    expect(add).toHaveTextContent("+ Neu");
+    await userEvent.click(add);
+    expect(screen.getByLabelText("Titel")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Neue Idee hinzufügen" })).toBeNull();
+  });
+
+  it("shows the meta line, a visible search button and a note without extra buttons per row", async () => {
+    server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    const row = (await screen.findByRole("heading", { name: "Kürbisgnocchi" })).closest("li")!;
+    expect(row).toHaveTextContent("Max · vor 3 Tagen");
+    expect(within(row).getByRole("button", { name: "Kürbisgnocchi: Rezepte suchen" })).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: /bearbeiten|löschen/i })).toBeNull();
+    expect(within(row).queryByRole("menu")).toBeNull();
+  });
+});
+
+describe("the overflow menu", () => {
+  const trigger = () => screen.findByRole("button", { name: "Kürbisgnocchi: Weitere Aktionen" });
+
+  it("opens with all items, and the Claude link is a real new-tab link that calls nothing", async () => {
+    const calls = server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    const button = await trigger();
+    expect(button).toHaveAttribute("aria-expanded", "false");
+    const before = calls.length;
+    await userEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+    const menu = screen.getByRole("menu");
+    const names = within(menu)
+      .getAllByRole("menuitem")
+      .map((i) => i.textContent);
+    expect(names).toEqual([
+      "Eigenen Link einfügen",
+      "In Claude suchenLink danach unter „Eigenen Link einfügen“ einfügen",
+      "Bearbeiten",
+      "Löschen",
+    ]);
+    const claude = within(menu).getByRole("menuitem", { name: "In Claude suchen" });
+    expect(claude.getAttribute("href")).toMatch(/^https:\/\/claude\.ai\/new\?q=/);
+    expect(claude).toHaveAttribute("target", "_blank");
+    expect(claude).toHaveAttribute("rel", "noopener noreferrer");
+    expect(claude).toHaveAccessibleDescription(/Link danach unter/);
+    expect(calls.length).toBe(before);
+  });
+
+  it("closes on Escape and returns focus to its button", async () => {
+    server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    const button = await trigger();
+    await userEvent.click(button);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(button).toHaveFocus();
+  });
+
+  it("closes on a tap outside, and on a second tap on its button", async () => {
+    server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    const button = await trigger();
+    await userEvent.click(button);
+    await userEvent.click(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+    await userEvent.click(button);
+    await userEvent.click(button);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("closes after an item was chosen", async () => {
+    server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    await userEvent.click(await trigger());
+    await userEvent.click(screen.getByRole("menuitem", { name: "Eigenen Link einfügen" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.getByRole("textbox", { name: /Link oder Rezepttext/ })).toBeInTheDocument();
+  });
+
+  it("puts focus on the first item and moves with the arrow keys", async () => {
+    server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    await userEvent.click(await trigger());
+    expect(screen.getByRole("menuitem", { name: "Eigenen Link einfügen" })).toHaveFocus();
+    await userEvent.keyboard("{ArrowUp}");
+    expect(screen.getByRole("menuitem", { name: "Löschen" })).toHaveFocus();
+  });
+
+  it("keeps Behalten out of the menu", async () => {
+    server({ ...base, [LIST]: list(stale) });
+    await openIdeas();
+    await userEvent.click(await screen.findByRole("button", { name: "Linsencurry: Weitere Aktionen" }));
+    expect(within(screen.getByRole("menu")).queryByText("Behalten")).toBeNull();
+  });
+});
+
 // Every action must say so when it fails; a silent failure looks like a broken button.
 describe("failed idea actions are visible", () => {
   it("loading the ideas", async () => {
@@ -250,7 +358,7 @@ describe("failed idea actions are visible", () => {
   it("adding an idea that the server fails on, and the form keeps what was typed", async () => {
     server({ ...base, [LIST]: list(), [ADD]: { status: 500, body: {} } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Idee hinzufügen" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Neue Idee hinzufügen" }));
     await userEvent.type(screen.getByLabelText("Titel"), "Gnocchi");
     await userEvent.click(screen.getByRole("button", { name: "Idee hinzufügen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
@@ -260,7 +368,7 @@ describe("failed idea actions are visible", () => {
   it("adding an idea with a link the server refuses", async () => {
     server({ ...base, [LIST]: list(), [ADD]: { status: 400, body: { error: "invalid_request" } } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Idee hinzufügen" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Neue Idee hinzufügen" }));
     await userEvent.type(screen.getByLabelText("Titel"), "Gnocchi");
     await userEvent.click(screen.getByRole("button", { name: "Idee hinzufügen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("gültigen Link");
@@ -269,7 +377,7 @@ describe("failed idea actions are visible", () => {
   it("editing an idea that the server fails on", async () => {
     server({ ...base, [LIST]: list(fresh), [EDIT]: { status: 500, body: {} } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Kürbisgnocchi bearbeiten" }));
+    await chooseFromMenu("Kürbisgnocchi", "Bearbeiten");
     await userEvent.click(screen.getByRole("button", { name: "Speichern" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
   });
@@ -277,7 +385,7 @@ describe("failed idea actions are visible", () => {
   it("editing an idea that was deleted meanwhile", async () => {
     server({ ...base, [LIST]: list(fresh), [EDIT]: { status: 404, body: { error: "idea_not_found" } } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Kürbisgnocchi bearbeiten" }));
+    await chooseFromMenu("Kürbisgnocchi", "Bearbeiten");
     await userEvent.click(screen.getByRole("button", { name: "Speichern" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("gibt es nicht mehr");
   });
@@ -292,7 +400,7 @@ describe("failed idea actions are visible", () => {
   it("deleting an idea that the server fails on", async () => {
     server({ ...base, [LIST]: list(stale), [DELETE2]: { status: 500, body: {} } });
     await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Linsencurry löschen" }));
+    await chooseFromMenu("Linsencurry", "Löschen");
     await userEvent.click(screen.getByRole("button", { name: "Linsencurry wirklich löschen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("nicht geklappt");
   });
