@@ -68,10 +68,16 @@ const openIdeas = async () => {
   renderApp();
   await userEvent.click(await screen.findByRole("button", { name: "Ideen" }));
 };
-/** Opens the "⋯" menu of an idea and chooses an item. */
+/** Expands the row of an idea (its whole header is the button named like the title). */
+const expandRow = async (title: string) => {
+  const header = await screen.findByRole("button", { name: title });
+  if (header.getAttribute("aria-expanded") !== "true") await userEvent.click(header);
+  return header;
+};
+/** Expands the row of an idea and presses one of its actions. */
 const chooseFromMenu = async (title: string, item: string) => {
-  await userEvent.click(await screen.findByRole("button", { name: `${title}: Weitere Aktionen` }));
-  await userEvent.click(screen.getByRole("menuitem", { name: item }));
+  await expandRow(title);
+  await userEvent.click(screen.getByRole("button", { name: item }));
 };
 
 describe("the ideas tab", () => {
@@ -114,7 +120,7 @@ describe("the ideas tab", () => {
     expect(await screen.findByText(/Noch keine Ideen/)).toBeInTheDocument();
   });
 
-  it("marks stale ideas as veraltet with a visible Behalten and Löschen in the menu, apart from the others", async () => {
+  it("marks stale ideas as veraltet with a visible Behalten and Löschen in the expanded row, apart from the others", async () => {
     server({ ...base, [LIST]: list(fresh, stale) });
     await openIdeas();
     const staleList = await screen.findByRole("list", { name: "Veraltete Ideen" });
@@ -122,8 +128,9 @@ describe("the ideas tab", () => {
     expect(card).toHaveTextContent("veraltet");
     expect(card).toHaveTextContent("vor 2 Monaten");
     expect(within(card).getByRole("button", { name: "Linsencurry behalten" })).toBeInTheDocument();
-    await userEvent.click(within(card).getByRole("button", { name: "Linsencurry: Weitere Aktionen" }));
-    expect(within(card).getByRole("menuitem", { name: "Löschen" })).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Löschen" })).toBeNull();
+    await userEvent.click(within(card).getByRole("button", { name: "Linsencurry" }));
+    expect(within(card).getByRole("button", { name: "Löschen" })).toBeInTheDocument();
     const freshCard = screen.getByRole("heading", { name: "Kürbisgnocchi" }).closest("li")!;
     expect(freshCard).not.toHaveTextContent("veraltet");
     expect(within(freshCard).queryByRole("button", { name: /behalten/ })).toBeNull();
@@ -170,7 +177,7 @@ describe("the ideas tab", () => {
     await chooseFromMenu("Kürbisgnocchi", "Löschen");
     await userEvent.click(screen.getByRole("button", { name: "Abbrechen" }));
     expect(screen.queryByRole("button", { name: "Kürbisgnocchi wirklich löschen" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Kürbisgnocchi: Weitere Aktionen" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Löschen" })).toBeInTheDocument();
     expect(calls.some((c) => c.key.startsWith("DELETE"))).toBe(false);
   });
 
@@ -259,91 +266,161 @@ describe("the compact list", () => {
     expect(screen.queryByRole("button", { name: "Neue Idee hinzufügen" })).toBeNull();
   });
 
-  it("shows the meta line, a visible search button and a note without extra buttons per row", async () => {
+  it("shows avatar, title, meta line and a chevron toggle, but no action buttons while collapsed", async () => {
     server({ ...base, [LIST]: list(fresh) });
     await openIdeas();
     const row = (await screen.findByRole("heading", { name: "Kürbisgnocchi" })).closest("li")!;
     expect(row).toHaveTextContent("Max · vor 3 Tagen");
-    expect(within(row).getByRole("button", { name: "Kürbisgnocchi: Rezepte suchen" })).toBeInTheDocument();
-    expect(within(row).queryByRole("button", { name: /bearbeiten|löschen/i })).toBeNull();
+    expect(row.querySelector(".chevron")).not.toBeNull();
+    expect(within(row).queryByRole("button", { name: /suchen|bearbeiten|löschen|Eigenen/i })).toBeNull();
+    expect(within(row).queryByRole("link", { name: "In Claude suchen" })).toBeNull();
     expect(within(row).queryByRole("menu")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Weitere Aktionen/ })).toBeNull();
   });
 });
 
-describe("the overflow menu", () => {
-  const trigger = () => screen.findByRole("button", { name: "Kürbisgnocchi: Weitere Aktionen" });
-
-  it("opens with all items, and the Claude link is a real new-tab link that calls nothing", async () => {
+describe("the expandable rows", () => {
+  it("toggles with the header button: aria-expanded, aria-controls, actions only when expanded", async () => {
     const calls = server({ ...base, [LIST]: list(fresh) });
     await openIdeas();
-    const button = await trigger();
-    expect(button).toHaveAttribute("aria-expanded", "false");
+    const header = await screen.findByRole("button", { name: "Kürbisgnocchi" });
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Rezepte suchen" })).toBeNull();
     const before = calls.length;
-    await userEvent.click(button);
-    expect(button).toHaveAttribute("aria-expanded", "true");
-    const menu = screen.getByRole("menu");
-    const names = within(menu)
-      .getAllByRole("menuitem")
-      .map((i) => i.textContent);
-    expect(names).toEqual([
-      "Eigenen Link einfügen",
-      "In Claude suchenLink danach unter „Eigenen Link einfügen“ einfügen",
-      "Bearbeiten",
-      "Löschen",
-    ]);
-    const claude = within(menu).getByRole("menuitem", { name: "In Claude suchen" });
+    await userEvent.click(header);
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    const panel = document.getElementById(header.getAttribute("aria-controls")!)!;
+    expect(
+      within(panel)
+        .getAllByRole("button")
+        .map((b) => b.textContent),
+    ).toEqual(["Rezepte suchen", "Eigenen Link einfügen", "Bearbeiten", "Löschen"]);
+    expect(within(panel).getByRole("link", { name: "In Claude suchen" })).toBeInTheDocument();
+    // the full note and the link are shown in the panel (once, not twice)
+    expect(within(panel).getByText("mit Salbei")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Inspiration ansehen" })).toHaveLength(1);
+    expect(calls.length).toBe(before);
+    await userEvent.click(header);
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Löschen" })).toBeNull();
+  });
+
+  it("toggles from the keyboard with Enter and Space", async () => {
+    server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    const header = await screen.findByRole("button", { name: "Kürbisgnocchi" });
+    header.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    await userEvent.keyboard(" ");
+    expect(header).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens only one row at a time", async () => {
+    server({ ...base, [LIST]: list(fresh, stale) });
+    await openIdeas();
+    const a = await screen.findByRole("button", { name: "Kürbisgnocchi" });
+    const b = screen.getByRole("button", { name: "Linsencurry" });
+    await userEvent.click(a);
+    await userEvent.click(b);
+    expect(a).toHaveAttribute("aria-expanded", "false");
+    expect(b).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getAllByRole("button", { name: "Löschen" })).toHaveLength(1);
+  });
+
+  it("does not collapse a row with an open edit form when another row is opened", async () => {
+    server({ ...base, [LIST]: list(fresh, stale) });
+    await openIdeas();
+    await chooseFromMenu("Kürbisgnocchi", "Bearbeiten");
+    await userEvent.type(screen.getByLabelText("Titel"), " neu");
+    await userEvent.click(screen.getByRole("button", { name: "Linsencurry" }));
+    expect(screen.getByRole("button", { name: "Linsencurry" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Kürbisgnocchi" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Titel")).toHaveValue("Kürbisgnocchi neu");
+    // toggling the row with the form does nothing until the form is done
+    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi" }));
+    expect(screen.getByLabelText("Titel")).toBeInTheDocument();
+  });
+
+  it("Behalten works on the collapsed row and does not toggle it", async () => {
+    let kept = false;
+    const calls = server({
+      ...base,
+      [LIST]: () => list(kept ? { ...stale, isStale: false } : stale),
+      [KEEP]: () => {
+        kept = true;
+        return { status: 200, body: { idea: { ...stale, isStale: false } } };
+      },
+    });
+    await openIdeas();
+    const header = await screen.findByRole("button", { name: "Linsencurry" });
+    await userEvent.click(screen.getByRole("button", { name: "Linsencurry behalten" }));
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    await waitFor(() => expect(calls.some((c) => c.key === KEEP)).toBe(true));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Linsencurry behalten" })).toBeNull());
+    expect(screen.getByRole("button", { name: "Linsencurry" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("offers the Claude search as a real new-tab link that calls nothing", async () => {
+    const calls = server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    await expandRow("Kürbisgnocchi");
+    const before = calls.length;
+    const claude = screen.getByRole("link", { name: "In Claude suchen" });
     expect(claude.getAttribute("href")).toMatch(/^https:\/\/claude\.ai\/new\?q=/);
     expect(claude).toHaveAttribute("target", "_blank");
     expect(claude).toHaveAttribute("rel", "noopener noreferrer");
     expect(claude).toHaveAccessibleDescription(/Link danach unter/);
+    expect(screen.getByText(/Link danach unter/)).toBeVisible();
     expect(calls.length).toBe(before);
   });
 
-  it("closes on Escape and returns focus to its button", async () => {
+  it("keeps the open row open and its form state when the list is refetched live", async () => {
+    server({ ...base, [LIST]: list(fresh, stale) });
+    await openIdeas();
+    await chooseFromMenu("Kürbisgnocchi", "Bearbeiten");
+    await userEvent.type(screen.getByLabelText("Titel"), "!");
+    FakeEventSource.instances.at(-1)!.emit("changed");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Kürbisgnocchi" })).toBeInTheDocument());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByRole("button", { name: "Kürbisgnocchi" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Titel")).toHaveValue("Kürbisgnocchi!");
+  });
+
+  it("keeps a plainly opened row open across a live refetch", async () => {
     server({ ...base, [LIST]: list(fresh) });
     await openIdeas();
-    const button = await trigger();
-    await userEvent.click(button);
+    await expandRow("Kürbisgnocchi");
+    FakeEventSource.instances.at(-1)!.emit("changed");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByRole("button", { name: "Kürbisgnocchi" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Löschen" })).toBeInTheDocument();
+  });
+
+  it("closes an open row with Escape and returns focus to its header", async () => {
+    server({ ...base, [LIST]: list(fresh) });
+    await openIdeas();
+    const header = await expandRow("Kürbisgnocchi");
+    screen.getByRole("button", { name: "Bearbeiten" }).focus();
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("menu")).toBeNull();
-    expect(button).toHaveFocus();
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).toHaveFocus();
   });
 
-  it("closes on a tap outside, and on a second tap on its button", async () => {
+  it("does not close a row with a form on Escape", async () => {
     server({ ...base, [LIST]: list(fresh) });
     await openIdeas();
-    const button = await trigger();
-    await userEvent.click(button);
-    await userEvent.click(document.body);
-    expect(screen.queryByRole("menu")).toBeNull();
-    await userEvent.click(button);
-    await userEvent.click(button);
-    expect(screen.queryByRole("menu")).toBeNull();
+    await chooseFromMenu("Kürbisgnocchi", "Bearbeiten");
+    await userEvent.type(screen.getByLabelText("Titel"), "x");
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByLabelText("Titel")).toHaveValue("Kürbisgnocchix");
   });
 
-  it("closes after an item was chosen", async () => {
+  it("opens the own-link form inside the expanded row", async () => {
     server({ ...base, [LIST]: list(fresh) });
     await openIdeas();
-    await userEvent.click(await trigger());
-    await userEvent.click(screen.getByRole("menuitem", { name: "Eigenen Link einfügen" }));
-    expect(screen.queryByRole("menu")).toBeNull();
+    await chooseFromMenu("Kürbisgnocchi", "Eigenen Link einfügen");
     expect(screen.getByRole("textbox", { name: /Link oder Rezepttext/ })).toBeInTheDocument();
-  });
-
-  it("puts focus on the first item and moves with the arrow keys", async () => {
-    server({ ...base, [LIST]: list(fresh) });
-    await openIdeas();
-    await userEvent.click(await trigger());
-    expect(screen.getByRole("menuitem", { name: "Eigenen Link einfügen" })).toHaveFocus();
-    await userEvent.keyboard("{ArrowUp}");
-    expect(screen.getByRole("menuitem", { name: "Löschen" })).toHaveFocus();
-  });
-
-  it("keeps Behalten out of the menu", async () => {
-    server({ ...base, [LIST]: list(stale) });
-    await openIdeas();
-    await userEvent.click(await screen.findByRole("button", { name: "Linsencurry: Weitere Aktionen" }));
-    expect(within(screen.getByRole("menu")).queryByText("Behalten")).toBeNull();
   });
 });
 

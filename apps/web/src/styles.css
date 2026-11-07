@@ -1327,7 +1327,7 @@ button.found-other {
   font-size: 0.9rem;
 }
 
-/* Recipe ideas: one slim row each, the rest behind the search and overflow buttons */
+/* Recipe ideas: one slim row each, the actions in an inline panel under the tapped row */
 .card.ideas {
   padding: 16px;
   gap: 10px;
@@ -1436,59 +1436,106 @@ button.found-other {
   color: var(--primary-ink);
   font-weight: 600;
 }
-.icon-btn {
-  flex: none;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  background: transparent;
-  color: var(--text);
-  border-radius: 50%;
-}
-.icon-btn.primary {
-  background: var(--primary);
-  color: var(--on-primary);
-}
-.overflow {
+.idea-row {
   position: relative;
-  flex: none;
 }
-.overflow-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  z-index: 10;
-  min-width: 230px;
-  max-width: calc(100vw - 32px);
-  display: grid;
-  padding: 4px;
-  background: var(--surface);
-  border: 1px solid var(--outline);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
+.idea-main h3 {
+  display: block;
+  overflow: visible;
 }
-.overflow-menu [role="menuitem"] {
-  display: grid;
-  gap: 1px;
-  min-height: 44px;
-  align-content: center;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
+/* The title is the real button; its ::after stretches over the whole row, so the whole header is the tap target. */
+button.idea-toggle-row {
+  all: unset;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
   font-weight: 600;
-  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+button.idea-toggle-row::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+  min-height: 44px;
+}
+button.idea-toggle-row:focus-visible::after {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.idea-row .idea-link,
+.idea-row .idea-keep {
+  position: relative;
+  z-index: 1;
+}
+.chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.chevron.open {
+  transform: rotate(180deg);
+}
+.idea-expanded {
+  padding: 8px 10px;
+  border-left: 3px solid color-mix(in srgb, var(--primary) 60%, var(--outline));
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  border-radius: 0 8px 8px 0;
+  animation: idea-open 0.15s ease-out;
+}
+@keyframes idea-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .idea-expanded {
+    animation: none;
+  }
+  .chevron {
+    transition: none;
+  }
+}
+.idea-note-full {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.idea-hint {
+  font-size: 0.8rem;
+}
+.idea-research {
+  display: grid;
+  gap: 8px;
+}
+button.with-icon,
+a.button-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+a.button-link {
+  padding: 8px 14px;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  color: var(--primary-ink);
+  font-weight: 600;
+  font-size: 0.9rem;
   text-decoration: none;
 }
-.overflow-menu [role="menuitem"] .muted {
-  font-size: 0.8rem;
-  font-weight: 400;
-}
-.overflow-menu [role="menuitem"]:focus-visible {
+a.button-link:focus-visible {
   outline: 2px solid var(--primary);
+}
+.idea-expanded .idea-actions > :is(button, a) {
+  min-height: 44px;
 }
 .idea-panel {
   display: grid;

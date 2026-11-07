@@ -46,7 +46,7 @@ const siteOf = (link: string): string | null => {
 
 const isLink = (s: string): boolean => /^https?:\/\/\S+$/i.test(s);
 
-/** The state of one idea's research: the search, the picking, the own source. Shared by the row's buttons and panel. */
+/** The state of one idea's research: the search, the picking, the own source. Shared by the expanded row's buttons and panel. */
 export function useIdeaResearch(idea: Idea, onChanged: () => void, onDraft: (draft: RecipeDraft) => void) {
   const [own, setOwn] = useState(false);
   const [ownText, setOwnText] = useState("");
@@ -71,8 +71,8 @@ export type IdeaResearchState = ReturnType<typeof useIdeaResearch>;
 const Magnifier = () => (
   <svg
     viewBox="0 0 24 24"
-    width="22"
-    height="22"
+    width="18"
+    height="18"
     fill="none"
     stroke="currentColor"
     strokeWidth="2"
@@ -86,36 +86,36 @@ const Magnifier = () => (
   </svg>
 );
 
-/** The row's primary action: ask the model for recipe candidates. */
+/** The expanded row's primary action: ask the model for recipe candidates. */
 export function SearchButton({
-  idea,
   research,
   disabled,
+  onStart,
 }: {
-  idea: Idea;
   research: IdeaResearchState;
   disabled: boolean;
+  onStart: () => void;
 }) {
   const { search, pick, busy, setClosed } = research;
   return (
     <button
       type="button"
-      className="icon-btn primary"
+      className="with-icon"
       disabled={disabled || busy}
-      aria-label={`${idea.title}: Rezepte suchen`}
-      title={(idea.candidates ?? []).length > 0 ? "Neu suchen" : "Rezepte suchen"}
       onClick={() => {
+        onStart();
         pick.reset();
         setClosed(false);
         search.mutate();
       }}
     >
       <Magnifier />
+      Rezepte suchen
     </button>
   );
 }
 
-/** Under the row: the spinner, the errors, the own-source form and the candidates of one idea. */
+/** In the expanded row: the spinner, the errors, the own-source form and the candidates of one idea. */
 export function ResearchPanel({
   idea,
   research,
@@ -131,7 +131,7 @@ export function ResearchPanel({
   if (!own && !search.isPending && !search.isError && candidates.length === 0) return null;
 
   return (
-    <div className="idea-panel">
+    <div className="idea-research">
       {search.isPending && <Loading what="Es wird gesucht … das kann eine Minute dauern" />}
       {search.isError && (
         <p role="alert" className="error">

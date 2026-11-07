@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   addIdea,
   deleteIdea,
@@ -17,7 +17,6 @@ import { relativeTime } from "./dates";
 import { DraftReview } from "./ImportPanel";
 import { claudeSearchUrl } from "./claude-search";
 import { ResearchPanel, SearchButton, useIdeaResearch } from "./IdeaResearch";
-import { OverflowMenu } from "./OverflowMenu";
 import { Loading } from "./Loading";
 
 const MESSAGES: Record<string, string> = {
@@ -108,12 +107,43 @@ function IdeaForm({
   );
 }
 
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={open ? "chevron open" : "chevron"}
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+/**
+ * One idea: a collapsed row (avatar, title, meta, note, chevron) whose whole header toggles an inline panel with the
+ * actions. `open` comes from the list (one row at a time). A row with unsaved work (edit form, own-link form, delete
+ * confirmation, running search) stays expanded whatever the list says and ignores toggling until that is done.
+ */
 function IdeaCard({
   idea,
+  open,
+  onOpen,
+  onClose,
   onChanged,
   onDraft,
 }: {
   idea: Idea;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
   onChanged: () => void;
   onDraft: (draft: RecipeDraft) => void;
 }) {
@@ -130,20 +160,49 @@ function IdeaCard({
   const busy = edit.isPending || keep.isPending || remove.isPending;
   const failure = keep.error ?? remove.error;
   const locked = busy || confirming || research.busy;
+  const pinned = editing || confirming || research.own || research.busy;
+  const expanded = open || pinned;
   const link = idea.inspirationLink && isWebLink(idea.inspirationLink) ? idea.inspirationLink : null;
   const hintId = useId();
-  const labelId = useId();
+  const panelId = useId();
+  const metaId = useId();
+  const toggle = useRef<HTMLButtonElement>(null);
 
   return (
-    <li className={idea.isStale ? "idea stale" : "idea"}>
+    <li
+      className={idea.isStale ? "idea stale" : "idea"}
+      onKeyDown={(ev) => {
+        if (ev.key === "Escape" && expanded && !pinned) {
+          ev.stopPropagation();
+          onClose();
+          toggle.current?.focus();
+        }
+      }}
+    >
       <div className="idea-row">
         <Avatar member={idea.addedBy} />
         <div className="idea-main">
-          <h3>{idea.title}</h3>
-          <p className="idea-meta">
+          <h3>
+            <button
+              type="button"
+              ref={toggle}
+              className="idea-toggle-row"
+              aria-expanded={expanded}
+              aria-controls={panelId}
+              aria-describedby={metaId}
+              onClick={() => {
+                if (pinned) return;
+                if (open) onClose();
+                else onOpen();
+              }}
+            >
+              {idea.title}
+            </button>
+          </h3>
+          <p className="idea-meta" id={metaId}>
             {idea.addedBy.name} · {relativeTime(idea.addedAt)}
             {idea.isStale && <span className="badge stale-badge">veraltet</span>}
-            {link && (
+            {link && !expanded && (
               <>
                 {" · "}
                 <a className="idea-link" href={link} target="_blank" rel="noopener noreferrer">
@@ -152,12 +211,12 @@ function IdeaCard({
               </>
             )}
           </p>
-          {idea.note && <p className="idea-note">{idea.note}</p>}
+          {idea.note && !expanded && <p className="idea-note">{idea.note}</p>}
         </div>
         {idea.isStale && !confirming && (
           <button
             type="button"
-            className="small"
+            className="small idea-keep"
             disabled={busy}
             aria-label={`${idea.title} behalten`}
             onClick={() => keep.mutate()}
@@ -165,85 +224,95 @@ function IdeaCard({
             Behalten
           </button>
         )}
-        <SearchButton idea={idea} research={research} disabled={busy || confirming} />
-        <OverflowMenu label={`${idea.title}: Weitere Aktionen`}>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={locked}
-            onClick={() => {
-              research.setClosed(false);
-              research.setOwn(true);
-            }}
-          >
-            Eigenen Link einfügen
-          </button>
-          <a
-            role="menuitem"
-            href={claudeSearchUrl(idea)}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-labelledby={labelId}
-            aria-describedby={hintId}
-          >
-            <span id={labelId}>In Claude suchen</span>
-            <span id={hintId} className="muted">
-              Link danach unter „Eigenen Link einfügen“ einfügen
-            </span>
-          </a>
-          <button type="button" role="menuitem" disabled={locked} onClick={() => setEditing(true)}>
-            Bearbeiten
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={locked}
-            onClick={() => {
-              remove.reset();
-              setConfirming(true);
-            }}
-          >
-            Löschen
-          </button>
-        </OverflowMenu>
+        <Chevron open={expanded} />
       </div>
       {failure && (
         <p role="alert" className="error idea-panel">
           {messageFor(failure)}
         </p>
       )}
-      {editing && (
-        <div className="idea-panel">
-          <IdeaForm
-            initial={idea}
-            submitLabel="Speichern"
-            pending={edit.isPending}
-            error={edit.isError ? messageFor(edit.error) : null}
-            onSubmit={(input) => edit.mutate(input)}
-            onCancel={() => {
-              edit.reset();
-              setEditing(false);
-            }}
-          />
+      {expanded && (
+        <div id={panelId} className="idea-panel idea-expanded">
+          {idea.note && <p className="idea-note-full">{idea.note}</p>}
+          {link && (
+            <p className="idea-note-full">
+              <a className="idea-link" href={link} target="_blank" rel="noopener noreferrer">
+                Inspiration ansehen
+              </a>
+            </p>
+          )}
+          <div className="idea-actions">
+            <SearchButton research={research} disabled={busy || confirming} onStart={onOpen} />
+            <button
+              type="button"
+              className="secondary"
+              disabled={locked}
+              onClick={() => {
+                research.setClosed(false);
+                research.setOwn(true);
+              }}
+            >
+              Eigenen Link einfügen
+            </button>
+            <a
+              className="button-link"
+              href={claudeSearchUrl(idea)}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-describedby={hintId}
+            >
+              In Claude suchen
+            </a>
+            <button type="button" className="secondary" disabled={locked} onClick={() => setEditing(true)}>
+              Bearbeiten
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={locked}
+              onClick={() => {
+                remove.reset();
+                setConfirming(true);
+              }}
+            >
+              Löschen
+            </button>
+          </div>
+          <p id={hintId} className="muted idea-hint">
+            Link danach unter „Eigenen Link einfügen“ einfügen
+          </p>
+          {editing && (
+            <IdeaForm
+              initial={idea}
+              submitLabel="Speichern"
+              pending={edit.isPending}
+              error={edit.isError ? messageFor(edit.error) : null}
+              onSubmit={(input) => edit.mutate(input)}
+              onCancel={() => {
+                edit.reset();
+                setEditing(false);
+              }}
+            />
+          )}
+          {confirming && (
+            <div className="idea-actions">
+              <button
+                type="button"
+                className="danger"
+                disabled={busy}
+                aria-label={`${idea.title} wirklich löschen`}
+                onClick={() => remove.mutate()}
+              >
+                Ja, löschen
+              </button>
+              <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(false)}>
+                Abbrechen
+              </button>
+            </div>
+          )}
+          <ResearchPanel idea={idea} research={research} disabled={busy || confirming} />
         </div>
       )}
-      {confirming && (
-        <div className="idea-panel idea-actions">
-          <button
-            type="button"
-            className="danger"
-            disabled={busy}
-            aria-label={`${idea.title} wirklich löschen`}
-            onClick={() => remove.mutate()}
-          >
-            Ja, löschen
-          </button>
-          <button type="button" className="secondary" disabled={busy} onClick={() => setConfirming(false)}>
-            Abbrechen
-          </button>
-        </div>
-      )}
-      <ResearchPanel idea={idea} research={research} disabled={busy || confirming} />
     </li>
   );
 }
@@ -256,6 +325,8 @@ export function IdeasPanel() {
   // The other phone's changes arrive live; the list is also fetched again after every (re)connect.
   useEffect(() => listenForChanges(() => void client.invalidateQueries({ queryKey: ["ideas"] })), [client]);
   const [adding, setAdding] = useState(false);
+  // Accordion: at most one row is opened by the member (a row with unsaved work additionally stays open by itself).
+  const [openId, setOpenId] = useState<string | null>(null);
   const add = useMutation({
     mutationFn: addIdea,
     onSuccess: () => setAdding(false),
@@ -266,6 +337,17 @@ export function IdeasPanel() {
   const all = ideas.data ?? [];
   const stale = all.filter((i) => i.isStale);
   const fresh = all.filter((i) => !i.isStale);
+  const row = (idea: Idea) => (
+    <IdeaCard
+      key={idea.id}
+      idea={idea}
+      open={openId === idea.id}
+      onOpen={() => setOpenId(idea.id)}
+      onClose={() => setOpenId((id) => (id === idea.id ? null : id))}
+      onChanged={changed}
+      onDraft={(draft) => setReview({ ideaId: idea.id, draft })}
+    />
+  );
 
   if (review)
     return (
@@ -315,27 +397,13 @@ export function IdeasPanel() {
             Veraltet <span>· Lange nichts damit gemacht</span>
           </h3>
           <ul className="ideas-list" aria-label="Veraltete Ideen">
-            {stale.map((idea) => (
-              <IdeaCard
-                key={idea.id}
-                idea={idea}
-                onChanged={changed}
-                onDraft={(draft) => setReview({ ideaId: idea.id, draft })}
-              />
-            ))}
+            {stale.map(row)}
           </ul>
         </>
       )}
       {fresh.length > 0 && (
         <ul className="ideas-list" aria-label="Ideen">
-          {fresh.map((idea) => (
-            <IdeaCard
-              key={idea.id}
-              idea={idea}
-              onChanged={changed}
-              onDraft={(draft) => setReview({ ideaId: idea.id, draft })}
-            />
-          ))}
+          {fresh.map(row)}
         </ul>
       )}
     </section>
