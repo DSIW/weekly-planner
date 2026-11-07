@@ -324,4 +324,11 @@ surface IdeaList {
         -- member may open in their own browser to look at the page; the
         -- server itself fetches it only through the import. A research that
         -- found nothing is reported to the member as such.
+        -- The surface may also offer a link that opens an outside assistant
+        -- (claude.ai) in the member's own browser, with a prompt made from
+        -- the idea's title, note and inspiration link that asks for a few
+        -- good recipes with links. The planner itself sends nothing there
+        -- and reads nothing back; the member brings a result back through
+        -- UseOwnRecipe, so the idea is touched only when a link is pasted.
+        -- Opening that link does not touch the idea.
 }

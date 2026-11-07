@@ -10,6 +10,7 @@ import {
   type Idea,
   type RecipeDraft,
 } from "./api";
+import { claudeSearchUrl } from "./claude-search";
 import { messageFor as importMessageFor } from "./ImportPanel";
 import { Loading } from "./Loading";
 
@@ -102,8 +103,18 @@ export function IdeaResearch({
           >
             Eigenen Link einfügen
           </button>
+          <a
+            className="idea-link"
+            href={claudeSearchUrl(idea)}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${idea.title}: In Claude suchen`}
+          >
+            In Claude suchen
+          </a>
         </div>
       )}
+      {!own && <p className="muted">Link danach unter „Eigenen Link einfügen“ einfügen.</p>}
       {search.isPending && <Loading what="Es wird gesucht … das kann eine Minute dauern" />}
       {search.isError && (
         <p role="alert" className="error">
