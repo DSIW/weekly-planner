@@ -1481,9 +1481,8 @@ button.idea-toggle-row:focus-visible::after {
 }
 .idea-expanded {
   padding: 12px;
-  border-left: 3px solid color-mix(in srgb, var(--primary) 60%, var(--outline));
   background: color-mix(in srgb, var(--primary) 6%, var(--surface));
-  border-radius: 0 8px 8px 0;
+  border-radius: 10px;
   animation: idea-open 0.15s ease-out;
 }
 @keyframes idea-open {
@@ -1587,7 +1586,7 @@ button.toggle-row .chevron {
 .idea-panel {
   display: grid;
   gap: 8px;
-  margin: 0 0 0 40px;
+  margin: 0;
   min-width: 0;
 }
 .idea-form {
