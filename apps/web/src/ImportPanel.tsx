@@ -9,6 +9,7 @@ import {
   matchTags,
   type RecipeDraft,
 } from "./api";
+import { claudeExtractUrl } from "./claude-search";
 import { ItemIcon } from "./ItemIcon";
 import { RelatedRecipes } from "./RelatedRecipes";
 import { ReplaceIngredient } from "./ReplaceIngredient";
@@ -124,9 +125,13 @@ export function DraftReview({
     },
   });
   // A renamed ingredient is looked up again: it may be one of the household's items now, with its icon.
-  const lookup = useMutation({ mutationFn: (name: string) => matchIngredients([name]) });
+  const lookup = useMutation({
+    mutationFn: (name: string) => matchIngredients([name]),
+  });
   // A tag that is written or renamed is looked up too: the household may have it, with an emoji.
-  const tagLookup = useMutation({ mutationFn: (name: string) => matchTags([name]) });
+  const tagLookup = useMutation({
+    mutationFn: (name: string) => matchTags([name]),
+  });
   // The ingredient whose replacement is being chosen in the dialog.
   const [replacing, setReplacing] = useState<number | null>(null);
 
@@ -156,7 +161,12 @@ export function DraftReview({
   const set = (change: Partial<RecipeDraft>) => setDraft({ ...draft, ...change });
   const changeIngredient = (index: number, change: Partial<RecipeDraft["ingredients"][number]>) =>
     setDraft((now) =>
-      now ? { ...now, ingredients: now.ingredients.map((x, n) => (n === index ? { ...x, ...change } : x)) } : now,
+      now
+        ? {
+            ...now,
+            ingredients: now.ingredients.map((x, n) => (n === index ? { ...x, ...change } : x)),
+          }
+        : now,
     );
   const rename = (index: number, typed: string) => {
     const name = typed.trim();
@@ -210,7 +220,10 @@ export function DraftReview({
         // Only if the field still holds what was looked up.
         setDraft((now) =>
           now && now.tags[index]?.trim() === name && found
-            ? { ...now, tags: dedupe(now.tags.map((t, n) => (n === index ? found.name : t))) }
+            ? {
+                ...now,
+                tags: dedupe(now.tags.map((t, n) => (n === index ? found.name : t))),
+              }
             : now,
         ),
     });
@@ -436,6 +449,12 @@ export function ImportPanel() {
     );
 
   const text = input.trim();
+  const claudeUrl = claudeExtractUrl(text);
+  const claudeLink = claudeUrl && (
+    <a className="link-button" href={claudeUrl} target="_blank" rel="noopener noreferrer">
+      In Claude extrahieren
+    </a>
+  );
   return (
     <section className="card">
       <h2>Rezept importieren</h2>
@@ -450,13 +469,16 @@ export function ImportPanel() {
       </label>
       <p className="muted">Bei einem eingefügten Text kann die erste Zeile der Link zum Titelbild sein.</p>
       {read.isError && (
-        <p role="alert" className="error">
-          {messageFor(read.error)}
-        </p>
+        <div role="alert" className="error">
+          <p>{messageFor(read.error)}</p>
+          {claudeLink}
+        </div>
       )}
       <button type="button" disabled={read.isPending || text === ""} onClick={() => read.mutate(text)}>
         {read.isPending ? "Wird gelesen … das kann eine Minute dauern" : "Rezept lesen"}
       </button>
+      {!read.isError && claudeLink}
+      {claudeLink && <p className="muted">Antwort kopieren und unten als Text einfügen.</p>}
     </section>
   );
 }

@@ -128,6 +128,51 @@ describe("recipe import", () => {
     expect(screen.getByRole("button", { name: "Rezept lesen" })).toBeEnabled();
   });
 
+  describe("Claude link", () => {
+    const LINK = "https://example.org/linsen";
+    const claude = () => screen.queryByRole("link", { name: "In Claude extrahieren" });
+
+    it("shows only for an http(s) link, with the right address and no server call", async () => {
+      const calls = server(base);
+      await openImport();
+      expect(claude()).toBeNull();
+      await paste("Linsensuppe: 200 g Linsen kochen.");
+      expect(claude()).toBeNull();
+      await userEvent.clear(screen.getByRole("textbox", { name: /Link oder Rezepttext/ }));
+      await paste(LINK);
+      const link = claude() as HTMLAnchorElement;
+      expect(link.href.startsWith("https://claude.ai/new?q=")).toBe(true);
+      expect(decodeURIComponent(link.href.split("?q=")[1] ?? "")).toContain(LINK);
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(screen.getByText("Antwort kopieren und unten als Text einfügen.")).toBeInTheDocument();
+      const before = calls.length;
+      link.addEventListener("click", (e) => e.preventDefault());
+      await userEvent.click(link);
+      expect(calls.length).toBe(before);
+      expect(calls.some((c) => c.key === DRAFT)).toBe(false);
+    });
+
+    it("is offered prominently in the error when the link could not be read", async () => {
+      server({ ...base, [DRAFT]: { status: 422, body: { error: "empty" } } });
+      await openImport();
+      await paste(LINK);
+      await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByRole("link", { name: "In Claude extrahieren" })).toHaveAttribute("target", "_blank");
+      expect(screen.getAllByRole("link", { name: "In Claude extrahieren" })).toHaveLength(1);
+    });
+
+    it("is not in the error of a pasted text", async () => {
+      server({ ...base, [DRAFT]: { status: 422, body: { error: "not_a_recipe" } } });
+      await openImport();
+      await paste("Irgendein Text");
+      await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
+      await screen.findByRole("alert");
+      expect(claude()).toBeNull();
+    });
+  });
+
   it("lets a member take an ingredient out, rename the recipe or throw the draft away", async () => {
     const calls = server({
       ...base,

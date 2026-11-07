@@ -28,3 +28,29 @@ export function claudePrompt(idea: { title: string; note: string | null; inspira
 /** Address that opens claude.ai with the prompt filled in; nothing is sent by the planner. */
 export const claudeSearchUrl = (idea: Parameters<typeof claudePrompt>[0]): string =>
   `https://claude.ai/new?q=${encodeURIComponent(claudePrompt(idea))}`;
+
+/**
+ * The German prompt that asks Claude to read a recipe page and answer in the plain layout the import's pasted-text path
+ * reads well (the same sections as the page text the server makes: title, Portionen, Zeit, Zutaten, Zubereitung).
+ * Null when the address is not an http(s) link.
+ */
+export function claudeExtractPrompt(address: string): string | null {
+  const url = address.trim();
+  if (!isWebLink(url)) return null;
+  return [
+    `Öffne diese Rezeptseite und gib mir das Rezept als reinen Text: ${url}`,
+    "Antworte genau in diesem Aufbau und schreibe nichts davor oder danach:",
+    "Erste Zeile: der Titel des Rezepts.",
+    "Dann eine Zeile „Portionen: N“ und eine Zeile „Zeit: N Minuten“ (Gesamtzeit).",
+    "Leerzeile, dann „Zutaten:“ mit einer Zutat pro Zeile, zum Beispiel „- 200 g Mehl“.",
+    "Leerzeile, dann „Zubereitung:“ mit nummerierten Schritten, zum Beispiel „1. Mehl sieben.“",
+    `Letzte Zeile: „Quelle: ${url}“.`,
+    "Wenn du die Seite nicht öffnen kannst, sage das und erfinde kein Rezept.",
+  ].join("\n");
+}
+
+/** Address that opens claude.ai with the extraction prompt filled in; null unless the address is an http(s) link. */
+export function claudeExtractUrl(address: string): string | null {
+  const prompt = claudeExtractPrompt(address);
+  return prompt === null ? null : `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
+}
