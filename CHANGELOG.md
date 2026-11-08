@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.39](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.38...weekly-planner-v0.1.39) (2026-11-08)
+
+
+### Features
+
+* **web:** recipe ideas — compact list, quick add, archive with swipe, merged Ideen tab ([#68](https://github.com/DSIW/weekly-planner/issues/68)) ([2ce7e1d](https://github.com/DSIW/weekly-planner/commit/2ce7e1da28767e7ec36e7a2ef960226ec4665c9e))
+
 ## [0.1.38](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.37...weekly-planner-v0.1.38) (2026-11-07)
 
 
