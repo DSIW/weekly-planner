@@ -1646,15 +1646,24 @@ button.danger {
 /* Ideas: quick add, filter chips, cleanup, research status, share to plan */
 .quick-add {
   display: grid;
-  gap: 4px;
-}
-.quick-add-row {
-  display: flex;
   gap: 8px;
 }
-.quick-add-row input {
-  flex: 1;
-  min-width: 0;
+.quick-add-row {
+  display: grid;
+  gap: 8px;
+}
+.quick-add-row textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.quick-add-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.quick-add-actions button {
+  flex: 1 1 auto;
 }
 .quick-add-hint {
   margin: 0;

@@ -537,6 +537,16 @@ describe("pasting a list of ideas", () => {
     expect(screen.getByLabelText("Neue Idee")).toHaveValue("Eins\nZwei\nDrei");
   });
 
+  it("does not add a list on Enter alone", async () => {
+    const calls = server({ ...base, [LIST]: list(), [ADD]: { status: 201, body: { idea: idea("i9") } } });
+    await openIdeas();
+    await userEvent.click(await screen.findByLabelText("Neue Idee"));
+    await userEvent.paste("Eins\nZwei");
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByText("Zwei")).toBeInTheDocument();
+    expect(calls.filter((c) => c.key === ADD)).toHaveLength(0);
+  });
+
   it("still adds a single line with Enter", async () => {
     const calls = server({ ...base, [LIST]: list(), [ADD]: { status: 201, body: { idea: idea("i9") } } });
     await openIdeas();

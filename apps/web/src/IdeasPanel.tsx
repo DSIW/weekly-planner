@@ -402,7 +402,7 @@ function QuickAdd({
         ev.preventDefault();
         if (typed === "") return;
         if (many) {
-          if (fresh.length > 0 && !running) onAddMany(fresh, () => onText(""));
+          // Enter alone does not add a list: the button, with the preview above it, is the one confirmation.
           return;
         }
         onAdd(isLink ? { title: guess, inspirationLink: typed } : { title: typed }, () => onText(""));
@@ -410,7 +410,7 @@ function QuickAdd({
     >
       <div className="quick-add-row">
         <textarea
-          rows={many ? Math.min(lines.length, 6) : 1}
+          rows={Math.min(Math.max(lines.length, 3), 6)}
           value={text}
           maxLength={20000}
           placeholder="Idee notieren, oder Rezept-Link oder -Text einfügen …"
@@ -425,15 +425,23 @@ function QuickAdd({
             }
           }}
         />
-        <button type="submit" disabled={pending || running || typed === "" || (many && fresh.length === 0)}>
-          {many ? `${fresh.length} Ideen hinzufügen` : "Hinzufügen"}
-        </button>
+        <div className="quick-add-actions">
+          <button
+            type="submit"
+            disabled={pending || running || typed === "" || (many && fresh.length === 0)}
+            onClick={many ? () => onAddMany(fresh, () => onText("")) : undefined}
+          >
+            {many ? `${fresh.length} Ideen hinzufügen` : "Hinzufügen"}
+          </button>
+          {typed !== "" && (
+            <button type="button" className="secondary" disabled={reading} onClick={() => onRead(typed)}>
+              {reading ? "Wird gelesen …" : "Rezept lesen"}
+            </button>
+          )}
+        </div>
       </div>
       {typed !== "" && (
         <div className="quick-add-read">
-          <button type="button" className="secondary small" disabled={reading} onClick={() => onRead(typed)}>
-            {reading ? "Wird gelesen … das kann eine Minute dauern" : "Rezept lesen"}
-          </button>
           <span className="muted">
             {isLink
               ? "Sofort als Rezept importieren statt als Idee merken."
@@ -461,6 +469,14 @@ function QuickAdd({
           {lines.length} Zeilen erkannt
           {fresh.length < lines.length && ` – ${lines.length - fresh.length} davon gibt es schon`}.
         </p>
+      )}
+      {many && (
+        <ul className="muted quick-add-preview">
+          {fresh.slice(0, 5).map((l) => (
+            <li key={l.title}>{l.title}</li>
+          ))}
+          {fresh.length > 5 && <li>… und {fresh.length - 5} weitere</li>}
+        </ul>
       )}
       {bulk && (
         <p role="status" className={bulk.failed > 0 ? "error" : "muted"}>
