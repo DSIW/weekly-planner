@@ -1,14 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import {
-  createImport,
-  draftImport,
-  ImportFailed,
-  importImageUrl,
-  matchIngredients,
-  matchTags,
-  type RecipeDraft,
-} from "./api";
+import { createImport, ImportFailed, importImageUrl, matchIngredients, matchTags, type RecipeDraft } from "./api";
+import { AddToPlan } from "./AddToPlan";
 import { ItemIcon } from "./ItemIcon";
 import { RelatedRecipes } from "./RelatedRecipes";
 import { ReplaceIngredient } from "./ReplaceIngredient";
@@ -93,8 +86,6 @@ function Choice({
   );
 }
 
-const isLink = (s: string): boolean => /^https?:\/\/\S+$/i.test(s);
-
 /**
  * The review of a draft recipe, then its creation in KitchenOwl. Used by the import and by the ideas (which hand over a
  * draft and the idea it is for: the idea goes when the recipe exists).
@@ -124,9 +115,13 @@ export function DraftReview({
     },
   });
   // A renamed ingredient is looked up again: it may be one of the household's items now, with its icon.
-  const lookup = useMutation({ mutationFn: (name: string) => matchIngredients([name]) });
+  const lookup = useMutation({
+    mutationFn: (name: string) => matchIngredients([name]),
+  });
   // A tag that is written or renamed is looked up too: the household may have it, with an emoji.
-  const tagLookup = useMutation({ mutationFn: (name: string) => matchTags([name]) });
+  const tagLookup = useMutation({
+    mutationFn: (name: string) => matchTags([name]),
+  });
   // The ingredient whose replacement is being chosen in the dialog.
   const [replacing, setReplacing] = useState<number | null>(null);
 
@@ -141,6 +136,7 @@ export function DraftReview({
         {create.data.draft.imageToken !== undefined && !create.data.photoAttached && (
           <p className="muted">Das Titelbild konnte nicht übernommen werden.</p>
         )}
+        <AddToPlan recipeId={create.data.recipeId} />
         {recipeHref && (
           <a className="link-button" href={recipeHref} target="_blank" rel="noopener noreferrer">
             In KitchenOwl öffnen
@@ -156,7 +152,12 @@ export function DraftReview({
   const set = (change: Partial<RecipeDraft>) => setDraft({ ...draft, ...change });
   const changeIngredient = (index: number, change: Partial<RecipeDraft["ingredients"][number]>) =>
     setDraft((now) =>
-      now ? { ...now, ingredients: now.ingredients.map((x, n) => (n === index ? { ...x, ...change } : x)) } : now,
+      now
+        ? {
+            ...now,
+            ingredients: now.ingredients.map((x, n) => (n === index ? { ...x, ...change } : x)),
+          }
+        : now,
     );
   const rename = (index: number, typed: string) => {
     const name = typed.trim();
@@ -210,7 +211,10 @@ export function DraftReview({
         // Only if the field still holds what was looked up.
         setDraft((now) =>
           now && now.tags[index]?.trim() === name && found
-            ? { ...now, tags: dedupe(now.tags.map((t, n) => (n === index ? found.name : t))) }
+            ? {
+                ...now,
+                tags: dedupe(now.tags.map((t, n) => (n === index ? found.name : t))),
+              }
             : now,
         ),
     });
@@ -407,55 +411,6 @@ export function DraftReview({
       </button>
       <button type="button" className="secondary" disabled={create.isPending} onClick={onDiscard}>
         Verwerfen
-      </button>
-    </section>
-  );
-}
-
-/** A link or a pasted text becomes a recipe in KitchenOwl: read, reviewed here, then created. */
-export function ImportPanel() {
-  const [input, setInput] = useState("");
-  const [draft, setDraft] = useState<RecipeDraft | null>(null);
-  const read = useMutation({
-    mutationFn: (text: string) => draftImport(isLink(text) ? { address: text } : { text }),
-    onSuccess: setDraft,
-  });
-
-  if (draft)
-    return (
-      <DraftReview
-        initial={draft}
-        finishedLabel="Noch ein Rezept importieren"
-        onDiscard={() => setDraft(null)}
-        onFinished={() => {
-          read.reset();
-          setDraft(null);
-          setInput("");
-        }}
-      />
-    );
-
-  const text = input.trim();
-  return (
-    <section className="card">
-      <h2>Rezept importieren</h2>
-      <label>
-        Link oder Rezepttext
-        <textarea
-          rows={5}
-          placeholder="https://… oder den Text eines Rezepts einfügen"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-        />
-      </label>
-      <p className="muted">Bei einem eingefügten Text kann die erste Zeile der Link zum Titelbild sein.</p>
-      {read.isError && (
-        <p role="alert" className="error">
-          {messageFor(read.error)}
-        </p>
-      )}
-      <button type="button" disabled={read.isPending || text === ""} onClick={() => read.mutate(text)}>
-        {read.isPending ? "Wird gelesen … das kann eine Minute dauern" : "Rezept lesen"}
       </button>
     </section>
   );

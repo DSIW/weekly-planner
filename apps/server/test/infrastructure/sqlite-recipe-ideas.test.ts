@@ -14,6 +14,7 @@ const idea = (id: string, over: Partial<RecipeIdea> = {}): RecipeIdea => ({
   addedBy: memberId("2"),
   addedAt: 1_000,
   lastTouchedAt: 1_000,
+  archivedAt: null,
   candidates: [],
   ...over,
 });

@@ -41,7 +41,6 @@ import { Loading } from "./Loading";
 import { LinksContext } from "./Links";
 import { PlanDone } from "./PlanDone";
 import { IdeasPanel } from "./IdeasPanel";
-import { ImportPanel } from "./ImportPanel";
 import { LoginForm } from "./LoginForm";
 import { DueMeals, MealHistory } from "./MealLogPanel";
 import { Notifications } from "./Notifications";
@@ -51,6 +50,8 @@ import { ProposalCard } from "./ProposalCard";
 import { RecipePicker } from "./RecipePicker";
 import { StartSessionForm } from "./StartSessionForm";
 import { Stepper } from "./Stepper";
+import { useResearchActivity } from "./research-activity";
+import { hasShare, sharedFrom } from "./share-target";
 import { SwipeDeck } from "./SwipeDeck";
 
 const SESSION_MESSAGES: Record<SessionError, string> = {
@@ -425,7 +426,13 @@ export function App() {
     onSuccess: (member) => client.setQueryData(["me"], member),
   });
   const signOut = useMutation({ mutationFn: logout, onSuccess: () => client.setQueryData(["me"], null) });
-  const [tab, setTab] = useState<"plan" | "log" | "ideas" | "import">("plan");
+  // A link shared to the installed app opens the import with it; the address is cleaned so a reload starts fresh.
+  const research = useResearchActivity();
+  const [shared] = useState(() => sharedFrom(window.location.search));
+  const [tab, setTab] = useState<"plan" | "log" | "ideas">(shared === null ? "plan" : "ideas");
+  useEffect(() => {
+    if (hasShare(window.location.search)) window.history.replaceState(null, "", window.location.pathname);
+  }, []);
   const links = useQuery({ queryKey: ["links"], queryFn: fetchLinks, enabled: me.data != null, staleTime: Infinity });
 
   if (me.isPending)
@@ -482,17 +489,24 @@ export function App() {
           </button>
           <button type="button" aria-pressed={tab === "ideas"} onClick={() => setTab("ideas")}>
             Ideen
-          </button>
-          <button type="button" aria-pressed={tab === "import"} onClick={() => setTab("import")}>
-            Import
+            {tab !== "ideas" && research.running.size > 0 && (
+              <span className="tab-badge searching">
+                <span className="spinner" aria-hidden="true" />
+                <span className="sr-only"> Suche läuft</span>
+              </span>
+            )}
+            {tab !== "ideas" && research.running.size === 0 && research.unseen.size > 0 && (
+              <span className="tab-badge">
+                {research.unseen.size}
+                <span className="sr-only"> neue Vorschläge</span>
+              </span>
+            )}
           </button>
         </fieldset>
         {tab === "log" ? (
           <MealHistory messageFor={messageFor} />
         ) : tab === "ideas" ? (
-          <IdeasPanel />
-        ) : tab === "import" ? (
-          <ImportPanel />
+          <IdeasPanel meId={me.data.id} initialText={shared ?? ""} />
         ) : (
           <>
             <DueMeals messageFor={messageFor} />

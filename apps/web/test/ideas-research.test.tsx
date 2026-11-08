@@ -28,6 +28,7 @@ const idea = (over: Record<string, unknown> = {}) => ({
   addedBy: { id: "2", name: "Max", avatar: null },
   addedAt: Date.now(),
   isStale: false,
+  archivedAt: null,
   candidates: [],
   ...over,
 });
@@ -48,6 +49,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+/** Expands the row of the idea, whose header is the button named like the title. */
+const expand = async () => {
+  const header = screen.getByRole("button", { name: "Kürbisgnocchi" });
+  if (header.getAttribute("aria-expanded") !== "true") await userEvent.click(header);
+};
 const openIdea = async (
   routes: Record<string, { status: number; body?: unknown } | (() => { status: number; body?: unknown })>,
 ) => {
@@ -68,7 +74,8 @@ describe("research for an idea", () => {
         return { status: 200, body: { idea: idea({ candidates }) } };
       },
     });
-    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: Rezepte suchen" }));
+    await expand();
+    await userEvent.click(screen.getByRole("button", { name: "Rezepte suchen" }));
     const list = await screen.findByRole("list", { name: "Vorschläge für Kürbisgnocchi" });
     expect(calls.map((c) => c.key)).toContain(RESEARCH);
     const first = within(list).getAllByRole("listitem")[0]!;
@@ -89,8 +96,9 @@ describe("research for an idea", () => {
         body: { ideas: [idea({ note: "ohne Sahne", inspirationLink: "https://x.example/a" })] },
       }),
     });
+    await expand();
     const before = calls.length;
-    const link = screen.getByRole("link", { name: "Kürbisgnocchi: In Claude suchen" });
+    const link = screen.getByRole("link", { name: "In Claude suchen" });
     const href = link.getAttribute("href") ?? "";
     expect(href.startsWith("https://claude.ai/new?q=")).toBe(true);
     const q = new URL(href).searchParams.get("q") ?? "";
@@ -121,9 +129,10 @@ describe("research for an idea", () => {
     });
     renderApp();
     await userEvent.click(await screen.findByRole("button", { name: "Ideen" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Kürbisgnocchi: Rezepte suchen" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Kürbisgnocchi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rezepte suchen" }));
     expect(await screen.findByText(/Es wird gesucht/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Kürbisgnocchi: Rezepte suchen" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Rezepte suchen" })).toBeDisabled();
     release();
     await waitFor(() => expect(screen.queryByText(/Es wird gesucht/)).toBeNull());
   });
@@ -135,7 +144,8 @@ describe("research for an idea", () => {
     ["idea_not_found", 404, /gibt es nicht mehr/],
   ])("tells the member when the search answers %s", async (error, status, message) => {
     await openIdea({ [LIST]: { status: 200, body: { ideas: [idea()] } }, [RESEARCH]: { status, body: { error } } });
-    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: Rezepte suchen" }));
+    await expand();
+    await userEvent.click(screen.getByRole("button", { name: "Rezepte suchen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
   });
 
@@ -144,15 +154,28 @@ describe("research for an idea", () => {
       [LIST]: { status: 200, body: { ideas: [idea({ candidates })] } },
       [RESEARCH]: { status: 422, body: { error: "nothing_found" } },
     });
-    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: Rezepte suchen" }));
+    await expand();
+    await userEvent.click(screen.getByRole("button", { name: "Rezepte suchen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Nichts gefunden – die bisherigen Vorschläge bleiben");
     expect(screen.getByRole("button", { name: "Gnocchi mit Salbei übernehmen" })).toBeEnabled();
     expect(screen.getAllByRole("link", { name: "Seite ansehen" })[0]).toHaveAttribute("href");
   });
 
+  it("hides and shows the suggestions inside the expanded row", async () => {
+    await openIdea({ [LIST]: { status: 200, body: { ideas: [idea({ candidates })] } } });
+    expect(screen.queryByRole("list", { name: "Vorschläge für Kürbisgnocchi" })).toBeNull();
+    await expand();
+    expect(screen.getByRole("list", { name: "Vorschläge für Kürbisgnocchi" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Vorschläge ausblenden" }));
+    expect(screen.queryByRole("list", { name: "Vorschläge für Kürbisgnocchi" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Vorschläge zeigen (2)" }));
+    expect(screen.getByRole("list", { name: "Vorschläge für Kürbisgnocchi" })).toBeInTheDocument();
+  });
+
   it("tells the member when the server cannot be reached at all", async () => {
     await openIdea({ [LIST]: { status: 200, body: { ideas: [idea()] } }, [RESEARCH]: { status: 500 } });
-    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: Rezepte suchen" }));
+    await expand();
+    await userEvent.click(screen.getByRole("button", { name: "Rezepte suchen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Das hat nicht geklappt");
   });
 });
@@ -170,6 +193,7 @@ describe("picking a candidate or an own source", () => {
         return { status: 201, body: { recipeId: 9, draft, photoAttached: false } };
       },
     });
+    await expand();
     await userEvent.click(screen.getByRole("button", { name: "Gnocchi mit Salbei übernehmen" }));
     expect(await screen.findByRole("heading", { name: "Rezept prüfen" })).toBeInTheDocument();
     expect(calls.find((c) => c.key === PICK)?.body).toEqual({ candidate: 0 });
@@ -187,6 +211,7 @@ describe("picking a candidate or an own source", () => {
 
   it("discarding the review goes back to the idea, which stays", async () => {
     await openIdea({ ...withCandidates, [PICK]: { status: 200, body: { draft } } });
+    await expand();
     await userEvent.click(screen.getByRole("button", { name: "Gnocchi mit Salbei übernehmen" }));
     await userEvent.click(await screen.findByRole("button", { name: "Verwerfen" }));
     expect(await screen.findByRole("heading", { name: "Kürbisgnocchi" })).toBeInTheDocument();
@@ -203,6 +228,7 @@ describe("picking a candidate or an own source", () => {
     "tells the member when the import refuses the pick (%s) and leaves the others to choose",
     async (error, message) => {
       await openIdea({ ...withCandidates, [PICK]: { status: 422, body: { error } } });
+      await expand();
       await userEvent.click(screen.getByRole("button", { name: "Gnocchi mit Salbei übernehmen" }));
       expect(await screen.findByRole("alert")).toHaveTextContent(message);
       expect(screen.getByRole("button", { name: "Kürbis-Gnocchi vegan übernehmen" })).toBeEnabled();
@@ -211,7 +237,8 @@ describe("picking a candidate or an own source", () => {
 
   it("takes an own link, or an own text, instead", async () => {
     const calls = await openIdea({ ...withCandidates, [OWN]: { status: 200, body: { draft } } });
-    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: eigenen Link einfügen" }));
+    await expand();
+    await userEvent.click(screen.getByRole("button", { name: "Eigenen Link einfügen" }));
     await userEvent.click(screen.getByRole("textbox", { name: /Link oder Rezepttext/ }));
     await userEvent.paste("https://example.org/mein-rezept");
     await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
@@ -221,7 +248,8 @@ describe("picking a candidate or an own source", () => {
 
   it("sends pasted text as text, and shows the import's refusal of an own source", async () => {
     const calls = await openIdea({ ...withCandidates, [OWN]: { status: 422, body: { error: "address_not_public" } } });
-    await userEvent.click(screen.getByRole("button", { name: "Kürbisgnocchi: eigenen Link einfügen" }));
+    await expand();
+    await userEvent.click(screen.getByRole("button", { name: "Eigenen Link einfügen" }));
     await userEvent.click(screen.getByRole("textbox", { name: /Link oder Rezepttext/ }));
     await userEvent.paste("Kürbis kochen und stampfen");
     await userEvent.click(screen.getByRole("button", { name: "Rezept lesen" }));
@@ -235,6 +263,7 @@ describe("picking a candidate or an own source", () => {
       [PICK]: { status: 200, body: { draft } },
       [CREATE]: { status: 502, body: { error: "kitchenowl_unavailable" } },
     });
+    await expand();
     await userEvent.click(screen.getByRole("button", { name: "Gnocchi mit Salbei übernehmen" }));
     await userEvent.click(await screen.findByRole("button", { name: "In KitchenOwl anlegen" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("KitchenOwl ist gerade nicht erreichbar");

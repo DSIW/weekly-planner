@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { claudePrompt, claudeSearchUrl, MAX_PROMPT_LENGTH } from "../src/claude-search";
+import {
+  claudeExtractPrompt,
+  claudeExtractUrl,
+  claudePrompt,
+  claudeSearchUrl,
+  MAX_PROMPT_LENGTH,
+} from "../src/claude-search";
 
 const idea = (over: Partial<{ title: string; note: string | null; inspirationLink: string | null }> = {}) => ({
   title: "Kürbisgnocchi",
@@ -44,5 +50,39 @@ describe("claudeSearchUrl", () => {
     expect(url).not.toMatch(/[ &#]/);
     const q = new URL(url).searchParams.get("q");
     expect(q).toBe(claudePrompt(idea({ title: "Käse & Spätzle #1" })));
+  });
+});
+
+describe("claudeExtractPrompt and claudeExtractUrl", () => {
+  const page = "https://www.lecker.de/zuercher-geschnetzeltes?a=1&b=ä";
+
+  it("includes the address, the layout and the way out", () => {
+    const p = claudeExtractPrompt(` ${page} `) ?? "";
+    expect(p).toContain(`: ${page}`);
+    expect(p).toContain(`Quelle: ${page}`);
+    for (const part of ["Portionen: N", "Zeit: N Minuten", "Zutaten:", "- 200 g Mehl", "Zubereitung:", "1. "])
+      expect(p).toContain(part);
+    expect(p).toContain("erfinde kein Rezept");
+  });
+
+  it("needs an http(s) link", () => {
+    for (const bad of [
+      "",
+      "Linsensuppe",
+      "javascript:alert(1)",
+      "ftp://x.example/a",
+      "https://a b",
+      "text https://x.example",
+    ]) {
+      expect(claudeExtractPrompt(bad)).toBeNull();
+      expect(claudeExtractUrl(bad)).toBeNull();
+    }
+  });
+
+  it("encodes the prompt into the claude.ai address", () => {
+    const url = claudeExtractUrl(page) ?? "";
+    expect(url.startsWith("https://claude.ai/new?q=")).toBe(true);
+    expect(decodeURIComponent(url.slice("https://claude.ai/new?q=".length))).toBe(claudeExtractPrompt(page));
+    expect(url).not.toContain(" ");
   });
 });

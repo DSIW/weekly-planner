@@ -1,4 +1,5 @@
 import {
+  archiveIdea,
   editIdea,
   isStale,
   keepIdea,
@@ -7,6 +8,7 @@ import {
   pickCandidate,
   recipeIdeaId,
   replaceCandidates,
+  restoreIdea,
   reviewCandidates,
   useOwnRecipe,
   defaultIdeaConfig,
@@ -105,6 +107,7 @@ export class ResearchIdea {
   async execute(cmd: { member: MemberId; idea: RecipeIdeaId }): Promise<Result<RecipeIdea>> {
     const idea = await this.deps.ideas.get(cmd.idea);
     if (!idea) return notFound;
+    if (idea.archivedAt !== null) return { ok: false, reason: "archived" };
     const asked = this.deps.clock.now();
     const recent = await this.deps.requests.listSince(asked - HOUR_MS);
     if (!mayResearch(recent, cmd.member, asked, this.config)) return { ok: false, reason: "rate_limited" };
@@ -167,6 +170,7 @@ export class UseOwnRecipe {
   }): Promise<Result<RecipeDraft>> {
     const idea = await this.deps.ideas.get(cmd.idea);
     if (!idea) return notFound;
+    if (idea.archivedAt !== null) return { ok: false, reason: "archived" };
     // A value that is empty or only whitespace counts as not given.
     const address = cmd.address?.trim() ? cmd.address : undefined;
     const text = cmd.text?.trim() ? cmd.text : undefined;
@@ -197,7 +201,33 @@ export class KeepIdea {
   }
 }
 
-/** rule DeleteIdea: at any time, stale or not, candidates with it. */
+/** rule ArchiveIdea: either member may put any idea aside; it keeps everything and can come back. */
+export class ArchiveIdea {
+  constructor(private readonly deps: { ideas: RecipeIdeaRepository; clock: Clock }) {}
+
+  async execute(cmd: { member: MemberId; idea: RecipeIdeaId }): Promise<Result<RecipeIdea>> {
+    const idea = await this.deps.ideas.get(cmd.idea);
+    if (!idea) return notFound;
+    const archived = archiveIdea(idea, cmd, this.deps.clock.now());
+    if (archived.ok) await this.deps.ideas.save(archived.value);
+    return archived;
+  }
+}
+
+/** rule RestoreIdea */
+export class RestoreIdea {
+  constructor(private readonly deps: { ideas: RecipeIdeaRepository; clock: Clock }) {}
+
+  async execute(cmd: { member: MemberId; idea: RecipeIdeaId }): Promise<Result<RecipeIdea>> {
+    const idea = await this.deps.ideas.get(cmd.idea);
+    if (!idea) return notFound;
+    const restored = restoreIdea(idea, cmd, this.deps.clock.now());
+    if (restored.ok) await this.deps.ideas.save(restored.value);
+    return restored;
+  }
+}
+
+/** rule DeleteIdea: for good, at any time (stale, archived or neither), candidates with it. */
 export class DeleteIdea {
   constructor(private readonly deps: { ideas: RecipeIdeaRepository }) {}
 

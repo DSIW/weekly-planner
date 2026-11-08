@@ -10,8 +10,8 @@ import {
   type Idea,
   type RecipeDraft,
 } from "./api";
-import { claudeSearchUrl } from "./claude-search";
-import { messageFor as importMessageFor } from "./ImportPanel";
+import { messageFor as importMessageFor } from "./DraftReview";
+import { researchFinished, researchStarted, useResearchActivity } from "./research-activity";
 import { Loading } from "./Loading";
 
 const FALLBACK = "Das hat nicht geklappt. Bitte später noch einmal versuchen.";
@@ -47,24 +47,28 @@ const siteOf = (link: string): string | null => {
 
 const isLink = (s: string): boolean => /^https?:\/\/\S+$/i.test(s);
 
-/**
- * Research for one idea: ask for candidates, pick one, or hand over an own link or text. Picking and the own source
- * both end in the import's draft, which `onDraft` takes over to the import's review.
- */
-export function IdeaResearch({
-  idea,
-  onChanged,
-  onDraft,
-  disabled,
-}: {
-  idea: Idea;
-  onChanged: () => void;
-  onDraft: (draft: RecipeDraft) => void;
-  disabled: boolean;
-}) {
+/** The state of one idea's research: the search, the picking, the own source. Shared by the expanded row's buttons and panel. */
+export function useIdeaResearch(idea: Idea, onChanged: () => void, onDraft: (draft: RecipeDraft) => void) {
   const [own, setOwn] = useState(false);
   const [ownText, setOwnText] = useState("");
-  const search = useMutation({ mutationFn: () => researchIdea(idea.id), onSettled: onChanged });
+  const [closed, setClosed] = useState(false);
+  const activity = useResearchActivity();
+  const search = useMutation({
+    mutationFn: async () => {
+      researchStarted(idea.id);
+      try {
+        const found = await researchIdea(idea.id);
+        researchFinished(idea.id, true);
+        return found;
+      } catch (e) {
+        researchFinished(idea.id, false);
+        throw e;
+      }
+    },
+    onSettled: onChanged,
+  });
+  // The request outlives the row: after a visit to another tab the row learns of it from the shared activity.
+  const searching = search.isPending || activity.running.has(idea.id);
   const pick = useMutation({
     mutationFn: (n: number) => pickCandidate(idea.id, n),
     onSuccess: onDraft,
@@ -76,46 +80,76 @@ export function IdeaResearch({
     onSuccess: onDraft,
     onSettled: onChanged,
   });
-  const busy = search.isPending || pick.isPending || useOwn.isPending;
+  const busy = searching || pick.isPending || useOwn.isPending;
+  return { searching, own, setOwn, ownText, setOwnText, closed, setClosed, search, pick, useOwn, busy };
+}
+export type IdeaResearchState = ReturnType<typeof useIdeaResearch>;
+
+const Magnifier = () => (
+  <svg
+    viewBox="0 0 24 24"
+    width="18"
+    height="18"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="M16 16l4.5 4.5" />
+  </svg>
+);
+
+/** The expanded row's primary action: ask the model for recipe candidates. */
+export function SearchButton({
+  research,
+  disabled,
+  onStart,
+}: {
+  research: IdeaResearchState;
+  disabled: boolean;
+  onStart: () => void;
+}) {
+  const { search, pick, busy, setClosed } = research;
+  return (
+    <button
+      type="button"
+      className="act act-primary act-wide"
+      disabled={disabled || busy}
+      onClick={() => {
+        onStart();
+        pick.reset();
+        setClosed(false);
+        search.mutate();
+      }}
+    >
+      <Magnifier />
+      Rezepte suchen
+    </button>
+  );
+}
+
+/** In the expanded row: the spinner, the errors, the own-source form and the candidates of one idea. */
+export function ResearchPanel({
+  idea,
+  research,
+  disabled,
+}: {
+  idea: Idea;
+  research: IdeaResearchState;
+  disabled: boolean;
+}) {
+  const { searching, own, setOwn, ownText, setOwnText, closed, setClosed, search, pick, useOwn, busy } = research;
   const candidates = idea.candidates ?? [];
+  const showCandidates = candidates.length > 0 && !own && !closed;
+  if (!own && !searching && !search.isError && candidates.length === 0) return null;
 
   return (
     <div className="idea-research">
-      {!own && (
-        <div className="idea-actions">
-          <button
-            type="button"
-            disabled={disabled || busy}
-            aria-label={`${idea.title}: Rezepte suchen`}
-            onClick={() => {
-              pick.reset();
-              search.mutate();
-            }}
-          >
-            {candidates.length > 0 ? "Neu suchen" : "Rezepte suchen"}
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={disabled || busy}
-            aria-label={`${idea.title}: eigenen Link einfügen`}
-            onClick={() => setOwn(true)}
-          >
-            Eigenen Link einfügen
-          </button>
-          <a
-            className="idea-link"
-            href={claudeSearchUrl(idea)}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`${idea.title}: In Claude suchen`}
-          >
-            In Claude suchen
-          </a>
-        </div>
-      )}
-      {!own && <p className="muted">Link danach unter „Eigenen Link einfügen“ einfügen.</p>}
-      {search.isPending && <Loading what="Es wird gesucht … das kann eine Minute dauern" />}
+      {searching && <Loading what="Es wird gesucht … das kann eine Minute dauern" />}
       {search.isError && (
         <p role="alert" className="error">
           {researchMessage(search.error)}
@@ -132,7 +166,7 @@ export function IdeaResearch({
           <label>
             Link oder Rezepttext
             <textarea
-              rows={4}
+              rows={3}
               maxLength={60000}
               placeholder="https://… oder den Text eines Rezepts einfügen"
               value={ownText}
@@ -164,6 +198,26 @@ export function IdeaResearch({
         </form>
       )}
       {candidates.length > 0 && !own && (
+        <button type="button" className="toggle-row" onClick={() => setClosed(!closed)}>
+          {closed ? `Vorschläge zeigen (${candidates.length})` : "Vorschläge ausblenden"}
+          <svg
+            className={closed ? "chevron" : "chevron open"}
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </button>
+      )}
+      {showCandidates && (
         <>
           <ul className="candidates" aria-label={`Vorschläge für ${idea.title}`}>
             {candidates.map((c, n) => (
@@ -204,16 +258,18 @@ function CandidateItem({
   return (
     <li className="candidate">
       <strong>{candidate.title}</strong>
-      {site && <span className="muted">{site}</span>}
-      {candidate.summary && <p>{candidate.summary}</p>}
-      {site && (
-        <a className="idea-link" href={candidate.link} target="_blank" rel="noopener noreferrer">
-          Seite ansehen
-        </a>
-      )}
-      <button type="button" disabled={busy} aria-label={`${candidate.title} übernehmen`} onClick={onPick}>
-        {picking ? "Wird gelesen … das kann eine Minute dauern" : "Dieses Rezept übernehmen"}
-      </button>
+      {site && <span className="muted candidate-site">{site}</span>}
+      {candidate.summary && <p className="candidate-summary">{candidate.summary}</p>}
+      <div className="candidate-actions">
+        {site && (
+          <a className="idea-link" href={candidate.link} target="_blank" rel="noopener noreferrer">
+            Seite ansehen
+          </a>
+        )}
+        <button type="button" disabled={busy} aria-label={`${candidate.title} übernehmen`} onClick={onPick}>
+          {picking ? "Wird gelesen … das kann eine Minute dauern" : "Übernehmen"}
+        </button>
+      </div>
     </li>
   );
 }

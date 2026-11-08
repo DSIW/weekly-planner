@@ -72,6 +72,7 @@ describe("rule NoteIdea", () => {
       addedBy: ME,
       addedAt: T0,
       lastTouchedAt: T0,
+      archivedAt: null,
       candidates: [],
     });
   });

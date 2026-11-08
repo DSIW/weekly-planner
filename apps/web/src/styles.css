@@ -880,7 +880,7 @@ fieldset.switch {
 }
 /* The main areas: one row of equal tabs, whatever the number of them. */
 fieldset.tabs {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
 }
 fieldset.tabs button {
@@ -1327,46 +1327,85 @@ button.found-other {
   font-size: 0.9rem;
 }
 
-/* Recipe ideas */
+/* Recipe ideas: one slim row each, the actions in an inline panel under the tapped row */
+.card.ideas {
+  padding: 16px;
+  gap: 10px;
+}
+.ideas-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ideas-count {
+  font-size: 0.95rem;
+  font-weight: 400;
+}
 .ideas-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 .idea {
   display: grid;
   gap: 8px;
-  padding: 14px;
-  border: 1px solid var(--outline);
-  border-radius: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--outline);
   min-width: 0;
 }
-.idea.stale {
-  border-color: var(--warn);
+.idea:last-child {
+  border-bottom: 0;
 }
-.idea h3,
-.idea-group {
-  margin: 0;
-  font-size: 1.05rem;
-  overflow-wrap: anywhere;
-}
-.idea-head {
+.idea-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
+  min-height: 48px;
 }
-.idea-who {
-  display: grid;
+.idea-main {
   flex: 1;
   min-width: 0;
-  font-size: 0.9rem;
+  display: grid;
+  gap: 1px;
+}
+.idea-main h3 {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+.idea-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+.idea-meta .badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  font-size: 0.75rem;
+}
+.idea-group {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.idea-group span {
+  font-weight: 400;
 }
 .avatar {
   flex: none;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   overflow: hidden;
   display: grid;
@@ -1374,6 +1413,7 @@ button.found-other {
   background: var(--primary);
   color: var(--on-primary);
   font-weight: 700;
+  font-size: 0.9rem;
 }
 .avatar img {
   width: 100%;
@@ -1386,21 +1426,182 @@ button.found-other {
 }
 .idea-note {
   margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .idea-link {
   color: var(--primary-ink);
   font-weight: 600;
 }
+.idea-row {
+  position: relative;
+}
+.idea-main h3 {
+  display: block;
+  overflow: visible;
+}
+/* The title is the real button; its ::after stretches over the whole row, so the whole header is the tap target. */
+button.idea-toggle-row {
+  all: unset;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-weight: 600;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+button.idea-toggle-row::after {
+  content: "";
+  position: absolute;
+  inset: -8px 0;
+  min-height: 44px;
+}
+button.idea-toggle-row:focus-visible::after {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.idea-row .idea-link,
+.idea-row .idea-keep {
+  position: relative;
+  z-index: 1;
+}
+.chevron {
+  flex: none;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+.chevron.open {
+  transform: rotate(180deg);
+}
+.idea-expanded {
+  padding: 12px;
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+  border-radius: 10px;
+  animation: idea-open 0.15s ease-out;
+}
+@keyframes idea-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .idea-expanded {
+    animation: none;
+  }
+  .chevron {
+    transition: none;
+  }
+}
+.idea-note-full {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.idea-hint {
+  font-size: 0.8rem;
+}
+.idea-research {
+  display: grid;
+  gap: 8px;
+}
+/* One look for every action of an expanded idea (button or link): colours are always set together. */
+.act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.act:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.act.act-primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.act.act-quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--error);
+}
+.act-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.act.act-wide {
+  width: 100%;
+}
+.idea-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.3;
+}
+button.toggle-row {
+  all: unset;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  color: var(--primary-ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.toggle-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button.toggle-row .chevron {
+  color: inherit;
+}
+.idea-panel {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
 .idea-form {
   display: grid;
-  gap: 12px;
+  gap: 8px;
 }
 .idea-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+.idea-panel :is(.idea-actions, .candidate-actions) button:not(.act),
+.ideas > .idea-form button {
+  padding: 8px 14px;
+  font-size: 0.9rem;
 }
 button.danger {
   background: var(--error);
@@ -1408,26 +1609,205 @@ button.danger {
 }
 
 /* Research candidates of an idea */
-.idea-research {
-  display: grid;
-  gap: 8px;
-}
 .candidates {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 .candidate {
   display: grid;
-  gap: 4px;
-  padding: 10px 12px;
+  gap: 2px;
+  padding: 8px 10px;
   border: 1px solid var(--outline);
   border-radius: 12px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.candidate p {
+.candidate-site {
+  font-size: 0.8rem;
+}
+.candidate-summary {
+  margin: 0;
+  font-size: 0.85rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.candidate-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.9rem;
+}
+
+/* Ideas: quick add, filter chips, cleanup, research status, share to plan */
+.quick-add {
+  display: grid;
+  gap: 4px;
+}
+.quick-add-row {
+  display: flex;
+  gap: 8px;
+}
+.quick-add-row input {
+  flex: 1;
+  min-width: 0;
+}
+.quick-add-hint {
+  margin: 0;
+  font-size: 0.85rem;
+}
+.link-text {
+  background: none;
+  border: 0;
+  padding: 0;
+  min-height: 0;
+  color: var(--primary);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+.chip {
+  padding: 5px 12px;
+  min-height: 0;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.chip span {
+  opacity: 0.7;
+}
+.chip[aria-pressed="true"] {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+.cleanup-start {
+  justify-self: start;
+}
+.cleanup {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+}
+.cleanup h3 {
+  margin: 0;
+}
+.empty-state p {
+  margin: 0 0 6px;
+}
+.badge.searching {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.badge.searching .spinner,
+.tab-badge .spinner {
+  position: static;
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  border-width: 2px;
+}
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--on-primary);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.add-to-plan {
+  display: grid;
+  gap: 8px;
+}
+
+/* Swiping an idea row */
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+}
+.swipe-front {
+  position: relative;
+  background: var(--surface);
+  touch-action: pan-y;
+}
+.swipe-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-weight: 700;
+  color: #fff;
+}
+.swipe-bg-left {
+  justify-content: flex-end;
+  background: var(--error);
+}
+.swipe-bg-right {
+  justify-content: flex-start;
+  background: var(--primary);
+}
+.toasts {
+  position: fixed;
+  z-index: 50;
+  inset: auto 12px calc(76px + env(safe-area-inset-bottom)) 12px;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: #2b2f2c;
+  color: #fff;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.3);
+  pointer-events: auto;
+}
+.toast .link-text {
+  color: #8be0b0;
+  font-weight: 700;
+}
+.quick-add-read {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 0.85rem;
+}
+.quick-add-claude {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+.quick-add-claude p {
   margin: 0;
 }

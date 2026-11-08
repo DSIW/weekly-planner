@@ -163,7 +163,7 @@ describe("migrations", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     expect(fresh(path).db.prepare("pragma user_version").get()).toEqual(version);
-    expect(version).toEqual({ user_version: 9 });
+    expect(version).toEqual({ user_version: 10 });
   });
 });
 
@@ -249,7 +249,7 @@ describe("migration 4 and the export repository", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     const again = fresh(path);
-    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 9 });
+    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 10 });
     expect((await again.sessions.get(sessionId("keep")))?.id).toBe("keep");
     await new SqliteExportRepository(again.db).save({ ...exported, sessionId: sessionId("keep") });
   });
@@ -270,7 +270,7 @@ describe("migration 6 on a database that already holds sessions", () => {
     first.db.close();
     open.splice(open.indexOf(first.db), 1);
     const again = fresh(path);
-    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 9 });
+    expect(again.db.prepare("pragma user_version").get()).toEqual({ user_version: 10 });
     const was = async (id: string) => (await again.sessions.get(sessionId(id)))?.wasFinalized;
     expect(await was("exported")).toBe(true);
     expect(await was("finalized")).toBe(true);
