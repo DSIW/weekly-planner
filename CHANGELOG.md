@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.40](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.39...weekly-planner-v0.1.40) (2026-11-08)
+
+
+### Features
+
+* **web:** confirm pasted idea lists, full-width quick-add field ([#70](https://github.com/DSIW/weekly-planner/issues/70)) ([b9a7629](https://github.com/DSIW/weekly-planner/commit/b9a762983ea92db0bcee4a838f4b55a92512744a))
+
 ## [0.1.39](https://github.com/DSIW/weekly-planner/compare/weekly-planner-v0.1.38...weekly-planner-v0.1.39) (2026-11-08)
 
 
